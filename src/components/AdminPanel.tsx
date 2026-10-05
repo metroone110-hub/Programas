@@ -561,25 +561,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ------------------- VIEW: LOGIN TO EXISTING ACCOUNT -------------------
   if (!token) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-700 animate-in fade-in duration-200">
-          {/* Tricolore Band */}
-          <div className="h-2 w-full grid grid-cols-3">
-            <div className="bg-orange-500"></div>
-            <div className="bg-white"></div>
-            <div className="bg-green-600"></div>
-          </div>
+      <div className="min-h-screen bg-[#F5F0E8] flex items-center justify-center p-4">
+        <div className="bg-white rounded-[32px] max-w-md w-full overflow-hidden shadow-xl border border-black/5 animate-in fade-in duration-200">
+          {/* Accent Band */}
+          <div className="h-2 w-full bg-[#F5B726]"></div>
 
           <div className="p-6 sm:p-8">
             <div className="text-center mb-6">
-              <div className="w-14 h-14 bg-gradient-to-tr from-orange-600 to-amber-500 rounded-2xl mx-auto flex items-center justify-center text-white shadow-lg shadow-orange-500/30 mb-3">
-                <Lock className="w-7 h-7" />
+              <div className="w-14 h-14 bg-[#F5B726] rounded-full mx-auto flex items-center justify-center text-black font-black text-2xl shadow-sm mb-3">
+                <ChefHat className="w-7 h-7" />
               </div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-900 text-xs font-black uppercase tracking-wider mb-2">
-                <span>🇨🇮</span> UPGC Korhogo • CROU-K
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FEF3C7] text-amber-900 text-xs font-black uppercase tracking-wider mb-2">
+                <span>🇨🇮</span> UPGC Korhogo · CROU-K
               </div>
               <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                Portail Gestionnaire Programas
+                Portail Gestionnaire
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
                 Espace sécurisé de la cantine et restaurant universitaire
@@ -589,7 +585,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-orange-600" />
+                  <User className="w-3.5 h-3.5 text-[#F5B726]" />
                   <span>Identifiant (Pseudo)</span>
                 </label>
                 <input
@@ -598,13 +594,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   placeholder="Saisissez votre pseudo gestionnaire..."
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-orange-500 text-sm font-semibold"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#F5B726] text-sm font-semibold bg-slate-50/50"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-orange-600" />
+                  <KeyRound className="w-3.5 h-3.5 text-[#F5B726]" />
                   <span>Mot de passe</span>
                 </label>
                 <input
@@ -613,12 +609,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="Votre mot de passe confidentiel..."
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-orange-500 text-sm font-semibold"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#F5B726] text-sm font-semibold bg-slate-50/50"
                 />
               </div>
 
               {loginError && (
-                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
                   <span>{loginError}</span>
                 </div>
@@ -627,7 +623,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-black text-sm shadow-lg shadow-orange-500/25 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-full bg-[#18181B] hover:bg-black text-white font-black text-sm shadow-md transition-all flex items-center justify-center gap-2"
               >
                 {isLoggingIn ? (
                   <>
@@ -636,7 +632,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </>
                 ) : (
                   <>
-                    <Unlock className="w-4 h-4" />
+                    <Unlock className="w-4 h-4 text-[#F5B726]" />
                     <span>Connexion au panneau de gestion</span>
                   </>
                 )}
@@ -660,32 +656,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // ------------------- VIEW: AUTHENTICATED ADMIN DASHBOARD -------------------
   return (
-    <div className="min-h-screen bg-slate-100 pb-20">
-      {/* Top Tricolore Côte d'Ivoire Accent */}
-      <div className="h-1.5 w-full grid grid-cols-3">
-        <div className="bg-orange-500"></div>
-        <div className="bg-white"></div>
-        <div className="bg-green-600"></div>
-      </div>
+    <div className="min-h-screen bg-[#F5F0E8] pb-24">
+      {/* Top Accent Band */}
+      <div className="h-1.5 w-full bg-[#F5B726]"></div>
 
       {/* Admin Navbar */}
-      <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-md">
+      <header className="sticky top-0 z-30 bg-[#18181B] text-white shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-orange-600 flex items-center justify-center font-bold text-white shadow-xs">
-              <ChefHat className="w-5 h-5 text-amber-300" />
+            <div className="w-10 h-10 rounded-full bg-[#F5B726] flex items-center justify-center font-bold text-slate-950 shadow-xs">
+              <ChefHat className="w-5 h-5 text-slate-950" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-extrabold text-base tracking-tight text-white">
-                  Programas • Administration Resto U
+                  Programas · Espace Gestionnaire
                 </h1>
-                <span className="bg-green-600 text-white font-black text-[10px] px-1.5 py-0.5 rounded uppercase">
-                  UPGC
+                <span className="bg-[#F5B726] text-black font-black text-[10px] px-2 py-0.5 rounded-full uppercase">
+                  CROU-K
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Connecté en tant que : <strong className="text-orange-400 font-bold">{currentUsername || 'Gestionnaire'}</strong>
+                Connecté en tant que : <strong className="text-[#F5B726] font-bold">{currentUsername || 'Gestionnaire'}</strong>
               </p>
             </div>
           </div>
@@ -693,14 +685,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleExitToStudent}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700"
+              className="px-3.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700"
             >
-              <Eye className="w-3.5 h-3.5 text-orange-400" />
+              <Eye className="w-3.5 h-3.5 text-[#F5B726]" />
               <span>Aperçu Étudiant</span>
             </button>
             <button
               onClick={handleLogout}
-              className="px-2.5 py-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 text-red-200 text-xs font-bold transition-colors flex items-center gap-1 border border-red-800/50"
+              className="px-3 py-1.5 rounded-full bg-red-950/80 hover:bg-red-900 text-red-200 text-xs font-bold transition-colors flex items-center gap-1 border border-red-800/50"
               title="Déconnexion"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -715,7 +707,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onClick={() => setActiveTab('menu')}
             className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'menu'
-                ? 'border-orange-500 text-orange-400'
+                ? 'border-[#F5B726] text-[#F5B726]'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
@@ -725,7 +717,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onClick={() => setActiveTab('hours_tarifs')}
             className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'hours_tarifs'
-                ? 'border-orange-500 text-orange-400'
+                ? 'border-[#F5B726] text-[#F5B726]'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
@@ -735,7 +727,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onClick={() => setActiveTab('security')}
             className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'security'
-                ? 'border-orange-500 text-orange-400'
+                ? 'border-[#F5B726] text-[#F5B726]'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >

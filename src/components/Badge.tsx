@@ -10,59 +10,59 @@ interface BadgeProps {
 export const TAG_LABELS: Record<DietaryTag, { label: string; bg: string; text: string; border: string; icon: React.ReactNode }> = {
   veggie: {
     label: 'Végétarien',
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    border: 'border-emerald-200',
-    icon: <Leaf className="w-3 h-3 text-emerald-600 inline mr-1" />
+    bg: 'bg-[#DCFCE7]',
+    text: 'text-[#166534]',
+    border: 'border-emerald-200/60',
+    icon: <Leaf className="w-2.5 h-2.5 text-emerald-700 inline mr-1" />
   },
   vegan: {
     label: 'Végétalien',
-    bg: 'bg-teal-50',
-    text: 'text-teal-700',
-    border: 'border-teal-200',
-    icon: <Leaf className="w-3 h-3 text-teal-600 inline mr-1" />
+    bg: 'bg-[#DCFCE7]',
+    text: 'text-[#166534]',
+    border: 'border-emerald-200/60',
+    icon: <Leaf className="w-2.5 h-2.5 text-emerald-700 inline mr-1" />
   },
   bio: {
     label: 'Bio',
-    bg: 'bg-green-50',
-    text: 'text-green-700',
-    border: 'border-green-200',
-    icon: <Award className="w-3 h-3 text-green-600 inline mr-1" />
+    bg: 'bg-[#FEF3C7]',
+    text: 'text-[#92400E]',
+    border: 'border-amber-200/60',
+    icon: <Award className="w-2.5 h-2.5 text-amber-700 inline mr-1" />
   },
   fait_maison: {
     label: 'Fait Maison',
-    bg: 'bg-amber-50',
-    text: 'text-amber-800',
-    border: 'border-amber-200',
-    icon: <ChefHat className="w-3 h-3 text-amber-600 inline mr-1" />
+    bg: 'bg-[#FDE2E4]',
+    text: 'text-[#991B1B]',
+    border: 'border-rose-200/60',
+    icon: <ChefHat className="w-2.5 h-2.5 text-rose-700 inline mr-1" />
   },
   viande_francaise: {
-    label: 'Viande 100% France (VBF)',
-    bg: 'bg-blue-50',
-    text: 'text-blue-700',
-    border: 'border-blue-200',
-    icon: <span className="inline mr-1 text-xs">🇫🇷</span>
+    label: 'Viande Locale',
+    bg: 'bg-[#E0F2FE]',
+    text: 'text-[#075985]',
+    border: 'border-sky-200/60',
+    icon: <span className="inline mr-1 text-[10px]">🇨🇮</span>
   },
   local: {
-    label: 'Circuit Court & Local',
-    bg: 'bg-indigo-50',
-    text: 'text-indigo-700',
-    border: 'border-indigo-200',
-    icon: <MapPin className="w-3 h-3 text-indigo-600 inline mr-1" />
+    label: 'Terroir Ivoirien',
+    bg: 'bg-[#FEF3C7]',
+    text: 'text-[#92400E]',
+    border: 'border-amber-200/60',
+    icon: <MapPin className="w-2.5 h-2.5 text-amber-700 inline mr-1" />
   },
   sans_porc: {
     label: 'Sans Porc',
-    bg: 'bg-slate-100',
-    text: 'text-slate-700',
-    border: 'border-slate-200',
-    icon: <ShieldCheck className="w-3 h-3 text-slate-500 inline mr-1" />
+    bg: 'bg-[#F4EFE6]',
+    text: 'text-[#44403C]',
+    border: 'border-stone-200',
+    icon: <ShieldCheck className="w-2.5 h-2.5 text-stone-600 inline mr-1" />
   },
   halal: {
     label: 'Viande Halal',
-    bg: 'bg-purple-50',
-    text: 'text-purple-700',
-    border: 'border-purple-200',
-    icon: <Heart className="w-3 h-3 text-purple-600 inline mr-1" />
+    bg: 'bg-[#EDE9FE]',
+    text: 'text-[#5B21B6]',
+    border: 'border-purple-200/60',
+    icon: <Heart className="w-2.5 h-2.5 text-purple-700 inline mr-1" />
   }
 };
 
@@ -72,8 +72,8 @@ export const DietaryBadge: React.FC<BadgeProps> = ({ tag, size = 'sm' }) => {
 
   return (
     <span
-      className={`inline-flex items-center font-medium rounded-full border ${config.bg} ${config.text} ${config.border} ${
-        size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs'
+      className={`inline-flex items-center font-bold rounded-full ${config.bg} ${config.text} ${config.border} border ${
+        size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
       }`}
     >
       {config.icon}
