@@ -1,0 +1,12 @@
+{
+  "isConfigured": true,
+  "username": "crouk_admin",
+  "salt": "c620b007e1f295c97dd353958d4ddf34",
+  "hash": "a348f4b830e6296fde3b65c7b2249ce5dbaddc1cccfcdc4f0ae16ecbe523c028a5f66bb33f1ab2d154fc347f6c89b97859701cf100fdb91c897aba26e37884da",
+  "tokens": [
+    "crouk_8a4a1c0fa7c4f109105dbe5dec4d50613a71d29841b434d6588be1d28365cecd",
+    "crouk_1b4f713db14cfbc1e1bbb024af4f6cd02edc434e786ca8a5e66f3726d7761e25",
+    "crouk_72da6fc462337c8311cb30a102740ad367676b99b79f0d21293023c89e9b16dc"
+  ],
+  "updatedAt": "2026-10-05T08:53:28.423Z"
+}

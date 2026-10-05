@@ -1,0 +1,6 @@
+{
+  "name": "CROU Menu - Resto U",
+  "description": "Application de menu pour la cantine et restaurant universitaire du CROU. Consultation immédiate pour les étudiants et administration avec scan IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

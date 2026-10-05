@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Côte d'Ivoire Palette: Orange #ea580c, White #ffffff, Green #16a34a -->
+    <linearGradient id="ivoryBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ea580c"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="goldAcc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle with Orange to Green gradient -->
+  <rect width="512" height="512" rx="128" fill="url(#ivoryBg)"/>
+
+  <!-- Tricolore Côte d'Ivoire Top Accent Bar -->
+  <g transform="translate(64, 40)">
+    <rect x="0" y="0" width="128" height="10" rx="5" fill="#f97316"/>
+    <rect x="128" y="0" width="128" height="10" fill="#ffffff"/>
+    <rect x="256" y="0" width="128" height="10" rx="5" fill="#16a34a"/>
+  </g>
+
+  <!-- Subtle inner border ring -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="none" stroke="#ffffff" stroke-width="3" stroke-opacity="0.25"/>
+
+  <!-- Center Cloche / Plate / Programas "P" -->
+  <g filter="url(#shadow)" transform="translate(256, 240)">
+    <!-- Plate base -->
+    <path d="M-150,85 Q0,115 150,85 L160,110 Q0,140 -160,110 Z" fill="#ffffff" fill-opacity="0.95"/>
+    <ellipse cx="0" cy="85" rx="150" ry="16" fill="url(#goldAcc)"/>
+
+    <!-- Cloche dome -->
+    <path d="M-125,75 C-125,-55 125,-55 125,75 Z" fill="#ffffff"/>
+
+    <!-- Cloche handle top knob -->
+    <circle cx="0" cy="-65" r="20" fill="url(#goldAcc)"/>
+    <rect x="-7" y="-50" width="14" height="14" rx="4" fill="url(#goldAcc)"/>
+
+    <!-- Bold letter "P" for Programas -->
+    <path d="M-30,-20 L-30,45 L-10,45 L-10,18 L15,18 C38,18 45,5 45,-5 C45,-18 35,-20 15,-20 Z M-10,-5 L12,-5 C20,-5 25,-2 25,5 C25,10 20,12 12,12 L-10,12 Z" fill="#ea580c"/>
+
+    <!-- Fork on left (green accent) -->
+    <g transform="translate(-165, -5) rotate(-15)">
+      <rect x="-3" y="10" width="6" height="70" rx="3" fill="#ffffff" fill-opacity="0.9"/>
+      <path d="M-12,-35 L-12,-10 C-12,5 12,5 12,-10 L12,-35 L8,-35 L8,-12 C8,0 -8,0 -8,-12 L-8,-35 L-4,-35 L-4,-12 L-2,-12 L-2,-35 Z" fill="#ffffff" fill-opacity="0.9"/>
+    </g>
+
+    <!-- Knife on right -->
+    <g transform="translate(165, -5) rotate(15)">
+      <rect x="-3" y="10" width="6" height="70" rx="3" fill="#ffffff" fill-opacity="0.9"/>
+      <path d="M-4,-35 Q10,-20 6,10 L-4,10 Z" fill="#ffffff" fill-opacity="0.9"/>
+    </g>
+  </g>
+
+  <!-- "PROGRAMAS" Banner Badge at bottom -->
+  <g transform="translate(256, 420)">
+    <rect x="-110" y="-22" width="220" height="44" rx="22" fill="#ffffff" fill-opacity="0.95"/>
+    <text x="0" y="8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="22" fill="#ea580c" text-anchor="middle" letter-spacing="4">PROGRAMAS</text>
+  </g>
+  <text x="256" y="456" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="12" fill="#ffffff" text-anchor="middle" opacity="0.9">UPGC KORHOGO • CROU-K</text>
+</svg>

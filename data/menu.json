@@ -1,0 +1,37 @@
+{
+  "id": "crou-k-resto-upgc",
+  "name": "Programas",
+  "subname": "Resto U UPGC Korhogo • CROU-K",
+  "campus": "Campus Principal UPGC, Korhogo (Côte d’Ivoire)",
+  "address": "BP 1328 Korhogo, Région du Poro, Côte d’Ivoire",
+  "announcement": "",
+  "paymentMethods": [
+    "Tickets CROU-K",
+    "Wave",
+    "Orange Money",
+    "MTN Mobile Money",
+    "Moov Money"
+  ],
+  "pricing": {
+    "ticketUnique": 200,
+    "boursier": 200,
+    "nonBoursier": 200,
+    "personnel": 200,
+    "visiteur": 200,
+    "currency": "FCFA"
+  },
+  "hours": {
+    "midi": "11h30 - 14h30",
+    "soir": "18h30 - 21h00",
+    "weekEnd": "Fermé le dimanche",
+    "crowdLevel": "faible",
+    "customStatus": "En attente de publication du menu"
+  },
+  "currentMenu": {
+    "date": "2026-10-05",
+    "service": "dejeuner",
+    "theme": "",
+    "items": []
+  },
+  "updatedAt": "2026-10-05T09:16:00.000Z"
+}
