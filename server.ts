@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import {
   getRestaurantData,
   saveRestaurantData,
+  publishMenuWithHistory,
+  deleteHistoricMenu,
   resetToDefaults,
 } from './server/db.ts';
 import {
@@ -140,7 +142,7 @@ app.post('/api/auth/update-credentials', (req: Request, res: Response) => {
   }
 });
 
-// 3. POST /api/menu - Admin: update the current menu (items, date, service, theme)
+// 3. POST /api/menu - Admin: update and archive menu with date history
 app.post('/api/menu', (req: Request, res: Response) => {
   try {
     if (!isAuthorized(req)) {
@@ -152,18 +154,35 @@ app.post('/api/menu', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Données de menu invalides' });
     }
 
-    const currentData = getRestaurantData();
-    currentData.currentMenu = menu;
-    saveRestaurantData(currentData);
+    const updatedData = publishMenuWithHistory(menu);
 
     return res.json({
       success: true,
-      message: 'Menu mis à jour avec succès',
-      data: currentData,
+      message: 'Menu publié avec succès et archivé avec sa date dans l\'historique',
+      data: updatedData,
     });
   } catch (error) {
     console.error('Error updating menu:', error);
     return res.status(500).json({ error: 'Erreur lors de la mise à jour du menu' });
+  }
+});
+
+// DELETE /api/menu/history/:date/:service - Admin: delete an archived menu
+app.delete('/api/menu/history/:date/:service', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    const { date, service } = req.params;
+    const updatedData = deleteHistoricMenu(date, service);
+    return res.json({
+      success: true,
+      message: 'Menu supprimé de l\'historique',
+      data: updatedData,
+    });
+  } catch (error) {
+    console.error('Error deleting historic menu:', error);
+    return res.status(500).json({ error: 'Erreur lors de la suppression du menu' });
   }
 });
 

@@ -343,6 +343,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  // Load a historic menu into working editor
+  const handleLoadHistoricMenu = (m: ServiceMenu) => {
+    setWorkingMenu(JSON.parse(JSON.stringify(m)));
+    setSaveSuccess(`Menu du ${m.date} (${m.service}) chargé dans l'éditeur. Modifiez-le puis cliquez sur "Publier en direct".`);
+    setTimeout(() => setSaveSuccess(null), 4000);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Delete a historic menu
+  const handleDeleteHistoricMenu = async (date: string, service: string) => {
+    if (!window.confirm(`Confirmer la suppression du menu du ${date} (${service === 'dejeuner' ? 'Midi' : 'Soir'}) de l'historique ?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/menu/history/${date}/${service}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const json = await res.json();
+      if (json.success) {
+        await onRefreshData();
+        setSaveSuccess('Menu supprimé de l\'historique avec succès.');
+        setTimeout(() => setSaveSuccess(null), 3000);
+      } else {
+        setSaveError(json.error || 'Erreur lors de la suppression');
+      }
+    } catch (err: any) {
+      setSaveError(err.message || 'Erreur réseau');
+    }
+  };
+
   // Apply OCR scanned items
   const handleApplyExtractedMenu = (scanned: ScanMenuResult, mode: 'replace' | 'append') => {
     const newItems: MenuItem[] = scanned.items.map((item, idx) => ({
@@ -771,33 +805,109 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* Service & Date Selector */}
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={workingMenu.date}
-                  onChange={(e) => setWorkingMenu({ ...workingMenu, date: e.target.value })}
-                  className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
-                />
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        setWorkingMenu(prev => ({ ...prev, date: today }));
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                        workingMenu.date === new Date().toISOString().split('T')[0]
+                          ? 'bg-orange-600 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Aujourd'hui
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 1);
+                        setWorkingMenu(prev => ({ ...prev, date: d.toISOString().split('T')[0] }));
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600 hover:text-slate-900"
+                    >
+                      Hier
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 2);
+                        setWorkingMenu(prev => ({ ...prev, date: d.toISOString().split('T')[0] }));
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600 hover:text-slate-900"
+                    >
+                      -2j
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 3);
+                        setWorkingMenu(prev => ({ ...prev, date: d.toISOString().split('T')[0] }));
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600 hover:text-slate-900"
+                    >
+                      -3j
+                    </button>
+                  </div>
 
-                <select
-                  value={workingMenu.service}
-                  onChange={(e) =>
-                    setWorkingMenu({ ...workingMenu, service: e.target.value as 'dejeuner' | 'diner' })
+                  <input
+                    type="date"
+                    value={workingMenu.date}
+                    onChange={(e) => setWorkingMenu({ ...workingMenu, date: e.target.value })}
+                    className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
+                  />
+
+                  <select
+                    value={workingMenu.service}
+                    onChange={(e) =>
+                      setWorkingMenu({ ...workingMenu, service: e.target.value as 'dejeuner' | 'diner' })
+                    }
+                    className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
+                  >
+                    <option value="dejeuner">☀️ Midi (Déjeuner)</option>
+                    <option value="diner">🌙 Soir (Dîner)</option>
+                  </select>
+
+                  <button
+                    onClick={handleSaveAll}
+                    disabled={isSaving}
+                    className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>Publier en direct</span>
+                  </button>
+                </div>
+
+                {/* Notice if a menu already exists in history for this date & service */}
+                {(() => {
+                  const existing = data.menuHistory?.find(
+                    m => m.date === workingMenu.date && m.service === workingMenu.service
+                  );
+                  if (existing && existing.items.length > 0 && workingMenu.items.length === 0) {
+                    return (
+                      <div className="flex items-center justify-between gap-2 p-2 px-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                        <span>
+                          💡 Un menu a déjà été publié pour cette date ({existing.items.length} plats).
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleLoadHistoricMenu(existing)}
+                          className="font-bold underline text-amber-800 hover:text-amber-950 shrink-0"
+                        >
+                          Charger dans l'éditeur
+                        </button>
+                      </div>
+                    );
                   }
-                  className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
-                >
-                  <option value="dejeuner">☀️ Midi (Déjeuner)</option>
-                  <option value="diner">🌙 Soir (Dîner)</option>
-                </select>
-
-                <button
-                  onClick={handleSaveAll}
-                  disabled={isSaving}
-                  className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-all"
-                >
-                  {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  <span>Publier en direct</span>
-                </button>
+                  return null;
+                })()}
               </div>
             </div>
 
@@ -966,6 +1076,84 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 );
               }
             )}
+
+            {/* SECTION HISTORIQUE DES MENUS PUBLIÉS (DERNIERS JOURS) */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4 mt-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📅</span>
+                  <div>
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
+                      Historique des 3 derniers jours (Suppression automatique après 3 jours)
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Chaque menu de plus de 3 jours est automatiquement supprimé pour garder l'application légère et rapide.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                  {data.menuHistory?.length || 0} menu(s) archivé(s)
+                </span>
+              </div>
+
+              {(!data.menuHistory || data.menuHistory.length === 0) ? (
+                <div className="py-6 text-center text-xs text-slate-400">
+                  Aucun menu n'a encore été archivé dans l'historique. Chaque fois que vous cliquez sur "Publier en direct", le menu est automatiquement sauvegardé avec sa date !
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {data.menuHistory.map((histMenu, idx) => (
+                    <div
+                      key={`${histMenu.date}-${histMenu.service}-${idx}`}
+                      className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 flex flex-col justify-between gap-3 transition-colors"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                            <span>📅 {histMenu.date}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 uppercase font-bold">
+                              {histMenu.service === 'dejeuner' ? 'Midi' : 'Soir'}
+                            </span>
+                          </span>
+                          <span className="text-[11px] font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">
+                            {histMenu.items.length} plat(s)
+                          </span>
+                        </div>
+
+                        {histMenu.theme && (
+                          <div className="text-xs font-bold text-slate-700 mt-1">
+                            {histMenu.theme}
+                          </div>
+                        )}
+
+                        <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                          {histMenu.items.map(i => i.title).join(', ') || 'Aucun plat'}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60">
+                        <button
+                          type="button"
+                          onClick={() => handleLoadHistoricMenu(histMenu)}
+                          className="flex-1 py-1.5 px-3 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Charger dans l'éditeur</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHistoricMenu(histMenu.date, histMenu.service)}
+                          className="py-1.5 px-2.5 rounded-lg text-rose-600 hover:bg-rose-100 text-xs font-bold transition-colors"
+                          title="Supprimer cet historique"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         )}
 

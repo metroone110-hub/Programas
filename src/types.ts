@@ -24,10 +24,12 @@ export interface MenuItem {
 export type ServiceType = 'dejeuner' | 'diner';
 
 export interface ServiceMenu {
+  id?: string;
   date: string; // format YYYY-MM-DD
   service: ServiceType;
   theme?: string;
   items: MenuItem[];
+  publishedAt?: string;
 }
 
 export interface RestaurantPricing {
@@ -70,6 +72,7 @@ export interface RestaurantData {
   pricing: RestaurantPricing;
   hours: RestaurantHours;
   currentMenu: ServiceMenu;
+  menuHistory?: ServiceMenu[];
   updatedAt: string;
 }
 

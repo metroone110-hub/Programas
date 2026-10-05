@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { RestaurantData } from '../src/types.ts';
+import type { RestaurantData, ServiceMenu } from '../src/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,11 +32,14 @@ const INITIAL_DATA: RestaurantData = {
     customStatus: 'En attente de publication du menu'
   },
   currentMenu: {
+    id: `${new Date().toISOString().split('T')[0]}-dejeuner`,
     date: new Date().toISOString().split('T')[0],
     service: 'dejeuner',
     theme: '',
-    items: [] // Zéro plat par défaut tant que le gestionnaire ne publie pas
+    items: [], // Zéro plat par défaut tant que le gestionnaire ne publie pas
+    publishedAt: new Date().toISOString()
   },
+  menuHistory: [],
   updatedAt: new Date().toISOString()
 };
 
@@ -49,11 +52,59 @@ function ensureDbFile(): void {
   }
 }
 
+/**
+ * OPTION A: Automatic strict cleanup after 3 days.
+ * Any menu older than 3 days is permanently purged from the database.
+ */
+export function purgeMenusOlderThanThreeDays(data: RestaurantData): boolean {
+  if (!Array.isArray(data.menuHistory)) {
+    data.menuHistory = [];
+    return false;
+  }
+
+  const now = new Date();
+  const cutoff = new Date(now);
+  cutoff.setDate(now.getDate() - 3);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+
+  const beforeCount = data.menuHistory.length;
+  // Keep only today, yesterday, 2 days ago, 3 days ago (or future scheduled menus)
+  data.menuHistory = data.menuHistory.filter((m) => m.date >= cutoffStr);
+
+  return data.menuHistory.length !== beforeCount;
+}
+
 export function getRestaurantData(): RestaurantData {
   try {
     ensureDbFile();
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const parsed: RestaurantData = JSON.parse(raw);
+    
+    // Ensure menuHistory is initialized
+    if (!Array.isArray(parsed.menuHistory)) {
+      parsed.menuHistory = [];
+    }
+
+    // If currentMenu has items and is not yet in history, add it
+    if (parsed.currentMenu && Array.isArray(parsed.currentMenu.items) && parsed.currentMenu.items.length > 0) {
+      const exists = parsed.menuHistory.some(
+        m => m.date === parsed.currentMenu.date && m.service === parsed.currentMenu.service
+      );
+      if (!exists) {
+        parsed.menuHistory.unshift({
+          ...parsed.currentMenu,
+          publishedAt: parsed.currentMenu.publishedAt || parsed.updatedAt || new Date().toISOString()
+        });
+      }
+    }
+
+    // OPTION A: Purge anything older than 3 days
+    const changed = purgeMenusOlderThanThreeDays(parsed);
+    if (changed) {
+      saveRestaurantData(parsed);
+    }
+
+    return parsed;
   } catch (error) {
     console.error('Erreur de lecture de la base de données:', error);
     return INITIAL_DATA;
@@ -63,6 +114,8 @@ export function getRestaurantData(): RestaurantData {
 export function saveRestaurantData(data: RestaurantData): boolean {
   try {
     ensureDbFile();
+    // Enforce 3-day purge before saving
+    purgeMenusOlderThanThreeDays(data);
     data.updatedAt = new Date().toISOString();
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
     return true;
@@ -72,16 +125,81 @@ export function saveRestaurantData(data: RestaurantData): boolean {
   }
 }
 
+/**
+ * Publishes a menu: sets it as current and archives it in history with exact date and timestamp.
+ * Purges any menus older than 3 days.
+ */
+export function publishMenuWithHistory(menu: ServiceMenu): RestaurantData {
+  const data = getRestaurantData();
+  
+  if (!menu.publishedAt) {
+    menu.publishedAt = new Date().toISOString();
+  }
+  if (!menu.id) {
+    menu.id = `${menu.date}-${menu.service}`;
+  }
+
+  if (!Array.isArray(data.menuHistory)) {
+    data.menuHistory = [];
+  }
+
+  // Update existing history entry or insert new one
+  const existingIndex = data.menuHistory.findIndex(
+    m => m.date === menu.date && m.service === menu.service
+  );
+
+  if (existingIndex >= 0) {
+    data.menuHistory[existingIndex] = { ...menu };
+  } else {
+    data.menuHistory.unshift({ ...menu });
+  }
+
+  // Sort history descending by date, then service
+  data.menuHistory.sort((a, b) => {
+    if (b.date !== a.date) {
+      return b.date.localeCompare(a.date);
+    }
+    return b.service === 'diner' ? 1 : -1;
+  });
+
+  // OPTION A: Purge anything older than 3 days
+  purgeMenusOlderThanThreeDays(data);
+
+  // Update current menu
+  data.currentMenu = { ...menu };
+  data.updatedAt = new Date().toISOString();
+
+  saveRestaurantData(data);
+  return data;
+}
+
+/**
+ * Delete a specific menu from history
+ */
+export function deleteHistoricMenu(date: string, service: string): RestaurantData {
+  const data = getRestaurantData();
+  if (Array.isArray(data.menuHistory)) {
+    data.menuHistory = data.menuHistory.filter(
+      m => !(m.date === date && m.service === service)
+    );
+  }
+  saveRestaurantData(data);
+  return data;
+}
+
 export function resetToDefaults(): RestaurantData {
   ensureDbFile();
   const resetData: RestaurantData = {
     ...INITIAL_DATA,
     currentMenu: {
+      id: `${new Date().toISOString().split('T')[0]}-dejeuner`,
       date: new Date().toISOString().split('T')[0],
       service: 'dejeuner',
       theme: '',
-      items: []
+      items: [],
+      publishedAt: new Date().toISOString()
     },
+    menuHistory: [],
     updatedAt: new Date().toISOString()
   };
   fs.writeFileSync(DATA_FILE, JSON.stringify(resetData, null, 2), 'utf-8');
