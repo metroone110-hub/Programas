@@ -28,7 +28,6 @@ import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType }
 import { DietaryBadge } from './Badge';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
-import { CommunityCrowdMeter } from './CommunityCrowdMeter';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
@@ -619,11 +618,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               🎟️
             </div>
           </div>
-        </section>
-
-        {/* CROWD GAUGE: WAZE DU CAMPUS UPGC (Méthode 2 Participative) */}
-        <section>
-          <CommunityCrowdMeter crowdReport={data.crowdReport} />
         </section>
 
         {/* NOTIFICATION SUBSCRIPTION BANNER CARD */}

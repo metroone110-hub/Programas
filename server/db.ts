@@ -104,68 +104,11 @@ export function getRestaurantData(): RestaurantData {
       saveRestaurantData(parsed);
     }
 
-    parsed.crowdReport = getCurrentCrowdReport();
-
     return parsed;
   } catch (error) {
     console.error('Erreur de lecture de la base de données:', error);
-    return { ...INITIAL_DATA, crowdReport: getCurrentCrowdReport() };
+    return INITIAL_DATA;
   }
-}
-
-interface StoredCrowdVote {
-  level: 'fluide' | 'moyen' | 'fort';
-  timestamp: number;
-}
-
-let communityVotes: StoredCrowdVote[] = [
-  { level: 'fluide', timestamp: Date.now() - 4 * 60 * 1000 }
-];
-
-export function recordCrowdVote(level: 'fluide' | 'moyen' | 'fort') {
-  const now = Date.now();
-  communityVotes.push({ level, timestamp: now });
-  return getCurrentCrowdReport();
-}
-
-export function getCurrentCrowdReport() {
-  const now = Date.now();
-  const cutoff = now - 25 * 60 * 1000; // votes des 25 dernières minutes
-  communityVotes = communityVotes.filter(v => v.timestamp >= cutoff);
-
-  const counts = {
-    fluide: 0,
-    moyen: 0,
-    fort: 0
-  };
-
-  for (const v of communityVotes) {
-    if (counts[v.level] !== undefined) {
-      counts[v.level]++;
-    }
-  }
-
-  const total = communityVotes.length;
-  let currentLevel: 'fluide' | 'moyen' | 'fort' = 'fluide';
-
-  if (total > 0) {
-    if (counts.fort >= counts.moyen && counts.fort >= counts.fluide) {
-      currentLevel = 'fort';
-    } else if (counts.moyen >= counts.fluide) {
-      currentLevel = 'moyen';
-    } else {
-      currentLevel = 'fluide';
-    }
-  }
-
-  const lastVote = communityVotes[communityVotes.length - 1];
-
-  return {
-    currentLevel,
-    totalVotes: total,
-    lastVoteAt: lastVote ? new Date(lastVote.timestamp).toISOString() : new Date().toISOString(),
-    votes: counts
-  };
 }
 
 export function saveRestaurantData(data: RestaurantData): boolean {
