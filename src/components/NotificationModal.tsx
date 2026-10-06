@@ -9,14 +9,18 @@ import {
   AlertCircle,
   X,
   Heart,
-  Send
+  Send,
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { 
   NotificationSettings, 
   saveNotificationSettings, 
   requestNotificationPermission, 
   sendLocalNotification, 
-  isNotificationSupported 
+  isNotificationSupported,
+  clearNotificationSignatures,
+  clearSignaturesForDish
 } from '../utils/notifications';
 
 interface NotificationModalProps {
@@ -24,6 +28,7 @@ interface NotificationModalProps {
   onClose: () => void;
   settings: NotificationSettings;
   onUpdateSettings: (newSettings: NotificationSettings) => void;
+  onTestDuolingoAlert?: (slot: '11h30' | '14h30' | '18h30') => void;
 }
 
 const QUICK_SUGGESTIONS = [
@@ -42,10 +47,12 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   isOpen,
   onClose,
   settings,
-  onUpdateSettings
+  onUpdateSettings,
+  onTestDuolingoAlert
 }) => {
   const [newDishInput, setNewDishInput] = useState('');
   const [testSent, setTestSent] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -68,7 +75,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
       // Envoi d'une notification de confirmation
       sendLocalNotification(
         '🔔 Alertes Programas Activées !',
-        'Vous serez notifié dès qu’un menu est publié ou si un plat favori est au menu.'
+        'Vous serez notifié dès qu’un menu est publié, à 11h30/14h30/18h30, et si un plat favori est disponible.'
       );
     } else {
       const updated = { ...settings, enabled: false };
@@ -89,6 +96,12 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
     saveNotificationSettings(updated);
   };
 
+  const handleToggleMealTimes = () => {
+    const updated = { ...settings, alertOnMealTimes: !settings.alertOnMealTimes };
+    onUpdateSettings(updated);
+    saveNotificationSettings(updated);
+  };
+
   const handleAddDish = (dish: string) => {
     const trimmed = dish.trim();
     if (!trimmed) return;
@@ -96,6 +109,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
       setNewDishInput('');
       return;
     }
+    // Clear old signatures for this dish so it triggers immediately if it's on today's menu
+    clearSignaturesForDish(trimmed);
     const updatedDishes = [...settings.favoriteDishes, trimmed];
     const updated = { ...settings, favoriteDishes: updatedDishes };
     onUpdateSettings(updated);
@@ -123,15 +138,21 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
     const dishExample = settings.favoriteDishes[0] || 'Attiéké & Poulet';
     sendLocalNotification(
       '🔔 Test Alerte Repas Programas !',
-      `Exemple : « ${dishExample} » est prévu au menu demain au Resto U UPGC (200 FCFA) !`
+      `Exemple : « ${dishExample} » est prévu au menu au Resto U UPGC (200 FCFA) !`
     );
     setTestSent(true);
     setTimeout(() => setTestSent(false), 3000);
   };
 
+  const handleResetHistory = () => {
+    clearNotificationSignatures();
+    setResetDone(true);
+    setTimeout(() => setResetDone(false), 3000);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-[#F5F0E8] rounded-[32px] max-w-md w-full p-6 shadow-2xl border border-black/5 space-y-5 my-auto">
+      <div className="bg-[#F5F0E8] rounded-[32px] max-w-md w-full p-6 shadow-2xl border border-black/5 space-y-4 my-auto">
         
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -144,7 +165,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                 Notifications & Alertes
               </span>
               <h3 className="font-black text-slate-950 text-lg mt-0.5 leading-snug">
-                Alertes Menus & Plats Favoris
+                Centre d'Alertes Programas
               </h3>
             </div>
           </div>
@@ -164,7 +185,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                 Activer les alertes sur cet appareil
               </h4>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Recevez les notifications push et alertes sonores directement sur votre téléphone.
+                Recevez les notifications push et carillons sonores directement sur votre téléphone.
               </p>
             </div>
             <button
@@ -202,28 +223,71 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
 
         {/* Specific Alert Toggles */}
         <div className="space-y-2">
-          {/* Toggle 1: Alerte Nouveau Menu Publié */}
-          <div className="bg-white p-3.5 rounded-[22px] border border-black/5 shadow-2xs flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl">📢</span>
-              <div>
-                <h5 className="font-extrabold text-xs text-slate-900 leading-tight">
-                  Alerte Nouveau Menu Publié
-                </h5>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  Avertir dès que le CROU-K distribue le menu du jour.
-                </p>
+          {/* Toggle 1: DUOLINGO PERSISTENT MEAL REMINDERS (11h30, 14h30, 18h30) */}
+          <div className="bg-white p-3.5 rounded-[22px] border-2 border-[#F5B726] shadow-xs space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">👨‍🍳</span>
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h5 className="font-extrabold text-xs text-slate-950 leading-tight">
+                      Rappels Duolingo (11h30, 14h30, 18h30)
+                    </h5>
+                    <span className="text-[9px] font-black uppercase bg-[#F5B726] text-black px-1.5 py-0.2 rounded-full">
+                      Automatique
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-semibold mt-0.5">
+                    Notifications incessantes : « À table ! Il est l'heure ! »
+                  </p>
+                </div>
               </div>
+              <input
+                type="checkbox"
+                checked={settings.alertOnMealTimes}
+                onChange={handleToggleMealTimes}
+                className="w-5 h-5 accent-[#18181B] rounded-md cursor-pointer shrink-0"
+              />
             </div>
-            <input
-              type="checkbox"
-              checked={settings.alertOnNewMenu}
-              onChange={handleToggleNewMenu}
-              className="w-5 h-5 accent-[#18181B] rounded-md cursor-pointer"
-            />
+
+            {/* Duolingo Test Buttons (11h30, 14h30, 18h30) */}
+            {onTestDuolingoAlert && (
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">
+                  Tester maintenant :
+                </span>
+                <button
+                  onClick={() => {
+                    onTestDuolingoAlert('11h30');
+                    onClose();
+                  }}
+                  className="px-2.5 py-1 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-[11px] font-black border border-amber-300 transition-all active:scale-95 flex items-center gap-1"
+                >
+                  <span>☀️ 11h30</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onTestDuolingoAlert('14h30');
+                    onClose();
+                  }}
+                  className="px-2.5 py-1 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-[11px] font-black border border-amber-300 transition-all active:scale-95 flex items-center gap-1"
+                >
+                  <span>🏃‍♂️ 14h30</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onTestDuolingoAlert('18h30');
+                    onClose();
+                  }}
+                  className="px-2.5 py-1 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-[11px] font-black border border-amber-300 transition-all active:scale-95 flex items-center gap-1"
+                >
+                  <span>🌙 18h30</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Toggle 2: Alerte Plat Favori pour Demain ou Aujourd'hui */}
+          {/* Toggle 2: Alerte Plat Favori */}
           <div className="bg-white p-3.5 rounded-[22px] border border-black/5 shadow-2xs flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <span className="text-xl">🍲</span>
@@ -232,7 +296,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                   Alerte Plat Favori
                 </h5>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  Avertir si un plat spécifique est servi aujourd'hui ou demain.
+                  Avertir dès qu'un plat favori est disponible ou prévu au menu.
                 </p>
               </div>
             </div>
@@ -240,7 +304,28 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               type="checkbox"
               checked={settings.alertOnFavoriteDishes}
               onChange={handleToggleFavoriteDishes}
-              className="w-5 h-5 accent-[#18181B] rounded-md cursor-pointer"
+              className="w-5 h-5 accent-[#18181B] rounded-md cursor-pointer shrink-0"
+            />
+          </div>
+
+          {/* Toggle 3: Alerte Nouveau Menu Publié */}
+          <div className="bg-white p-3.5 rounded-[22px] border border-black/5 shadow-2xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">📢</span>
+              <div>
+                <h5 className="font-extrabold text-xs text-slate-900 leading-tight">
+                  Alerte Nouveau Menu Publié
+                </h5>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Avertir dès que le CROU-K distribue ou met à jour le menu.
+                </p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.alertOnNewMenu}
+              onChange={handleToggleNewMenu}
+              className="w-5 h-5 accent-[#18181B] rounded-md cursor-pointer shrink-0"
             />
           </div>
         </div>
@@ -250,7 +335,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
           <div className="flex items-center justify-between">
             <h4 className="font-black text-slate-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
               <Heart className="w-3.5 h-3.5 text-rose-600 fill-rose-600" />
-              <span>Plats spécifiques sous surveillance</span>
+              <span>Plats favoris surveillés</span>
             </h4>
             <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-[#FEF3C7] text-amber-900">
               {settings.favoriteDishes.length} plat(s)
@@ -317,7 +402,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                 Aucun plat sélectionné. Ajoutez vos plats favoris ci-dessus pour recevoir une alerte dès qu'ils sont prévus !
               </p>
             ) : (
-              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
                 {settings.favoriteDishes.map((dish) => (
                   <span
                     key={dish}
@@ -339,23 +424,32 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
           </div>
         </div>
 
-        {/* Test Notification Button & Close */}
+        {/* Quick Test & Reset Options */}
         <div className="space-y-2 pt-1">
-          <button
-            onClick={handleSendTestNotification}
-            className="w-full py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-900 border border-black/10 text-xs font-black flex items-center justify-center gap-2 shadow-2xs transition-all active:scale-[0.99]"
-          >
-            <Send className="w-3.5 h-3.5 text-[#F5B726]" />
-            <span>
-              {testSent ? '✓ Notification envoyée sur votre écran !' : 'Tester une notification d\'alerte'}
-            </span>
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleSendTestNotification}
+              className="w-full py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-900 border border-black/10 text-[11px] font-black flex items-center justify-center gap-1.5 shadow-2xs transition-all active:scale-[0.99]"
+            >
+              <Send className="w-3 h-3 text-[#F5B726]" />
+              <span>{testSent ? '✓ Envoyé !' : 'Tester notif push'}</span>
+            </button>
+
+            <button
+              onClick={handleResetHistory}
+              className="w-full py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-black/10 text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all active:scale-[0.99]"
+              title="Réinitialise le filtre anti-doublon pour retester les alertes"
+            >
+              <RotateCcw className="w-3 h-3 text-slate-400" />
+              <span>{resetDone ? '✓ Historique remis à zéro' : 'Réarmer alertes'}</span>
+            </button>
+          </div>
 
           <button
             onClick={onClose}
             className="w-full py-3 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black transition-colors"
           >
-            Enregistrer & Fermer
+            Enregistrer mes préférences
           </button>
         </div>
 

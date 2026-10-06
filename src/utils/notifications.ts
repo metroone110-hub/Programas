@@ -5,21 +5,23 @@ export interface InAppAlert {
   title: string;
   body: string;
   dishName?: string;
-  type: 'favorite' | 'new_menu';
+  type: 'favorite' | 'new_menu' | 'meal_time';
   timestamp: number;
+  urgentMascot?: boolean;
 }
 
 export interface NotificationSettings {
   enabled: boolean;
   alertOnNewMenu: boolean;
   alertOnFavoriteDishes: boolean;
+  alertOnMealTimes: boolean; // Rappels automatiques 11h30, 14h30, 18h30 (Style Duolingo)
   favoriteDishes: string[];
   lastNotifiedMenuId?: string;
   lastCheckedAt?: string;
-  notifiedSignatures?: string[]; // to prevent repeated notifications for same dish & day
+  notifiedSignatures?: string[]; // to prevent repeated notifications
 }
 
-const STORAGE_KEY = 'programas_notifications_v2';
+const STORAGE_KEY = 'programas_notifications_v4';
 
 export function getNotificationSettings(): NotificationSettings {
   try {
@@ -27,9 +29,10 @@ export function getNotificationSettings(): NotificationSettings {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        enabled: parsed.enabled !== false, // default enabled so students don't miss in-app alerts
+        enabled: parsed.enabled !== false,
         alertOnNewMenu: parsed.alertOnNewMenu !== false,
         alertOnFavoriteDishes: parsed.alertOnFavoriteDishes !== false,
+        alertOnMealTimes: parsed.alertOnMealTimes !== false,
         favoriteDishes: Array.isArray(parsed.favoriteDishes) ? parsed.favoriteDishes : ['Sauce Graine', 'Attiéké', 'Poulet'],
         lastNotifiedMenuId: parsed.lastNotifiedMenuId,
         lastCheckedAt: parsed.lastCheckedAt,
@@ -44,6 +47,7 @@ export function getNotificationSettings(): NotificationSettings {
     enabled: true,
     alertOnNewMenu: true,
     alertOnFavoriteDishes: true,
+    alertOnMealTimes: true,
     favoriteDishes: ['Sauce Graine', 'Attiéké', 'Poulet'],
     notifiedSignatures: []
   };
@@ -54,6 +58,30 @@ export function saveNotificationSettings(settings: NotificationSettings): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (e) {
     console.error('Erreur sauvegarde notifications:', e);
+  }
+}
+
+export function clearNotificationSignatures(): void {
+  try {
+    const settings = getNotificationSettings();
+    settings.notifiedSignatures = [];
+    settings.lastNotifiedMenuId = undefined;
+    saveNotificationSettings(settings);
+  } catch (e) {
+    console.error('Erreur nettoyage signatures:', e);
+  }
+}
+
+export function clearSignaturesForDish(dishName: string): void {
+  try {
+    const norm = normalizeText(dishName);
+    const settings = getNotificationSettings();
+    settings.notifiedSignatures = (settings.notifiedSignatures || []).filter(
+      sig => !sig.includes(norm)
+    );
+    saveNotificationSettings(settings);
+  } catch (e) {
+    console.error('Erreur nettoyage signatures plat:', e);
   }
 }
 
@@ -78,9 +106,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 /**
  * Web Audio Chime: Plays an audible, friendly bell chime when a notification fires.
- * Works on all modern browsers without needing external mp3 files.
  */
-export function playNotificationSound(): void {
+export function playNotificationSound(urgent = false): void {
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
@@ -91,9 +118,9 @@ export function playNotificationSound(): void {
     const gain1 = ctx.createGain();
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(659.25, ctx.currentTime); // E5
-    gain1.gain.setValueAtTime(0.2, ctx.currentTime);
+    osc1.type = urgent ? 'triangle' : 'sine';
+    osc1.frequency.setValueAtTime(urgent ? 784 : 659.25, ctx.currentTime);
+    gain1.gain.setValueAtTime(0.3, ctx.currentTime);
     gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
     osc1.start(ctx.currentTime);
     osc1.stop(ctx.currentTime + 0.35);
@@ -103,36 +130,50 @@ export function playNotificationSound(): void {
     const gain2 = ctx.createGain();
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
-    gain2.gain.setValueAtTime(0.25, ctx.currentTime + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc2.type = urgent ? 'triangle' : 'sine';
+    osc2.frequency.setValueAtTime(urgent ? 1046.5 : 880, ctx.currentTime + 0.12);
+    gain2.gain.setValueAtTime(0.35, ctx.currentTime + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.65);
     osc2.start(ctx.currentTime + 0.12);
-    osc2.stop(ctx.currentTime + 0.6);
+    osc2.stop(ctx.currentTime + 0.65);
 
-    // Vibrate phone if supported
+    // Tone 3 for urgent alerts (Duolingo style persistent 3rd high pitch!)
+    if (urgent) {
+      const osc3 = ctx.createOscillator();
+      const gain3 = ctx.createGain();
+      osc3.connect(gain3);
+      gain3.connect(ctx.destination);
+      osc3.type = 'triangle';
+      osc3.frequency.setValueAtTime(1318.5, ctx.currentTime + 0.25);
+      gain3.gain.setValueAtTime(0.4, ctx.currentTime + 0.25);
+      gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
+      osc3.start(ctx.currentTime + 0.25);
+      osc3.stop(ctx.currentTime + 0.85);
+    }
+
     if (navigator.vibrate) {
-      navigator.vibrate([100, 50, 100]);
+      navigator.vibrate(urgent ? [180, 80, 180, 80, 250] : [100, 50, 100]);
     }
   } catch {
-    // Audio context may require prior user interaction
+    // Audio context may require user click
   }
 }
 
-export function sendLocalNotification(title: string, body: string, dataUrl?: string): boolean {
-  playNotificationSound();
+export function sendLocalNotification(title: string, body: string, dataUrl?: string, urgent = false): boolean {
+  playNotificationSound(urgent);
 
   if (!isNotificationSupported()) return false;
   if (Notification.permission !== 'granted') return false;
 
   try {
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
+      navigator.serviceWorker.ready.then((reg: any) => {
         reg.showNotification(title, {
           body,
           icon: '/favicon.png',
           badge: '/favicon.png',
-          tag: 'programas-menu-alert',
+          tag: 'programas-meal-time-alert',
+          vibrate: [200, 100, 200],
           data: { url: dataUrl || window.location.href }
         });
       });
@@ -143,7 +184,7 @@ export function sendLocalNotification(title: string, body: string, dataUrl?: str
       body,
       icon: '/favicon.png',
       badge: '/favicon.png',
-      tag: 'programas-menu-alert'
+      tag: 'programas-meal-time-alert'
     });
 
     notif.onclick = () => {
@@ -172,7 +213,7 @@ export function normalizeText(text: string): string {
 
 /**
  * Checks if a dish title or description matches a search/favorite query.
- * Ex: "Sauce Graine" matches "Riz à la sauce graine de boeuf", "Graine", etc.
+ * Flexible: supports substring in both directions and token overlaps.
  */
 export function dishMatchesQuery(dishTitle: string, dishDesc: string | undefined, query: string): boolean {
   const normTitle = normalizeText(dishTitle);
@@ -181,66 +222,213 @@ export function dishMatchesQuery(dishTitle: string, dishDesc: string | undefined
 
   if (normQuery.length < 2) return false;
 
-  // Direct substring match
-  if (normTitle.includes(normQuery) || normDesc.includes(normQuery)) {
+  // Exact or substring match in either direction
+  if (normTitle.includes(normQuery) || normQuery.includes(normTitle)) {
+    return true;
+  }
+  if (normDesc.includes(normQuery)) {
     return true;
   }
 
-  // Word-by-word match (ex: "sauce graine" -> matches if both "sauce" and "graine" are present)
-  const words = normQuery.split(/\s+/).filter(w => w.length >= 3);
-  if (words.length > 1) {
-    const allWordsPresent = words.every(w => normTitle.includes(w) || normDesc.includes(w));
-    if (allWordsPresent) return true;
+  // Token matching: e.g. "poisson" matches "poisson frit" or "attiéké avec poisson"
+  const queryTokens = normQuery.split(/[\s,+'"-]+/).filter(w => w.length >= 3);
+  const titleTokens = normTitle.split(/[\s,+'"-]+/).filter(w => w.length >= 3);
+
+  if (queryTokens.length > 0 && titleTokens.length > 0) {
+    const hasMatch = queryTokens.some(qt => titleTokens.some(tt => tt.includes(qt) || qt.includes(tt)));
+    if (hasMatch) return true;
   }
 
   return false;
 }
 
 /**
+ * DUOLINGO-STYLE MEAL TIME REMINDERS (11h30, 14h30, 18h30)
+ * Funny, urgent, insistent, persistent campus reminders!
+ */
+export const MEAL_TIME_MESSAGES = {
+  '11h30': [
+    {
+      title: '🚨 À TABLE ! IL EST 11H30 !',
+      body: 'Tu fais semblant d’étudier alors que ton ventre fait des bruits de tonnerre ! Le Resto U UPGC est ouvert, viens chercher ton plateau à 200 FCFA avant la queue !'
+    },
+    {
+      title: '🔔 11H30 : LA MARMITE FUME AU CROU-K !',
+      body: 'Le riz est chaud, la sauce est prête ! Laisse les cahiers 30 minutes et viens manger : la faim n’a jamais donné de licence !'
+    },
+    {
+      title: '👨‍🍳 LE CHEF DU CAMPUS T’A VU (11H30) !',
+      body: 'Si tu restes encore assis en amphi, la longue file d’attente va t’attraper sous le soleil de Korhogo ! Fonce au réfectoire !'
+    }
+  ],
+  '14h30': [
+    {
+      title: '⚠️ 14H30 : DERNIER APPEL DU CHEF !',
+      body: 'Le service de midi va fermer ses portes ! Fonce au réfectoire maintenant ou tu vas te retrouver à grignoter des biscuits sous un arbre !'
+    },
+    {
+      title: '🏃‍♂️ COURS ! 14H30 DERNIERS PLATEAUX !',
+      body: 'On commence à ramasser les marmites du midi ! Si tu as faim, c’est littéralement ta dernière chance avant ce soir !'
+    },
+    {
+      title: '🚨 14H30 : FIN DU DÉJEUNER IMMINENTE !',
+      body: 'Tu voulais jeûner ou quoi ?! Prépare tes 200 FCFA et va chercher ta part au guichet du CROU-K immédiatement !'
+    }
+  ],
+  '18h30': [
+    {
+      title: '🌙 18H30 : L’HEURE DU DÎNER A SONNÉ !',
+      body: 'La cuisine du soir est ouverte au Resto U UPGC ! Prépare ton ticket à 200 FCFA et viens recharger les batteries pour la nuit !'
+    },
+    {
+      title: '🍲 À TABLE ! LE CROU-K TE RÉCLAME (18H30) !',
+      body: 'Tu as révisé toute la journée, ton cerveau a besoin de calories ! Ne saute pas le dîner, le réfectoire t’attend !'
+    },
+    {
+      title: '👨‍🍳 18H30 : DÉPOSE LE STYLO, C’EST LE SOIR !',
+      body: 'Lâche WhatsApp 20 minutes et viens manger un bon repas chaud à 200 FCFA avant le rush du soir !'
+    }
+  ]
+};
+
+/**
+ * Checks if current time matches 11h30, 14h30 or 18h30 and triggers the persistent Duolingo reminder.
+ */
+export function checkMealTimeReminders(): InAppAlert | null {
+  const settings = getNotificationSettings();
+  if (!settings.enabled || !settings.alertOnMealTimes) {
+    return null;
+  }
+
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  let currentSlot: '11h30' | '14h30' | '18h30' | null = null;
+
+  // Window check: triggers during the rush window of each slot
+  // 11:30 -> 12:15
+  if (hours === 11 && minutes >= 30) {
+    currentSlot = '11h30';
+  } else if (hours === 12 && minutes <= 15) {
+    currentSlot = '11h30';
+  }
+  // 14:30 -> 15:15
+  else if (hours === 14 && minutes >= 30) {
+    currentSlot = '14h30';
+  } else if (hours === 15 && minutes <= 15) {
+    currentSlot = '14h30';
+  }
+  // 18:30 -> 19:15
+  else if (hours === 18 && minutes >= 30) {
+    currentSlot = '18h30';
+  } else if (hours === 19 && minutes <= 15) {
+    currentSlot = '18h30';
+  }
+
+  if (!currentSlot) {
+    return null;
+  }
+
+  const signature = `meal_time_${todayStr}_${currentSlot}`;
+  const signatures = new Set<string>(settings.notifiedSignatures || []);
+
+  if (signatures.has(signature)) {
+    return null; // Already notified today for this slot
+  }
+
+  // Pick a random funny message for this slot
+  const messages = MEAL_TIME_MESSAGES[currentSlot];
+  const selectedMsg = messages[Math.floor(Math.random() * messages.length)];
+
+  // Record signature to avoid repeated spamming
+  signatures.add(signature);
+  settings.notifiedSignatures = Array.from(signatures);
+  saveNotificationSettings(settings);
+
+  // Send system notification + persistent sound
+  sendLocalNotification(selectedMsg.title, selectedMsg.body, undefined, true);
+
+  return {
+    id: `${Date.now()}`,
+    title: selectedMsg.title,
+    body: selectedMsg.body,
+    type: 'meal_time',
+    timestamp: Date.now(),
+    urgentMascot: true
+  };
+}
+
+/**
+ * Generates a mock Duolingo alert for immediate user testing!
+ */
+export function triggerTestMealTimeAlert(slot: '11h30' | '14h30' | '18h30' = '11h30'): InAppAlert {
+  const messages = MEAL_TIME_MESSAGES[slot];
+  const selectedMsg = messages[Math.floor(Math.random() * messages.length)];
+
+  sendLocalNotification(selectedMsg.title, selectedMsg.body, undefined, true);
+
+  return {
+    id: `${Date.now()}`,
+    title: selectedMsg.title,
+    body: selectedMsg.body,
+    type: 'meal_time',
+    timestamp: Date.now(),
+    urgentMascot: true
+  };
+}
+
+/**
  * Core check that compares the menus with student's favorites and newly distributed menu.
- * Returns an InAppAlert if a notification is triggered!
  */
 export function checkAndNotifyMenuUpdates(
   currentMenu: { id?: string; date: string; service: string; items: Array<{ title: string; description?: string }> },
   allMenus: Array<{ id?: string; date: string; service: string; items: Array<{ title: string; description?: string }> }>
 ): { notified: boolean; inAppAlert?: InAppAlert; reason?: string } {
+  // Check meal time automatic reminders first!
+  const mealTimeAlert = checkMealTimeReminders();
+  if (mealTimeAlert) {
+    return {
+      notified: true,
+      inAppAlert: mealTimeAlert,
+      reason: 'Rappel automatique repas'
+    };
+  }
+
   const settings = getNotificationSettings();
   if (!settings.enabled) {
     return { notified: false };
   }
 
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrowDate = new Date();
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
-
   const signatures = new Set<string>(settings.notifiedSignatures || []);
 
-  // 1. VÉRIFIER EN PRIORITÉ LES PLATS FAVORIS DE L'ÉTUDIANT
+  // 1. VÉRIFIER LES PLATS FAVORIS DE L'ÉTUDIANT
+  // Check current menu first, then any other menus in history/upcoming
   if (settings.alertOnFavoriteDishes && settings.favoriteDishes.length > 0) {
-    for (const menu of allMenus) {
-      const isTargetDay = menu.date === today || menu.date === tomorrowStr;
-      if (!isTargetDay || !Array.isArray(menu.items)) continue;
+    const menusToCheck = [currentMenu, ...allMenus.filter(m => m !== currentMenu)];
+
+    for (const menu of menusToCheck) {
+      if (!Array.isArray(menu?.items) || menu.items.length === 0) continue;
 
       for (const item of menu.items) {
         for (const fav of settings.favoriteDishes) {
           if (dishMatchesQuery(item.title, item.description, fav)) {
-            const signature = `fav:${normalizeText(fav)}:${menu.date}:${menu.service}`;
+            // Include item title in signature
+            const signature = `fav:${normalizeText(fav)}:${menu.date}:${menu.service}:${normalizeText(item.title)}`;
             
-            // Si pas encore notifié pour cette journée/service
             if (!signatures.has(signature)) {
               signatures.add(signature);
               settings.notifiedSignatures = Array.from(signatures);
               settings.lastCheckedAt = new Date().toISOString();
               saveNotificationSettings(settings);
 
-              const dayLabel = menu.date === today ? "aujourd'hui" : "demain";
               const serviceLabel = menu.service === 'dejeuner' ? 'Midi' : 'Soir';
-              const title = `🔔 Votre plat favori est au menu ${dayLabel} !`;
-              const body = `« ${item.title} » est servi au Resto U UPGC (${serviceLabel}) au tarif de 200 FCFA.`;
+              const title = `🔔 Votre plat favori est disponible au Resto U !`;
+              const body = `« ${item.title} » est servi au CROU-K (${serviceLabel}) au tarif subventionné de 200 FCFA.`;
 
-              // Déclencher alerte système + son
-              sendLocalNotification(title, body);
+              sendLocalNotification(title, body, undefined, false);
 
               return {
                 notified: true,
@@ -262,20 +450,23 @@ export function checkAndNotifyMenuUpdates(
   }
 
   // 2. VÉRIFIER SI UN NOUVEAU MENU A ÉTÉ DISTRIBUÉ / PUBLIÉ
-  if (settings.alertOnNewMenu && currentMenu.id && Array.isArray(currentMenu.items) && currentMenu.items.length > 0) {
-    const newMenuSignature = `new_menu:${currentMenu.id}`;
-    if (!signatures.has(newMenuSignature) && settings.lastNotifiedMenuId && settings.lastNotifiedMenuId !== currentMenu.id) {
-      signatures.add(newMenuSignature);
+  if (settings.alertOnNewMenu && currentMenu && Array.isArray(currentMenu.items) && currentMenu.items.length > 0) {
+    // Generate a content signature based on items list
+    const itemsSummary = currentMenu.items.map(i => normalizeText(i.title)).sort().join('|');
+    const menuContentSig = `new_menu:${currentMenu.date}:${currentMenu.service}:${itemsSummary}`;
+
+    if (!signatures.has(menuContentSig)) {
+      signatures.add(menuContentSig);
       settings.notifiedSignatures = Array.from(signatures);
-      settings.lastNotifiedMenuId = currentMenu.id;
+      settings.lastNotifiedMenuId = currentMenu.id || `${currentMenu.date}-${currentMenu.service}`;
       settings.lastCheckedAt = new Date().toISOString();
       saveNotificationSettings(settings);
 
       const serviceLabel = currentMenu.service === 'dejeuner' ? 'Déjeuner (Midi)' : 'Dîner (Soir)';
       const title = '📢 Nouveau menu distribué au Resto U !';
-      const body = `Le CROU-K vient de publier le menu du ${serviceLabel} avec ${currentMenu.items.length} plats.`;
+      const body = `Le CROU-K vient de publier le menu du ${serviceLabel} avec ${currentMenu.items.length} plats (200 FCFA).`;
 
-      sendLocalNotification(title, body);
+      sendLocalNotification(title, body, undefined, false);
 
       return {
         notified: true,
@@ -288,11 +479,6 @@ export function checkAndNotifyMenuUpdates(
           timestamp: Date.now()
         }
       };
-    }
-
-    if (!settings.lastNotifiedMenuId) {
-      settings.lastNotifiedMenuId = currentMenu.id;
-      saveNotificationSettings(settings);
     }
   }
 

@@ -28,13 +28,17 @@ import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType }
 import { DietaryBadge } from './Badge';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
+import { DuolingoMealPopup } from './DuolingoMealPopup';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
   checkAndNotifyMenuUpdates, 
+  checkMealTimeReminders,
+  triggerTestMealTimeAlert,
   requestNotificationPermission, 
   sendLocalNotification, 
   dishMatchesQuery,
+  clearSignaturesForDish,
   InAppAlert,
   NotificationSettings 
 } from '../utils/notifications';
@@ -189,6 +193,20 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     }
   }, [data.currentMenu, allMenus]);
 
+  // Automated Duolingo-style persistent reminders (11h30, 14h30, 18h30)
+  useEffect(() => {
+    const checkSchedule = () => {
+      const mealAlert = checkMealTimeReminders();
+      if (mealAlert) {
+        setActiveInAppAlert(mealAlert);
+      }
+    };
+
+    checkSchedule();
+    const interval = setInterval(checkSchedule, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Generate date tabs strictly for the last 3 days (Today, Yesterday, 2 days ago, 3 days ago)
   const dateTabs = useMemo(() => {
     const days: { date: string; label: string; shortDate: string; isPast: boolean }[] = [];
@@ -305,6 +323,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     } else {
       updatedFavorites = [...notificationSettings.favoriteDishes, dishTitle.trim()];
       message = `🔔 Alerte activée pour « ${dishTitle} » ! Vous serez prévenu dès qu'il sera servi.`;
+
+      // Clear any cached signatures for this dish so it immediately triggers
+      clearSignaturesForDish(dishTitle);
 
       // Demander la permission si non encore activée
       if (!notificationSettings.enabled) {
@@ -468,8 +489,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </div>
         </header>
 
-        {/* ACTIVE IN-APP NOTIFICATION BANNER (Audio & Visual Alert) */}
-        {activeInAppAlert && (
+        {/* ACTIVE IN-APP NOTIFICATION BANNER (Audio & Visual Alert for favorites & new menus) */}
+        {activeInAppAlert && activeInAppAlert.type !== 'meal_time' && (
           <div className="bg-[#18181B] text-white p-4 sm:p-5 rounded-[26px] shadow-2xl border-2 border-[#F5B726] animate-in slide-in-from-top-3 duration-200 space-y-2 relative">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -659,28 +680,45 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </div>
         </section>
 
-        {/* NOTIFICATION SUBSCRIPTION BANNER CARD */}
+        {/* NOTIFICATION SUBSCRIPTION BANNER CARD WITH DUOLINGO REMINDER */}
         <section className="bg-white p-4 sm:p-5 rounded-[26px] border border-black/5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-full bg-[#FEF3C7] text-amber-900 flex items-center justify-center text-xl shrink-0 font-bold border border-amber-200/50">
-              🔔
+              👨‍🍳
             </div>
             <div>
-              <h4 className="font-black text-slate-950 text-sm">
-                Alerte Plat Spécifique & Nouveau Menu
-              </h4>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="font-black text-slate-950 text-sm">
+                  Rappels Duolingo (11h30, 14h30, 18h30) & Plats Favoris
+                </h4>
+                <span className="text-[9px] font-black uppercase bg-[#F5B726] text-black px-1.5 py-0.2 rounded-full">
+                  Style Duolingo
+                </span>
+              </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5 leading-relaxed">
-                Soyez alerté dès qu'un plat que vous aimez est prévu demain, ou dès qu'un menu est publié.
+                Alertes automatiques « À table ! Il est l'heure ! » + notifications dès que vos plats favoris sont cuisinés.
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowNotificationModal(true)}
-            className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black shrink-0 transition-transform active:scale-95 shadow-xs flex items-center justify-center gap-1.5"
-          >
-            <Bell className="w-3.5 h-3.5 text-[#F5B726]" />
-            <span>{notificationSettings.enabled ? 'Gérer mes alertes' : 'Activer les alertes'}</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              onClick={() => {
+                const testAlert = triggerTestMealTimeAlert('11h30');
+                setActiveInAppAlert(testAlert);
+              }}
+              className="px-3.5 py-2.5 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-xs font-black transition-transform active:scale-95 shadow-2xs border border-amber-300 flex items-center gap-1.5"
+              title="Tester le rappel incessant du chef"
+            >
+              <span>⚡ Tester rappel</span>
+            </button>
+            <button
+              onClick={() => setShowNotificationModal(true)}
+              className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black transition-transform active:scale-95 shadow-xs flex items-center justify-center gap-1.5"
+            >
+              <Bell className="w-3.5 h-3.5 text-[#F5B726]" />
+              <span>{notificationSettings.enabled ? 'Gérer alertes' : 'Activer'}</span>
+            </button>
+          </div>
         </section>
 
         {/* DATE SELECTOR: 3 DERNIERS JOURS (Strict Option A) */}
@@ -1086,12 +1124,37 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </button>
         </nav>
 
+        {/* DUOLINGO INCESSANT MEAL TIME POPUP (11h30, 14h30, 18h30) */}
+        <DuolingoMealPopup
+          alert={activeInAppAlert}
+          onDismiss={() => setActiveInAppAlert(null)}
+          onSnooze={() => {
+            setActiveInAppAlert(null);
+            setAlertToast("⏰ Le Chef du CROU-K te relancera dans 5 minutes ! Ne tarde pas !");
+            setTimeout(() => {
+              const snoozedAlert = triggerTestMealTimeAlert('11h30');
+              snoozedAlert.title = "🚨 2ÈME RAPPEL : LE CHEF DU CROU-K INSISTE !";
+              snoozedAlert.body = "Tu as dit 5 minutes il y a 5 minutes ! La marmite est prête, file au réfectoire !";
+              setActiveInAppAlert(snoozedAlert);
+            }, 5 * 60 * 1000);
+          }}
+          onViewMenu={() => {
+            setActiveInAppAlert(null);
+            const el = document.getElementById('menu-items-grid');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+        />
+
         {/* NOTIFICATION MODAL */}
         <NotificationModal
           isOpen={showNotificationModal}
           onClose={() => setShowNotificationModal(false)}
           settings={notificationSettings}
           onUpdateSettings={(newSettings) => setNotificationSettings(newSettings)}
+          onTestDuolingoAlert={(slot) => {
+            const alert = triggerTestMealTimeAlert(slot);
+            setActiveInAppAlert(alert);
+          }}
         />
 
         {/* ALLERGENS MODAL */}
