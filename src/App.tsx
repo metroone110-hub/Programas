@@ -62,18 +62,22 @@ export default function App() {
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-white">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-orange-600 via-amber-500 to-green-600 flex items-center justify-center shadow-xl shadow-orange-500/25 mb-4 animate-bounce">
-          <span className="font-black text-3xl text-white">P</span>
+      <div className="min-h-screen bg-[#F5F0E8] flex flex-col items-center justify-center p-4 text-slate-950 font-['Plus_Jakarta_Sans',sans-serif]">
+        <div className="w-24 h-24 mb-4 drop-shadow-xl animate-bounce">
+          <img
+            src="/icon.svg"
+            alt="Programas - Resto U UPGC Korhogo"
+            className="w-full h-full object-contain rounded-[26px] shadow-lg border border-black/5"
+          />
         </div>
-        <h2 className="text-2xl font-black tracking-tight text-white mb-1">
+        <h2 className="text-2xl font-black tracking-tight text-slate-950 mb-1">
           Programas
         </h2>
-        <p className="text-xs text-orange-300 font-bold mb-3">
+        <p className="text-xs text-amber-900 font-bold mb-3 bg-[#FEF3C7] px-3 py-1 rounded-full border border-amber-200">
           🇨🇮 Resto U UPGC Korhogo • CROU-K
         </p>
-        <p className="text-xs text-slate-400 flex items-center gap-2 mb-4">
-          <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-400" />
+        <p className="text-xs text-slate-500 font-semibold flex items-center gap-2 mb-4">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#F5B726]" />
           Chargement du menu du jour en direct...
         </p>
       </div>

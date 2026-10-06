@@ -424,8 +424,12 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {/* Avatar / Campus Icon */}
-            <div className="w-12 h-12 rounded-full bg-[#F5B726] text-black font-black text-xl flex items-center justify-center shadow-sm border border-amber-300/40">
-              <span>🍽️</span>
+            <div className="w-12 h-12 rounded-[16px] overflow-hidden shadow-sm border border-amber-300/40 shrink-0 bg-white">
+              <img
+                src="/icon.svg"
+                alt="Programas Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
