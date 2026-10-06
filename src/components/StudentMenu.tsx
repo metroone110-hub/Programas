@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Calendar, 
   MapPin, 
@@ -21,11 +21,21 @@ import {
   Plus,
   Check,
   Flame,
-  X
+  X,
+  Heart
 } from 'lucide-react';
 import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType } from '../types';
 import { DietaryBadge } from './Badge';
 import { PWAInstallButton } from './PWAInstallButton';
+import { NotificationModal } from './NotificationModal';
+import { 
+  getNotificationSettings, 
+  saveNotificationSettings, 
+  checkAndNotifyMenuUpdates, 
+  requestNotificationPermission, 
+  sendLocalNotification, 
+  NotificationSettings 
+} from '../utils/notifications';
 
 interface StudentMenuProps {
   data: RestaurantData;
@@ -112,6 +122,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   const [copiedLink, setCopiedLink] = useState(false);
   const [showAllergensFor, setShowAllergensFor] = useState<MenuItem | null>(null);
   const [showHoursModal, setShowHoursModal] = useState<boolean>(false);
+  const [showNotificationModal, setShowNotificationModal] = useState<boolean>(false);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getNotificationSettings());
+  const [alertToast, setAlertToast] = useState<string | null>(null);
   const [showAnnouncement, setShowAnnouncement] = useState<boolean>(Boolean(data.announcement));
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
@@ -156,6 +169,13 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     }
     return list;
   }, [data.currentMenu, data.menuHistory]);
+
+  // Check and notify whenever menu data updates
+  useEffect(() => {
+    if (data.currentMenu) {
+      checkAndNotifyMenuUpdates(data.currentMenu, allMenus);
+    }
+  }, [data.currentMenu, allMenus]);
 
   // Generate date tabs strictly for the last 3 days (Today, Yesterday, 2 days ago, 3 days ago)
   const dateTabs = useMemo(() => {
@@ -256,6 +276,50 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     }, 150);
   };
 
+  // Toggle favorite alert for a specific dish
+  const handleToggleDishAlert = async (dishTitle: string) => {
+    const isAlready = notificationSettings.favoriteDishes.some(
+      d => d.toLowerCase().trim() === dishTitle.toLowerCase().trim()
+    );
+
+    let updatedFavorites: string[];
+    let message: string;
+
+    if (isAlready) {
+      updatedFavorites = notificationSettings.favoriteDishes.filter(
+        d => d.toLowerCase().trim() !== dishTitle.toLowerCase().trim()
+      );
+      message = `Alerte retirée pour « ${dishTitle} ».`;
+    } else {
+      updatedFavorites = [...notificationSettings.favoriteDishes, dishTitle.trim()];
+      message = `🔔 Alerte activée pour « ${dishTitle} » ! Vous serez prévenu dès qu'il sera servi.`;
+
+      // Demander la permission si non encore activée
+      if (!notificationSettings.enabled) {
+        const granted = await requestNotificationPermission();
+        if (granted) {
+          notificationSettings.enabled = true;
+          sendLocalNotification(
+            `🔔 Surveillance de « ${dishTitle} » active !`,
+            `Programas vous préviendra dès que ce plat sera au menu du Resto U UPGC.`
+          );
+        } else {
+          setShowNotificationModal(true);
+        }
+      }
+    }
+
+    const updated = {
+      ...notificationSettings,
+      favoriteDishes: updatedFavorites
+    };
+    setNotificationSettings(updated);
+    saveNotificationSettings(updated);
+
+    setAlertToast(message);
+    setTimeout(() => setAlertToast(null), 3500);
+  };
+
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
@@ -281,7 +345,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
       {/* Container matches the sleek mobile/tablet width from the reference */}
       <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto px-4 sm:px-6 pt-5 pb-32 space-y-6">
 
-        {/* TOP STATUS BAR & HEADER (Zone 1: Profile + Brand, Zone 2: Icons) */}
+        {/* TOP STATUS BAR & HEADER */}
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {/* Avatar / Campus Icon */}
@@ -304,16 +368,19 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             </div>
           </div>
 
-          {/* Action icon buttons: Bell, Search shortcut, Share */}
+          {/* Action icon buttons: Bell, Share, Admin */}
           <div className="flex items-center gap-2">
+            {/* Notification Center Trigger */}
             <button
-              onClick={() => setShowAnnouncement(!showAnnouncement)}
+              onClick={() => setShowNotificationModal(true)}
               className="w-10 h-10 rounded-full bg-white text-slate-700 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95"
-              title="Annonces officielles"
+              title="Alertes Menus & Plats Favoris"
             >
               <Bell className="w-4 h-4" />
-              {data.announcement && (
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 absolute top-2 right-2 border-2 border-white animate-pulse"></span>
+              {notificationSettings.enabled ? (
+                <span className="w-2.5 h-2.5 rounded-full bg-[#F5B726] absolute top-1.5 right-1.5 border-2 border-white animate-pulse"></span>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-slate-300 absolute top-2 right-2"></span>
               )}
             </button>
 
@@ -335,6 +402,19 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             </button>
           </div>
         </header>
+
+        {/* TOAST ALERT FEEDBACK */}
+        {alertToast && (
+          <div className="bg-[#18181B] text-white p-3.5 rounded-[22px] shadow-lg flex items-center justify-between gap-3 animate-in slide-in-from-top-2 duration-150">
+            <div className="flex items-center gap-2 text-xs font-bold">
+              <span className="text-base">🔔</span>
+              <span>{alertToast}</span>
+            </div>
+            <button onClick={() => setAlertToast(null)} className="text-slate-400 hover:text-white p-1">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* ANNOUNCEMENT BANNER (collapsible) */}
         {data.announcement && showAnnouncement && (
@@ -362,7 +442,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </p>
         </section>
 
-        {/* SIGNATURE BENTO GRID (exact 2 yellow cards + 1 wide card layout from screenshot!) */}
+        {/* SIGNATURE BENTO GRID */}
         <section className="space-y-3">
           {/* Top 2 Golden Yellow Cards */}
           <div className="grid grid-cols-2 gap-3">
@@ -459,11 +539,34 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </p>
             </div>
 
-            {/* Sunflower Yellow Action Button (matching the yellow circle in screenshot!) */}
             <div className="w-12 h-12 rounded-full bg-[#F5B726] text-black font-black text-xl flex items-center justify-center shadow-sm shrink-0">
               🎟️
             </div>
           </div>
+        </section>
+
+        {/* NOTIFICATION SUBSCRIPTION BANNER CARD */}
+        <section className="bg-white p-4 sm:p-5 rounded-[26px] border border-black/5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-[#FEF3C7] text-amber-900 flex items-center justify-center text-xl shrink-0 font-bold border border-amber-200/50">
+              🔔
+            </div>
+            <div>
+              <h4 className="font-black text-slate-950 text-sm">
+                Alerte Plat Spécifique & Nouveau Menu
+              </h4>
+              <p className="text-xs text-slate-500 font-medium mt-0.5 leading-relaxed">
+                Soyez alerté dès qu'un plat que vous aimez est prévu demain, ou dès qu'un menu est publié.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowNotificationModal(true)}
+            className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black shrink-0 transition-transform active:scale-95 shadow-xs flex items-center justify-center gap-1.5"
+          >
+            <Bell className="w-3.5 h-3.5 text-[#F5B726]" />
+            <span>{notificationSettings.enabled ? 'Gérer mes alertes' : 'Activer les alertes'}</span>
+          </button>
         </section>
 
         {/* DATE SELECTOR: 3 DERNIERS JOURS (Strict Option A) */}
@@ -512,7 +615,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </div>
         </section>
 
-        {/* SEARCH BAR (Matching the sleek modern input) */}
+        {/* SEARCH BAR */}
         <section className="relative">
           <div className="bg-white rounded-full p-2 pl-4 pr-3 shadow-xs border border-black/5 flex items-center gap-2.5 focus-within:ring-2 focus-within:ring-[#F5B726] transition-all">
             <Search className="w-4 h-4 text-slate-400 shrink-0" />
@@ -589,7 +692,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           )}
         </section>
 
-        {/* MENU HEADER & CATEGORY TABS (matching "Applicants" section in screenshot) */}
+        {/* MENU HEADER & CATEGORY TABS */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -643,7 +746,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             })}
           </div>
 
-          {/* DISHES LIST CARDS (Exact match of the Applicants cards in the screenshot!) */}
+          {/* DISHES LIST CARDS */}
           {displayedItems.length === 0 ? (
             <div className="bg-white rounded-[26px] p-8 text-center border border-black/5 shadow-xs space-y-3">
               <div className="w-14 h-14 rounded-full bg-[#F5F0E8] flex items-center justify-center text-2xl mx-auto">
@@ -675,6 +778,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               {displayedItems.map((item) => {
                 const catInfo = CATEGORY_MAP[item.category] || CATEGORY_MAP.plat;
                 const isHighlighted = highlightedItemId === item.id;
+                const isFavorited = notificationSettings.favoriteDishes.some(
+                  d => d.toLowerCase().trim() === item.title.toLowerCase().trim()
+                );
 
                 return (
                   <div
@@ -686,7 +792,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                   >
                     {/* Left: Avatar + Title & Meta */}
                     <div className="flex items-start gap-3.5">
-                      {/* Circular icon container (like the applicant avatar) */}
+                      {/* Circular icon container */}
                       <div className={`w-12 h-12 rounded-full ${catInfo.bgClass} ${catInfo.textClass} flex items-center justify-center text-xl shrink-0 font-bold border border-black/5`}>
                         {catInfo.icon}
                       </div>
@@ -709,7 +815,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                           </p>
                         )}
 
-                        {/* Soft pastel chips row (matching Onsite, Full Time, 1-2 years from screenshot!) */}
+                        {/* Soft pastel chips row & specific dish alert button */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
                           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${catInfo.bgClass} ${catInfo.textClass}`}>
                             {catInfo.name}
@@ -729,6 +835,21 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                             </span>
                           )}
 
+                          {/* Specific dish alert bell button */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleDishAlert(item.title)}
+                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 transition-all ${
+                              isFavorited
+                                ? 'bg-[#FEF3C7] text-amber-950 border border-amber-300 shadow-2xs'
+                                : 'bg-slate-100 hover:bg-[#FEF3C7] text-slate-600 hover:text-amber-950'
+                            }`}
+                            title={`Alerte notification pour ${item.title}`}
+                          >
+                            <Bell className={`w-3 h-3 ${isFavorited ? 'fill-[#F5B726] text-amber-900' : ''}`} />
+                            <span>{isFavorited ? 'Alerte active' : "M'alerter si servi"}</span>
+                          </button>
+
                           {item.allergens && item.allergens.length > 0 && (
                             <button
                               onClick={() => setShowAllergensFor(item)}
@@ -742,7 +863,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                       </div>
                     </div>
 
-                    {/* Right: Black pill price badge (matching $5K/Mo in screenshot!) */}
+                    {/* Right: Black pill price badge */}
                     <div className="sm:self-center shrink-0 flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                       <span className="text-xs font-bold text-slate-400 sm:hidden">
                         Tarif CROU-K
@@ -761,10 +882,10 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         {/* PWA INSTALL CARD */}
         <PWAInstallButton variant="banner" />
 
-        {/* FLOATING DARK BOTTOM NAVIGATION DOCK (Exact reproduction of screenshot bottom dock!) */}
+        {/* FLOATING DARK BOTTOM NAVIGATION DOCK */}
         <nav 
           aria-label="Menu principal" 
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-[#18181B] text-white px-5 sm:px-6 py-2.5 rounded-full flex items-center gap-6 sm:gap-8 shadow-2xl border border-white/10 backdrop-blur-md"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-[#18181B] text-white px-5 sm:px-6 py-2.5 rounded-full flex items-center gap-6 sm:gap-7 shadow-2xl border border-white/10 backdrop-blur-md"
         >
           {/* 1. Home / Reset to Today */}
           <button
@@ -804,7 +925,19 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             <Plus className="w-6 h-6 stroke-[3]" />
           </button>
 
-          {/* 4. Hours & Info */}
+          {/* 4. Notification Alerts Center */}
+          <button
+            onClick={() => setShowNotificationModal(true)}
+            className="p-1.5 text-white/80 hover:text-white transition-colors relative"
+            title="Alertes Menus & Plats Favoris"
+          >
+            <Bell className="w-5 h-5" />
+            {notificationSettings.enabled && (
+              <span className="w-2 h-2 rounded-full bg-[#F5B726] absolute top-1 right-1"></span>
+            )}
+          </button>
+
+          {/* 5. Hours & Info */}
           <button
             onClick={() => setShowHoursModal(true)}
             className="p-1.5 text-white/80 hover:text-white transition-colors"
@@ -812,16 +945,15 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           >
             <Clock className="w-5 h-5" />
           </button>
-
-          {/* 5. Share */}
-          <button
-            onClick={handleShare}
-            className="p-1.5 text-white/80 hover:text-white transition-colors"
-            title="Partager"
-          >
-            <Share2 className="w-5 h-5" />
-          </button>
         </nav>
+
+        {/* NOTIFICATION MODAL */}
+        <NotificationModal
+          isOpen={showNotificationModal}
+          onClose={() => setShowNotificationModal(false)}
+          settings={notificationSettings}
+          onUpdateSettings={(newSettings) => setNotificationSettings(newSettings)}
+        />
 
         {/* ALLERGENS MODAL */}
         {showAllergensFor && (
