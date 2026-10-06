@@ -28,12 +28,15 @@ import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType }
 import { DietaryBadge } from './Badge';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
+import { CommunityCrowdMeter } from './CommunityCrowdMeter';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
   checkAndNotifyMenuUpdates, 
   requestNotificationPermission, 
   sendLocalNotification, 
+  dishMatchesQuery,
+  InAppAlert,
   NotificationSettings 
 } from '../utils/notifications';
 
@@ -125,6 +128,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   const [showNotificationModal, setShowNotificationModal] = useState<boolean>(false);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getNotificationSettings());
   const [alertToast, setAlertToast] = useState<string | null>(null);
+  const [activeInAppAlert, setActiveInAppAlert] = useState<InAppAlert | null>(null);
   const [showAnnouncement, setShowAnnouncement] = useState<boolean>(Boolean(data.announcement));
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
@@ -173,7 +177,10 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   // Check and notify whenever menu data updates
   useEffect(() => {
     if (data.currentMenu) {
-      checkAndNotifyMenuUpdates(data.currentMenu, allMenus);
+      const result = checkAndNotifyMenuUpdates(data.currentMenu, allMenus);
+      if (result.notified && result.inAppAlert) {
+        setActiveInAppAlert(result.inAppAlert);
+      }
     }
   }, [data.currentMenu, allMenus]);
 
@@ -299,13 +306,33 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         const granted = await requestNotificationPermission();
         if (granted) {
           notificationSettings.enabled = true;
-          sendLocalNotification(
-            `🔔 Surveillance de « ${dishTitle} » active !`,
-            `Programas vous préviendra dès que ce plat sera au menu du Resto U UPGC.`
-          );
         } else {
           setShowNotificationModal(true);
         }
+      }
+
+      // Vérifier immédiatement si ce plat est au menu aujourd'hui ou demain !
+      const isCurrentlyInMenu = allMenus.some(m => 
+        Array.isArray(m.items) && m.items.some(i => dishMatchesQuery(i.title, i.description, dishTitle))
+      );
+
+      if (isCurrentlyInMenu) {
+        const title = `🔔 Votre plat favori « ${dishTitle} » est au menu !`;
+        const body = `« ${dishTitle} » est actuellement programmé au Resto U UPGC au tarif de 200 FCFA. Bon appétit !`;
+        sendLocalNotification(title, body);
+        setActiveInAppAlert({
+          id: `${Date.now()}`,
+          title,
+          body,
+          dishName: dishTitle,
+          type: 'favorite',
+          timestamp: Date.now()
+        });
+      } else {
+        sendLocalNotification(
+          `🔔 Surveillance de « ${dishTitle} » activée !`,
+          `Programas vous préviendra dès que ce plat sera au menu du Resto U UPGC.`
+        );
       }
     }
 
@@ -402,6 +429,55 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             </button>
           </div>
         </header>
+
+        {/* ACTIVE IN-APP NOTIFICATION BANNER (Audio & Visual Alert) */}
+        {activeInAppAlert && (
+          <div className="bg-[#18181B] text-white p-4 sm:p-5 rounded-[26px] shadow-2xl border-2 border-[#F5B726] animate-in slide-in-from-top-3 duration-200 space-y-2 relative">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-[#F5B726] text-black font-black text-xl flex items-center justify-center shrink-0 animate-bounce">
+                  🔔
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#F5B726] text-black">
+                    Alerte Détectée
+                  </span>
+                  <h4 className="font-black text-white text-sm sm:text-base mt-0.5 leading-snug">
+                    {activeInAppAlert.title}
+                  </h4>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveInAppAlert(null)}
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-300 font-medium pl-14">
+              {activeInAppAlert.body}
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => {
+                  if (activeInAppAlert.dishName) {
+                    const found = currentDisplayedMenu.items.find(i => dishMatchesQuery(i.title, i.description, activeInAppAlert.dishName!));
+                    if (found) {
+                      setHighlightedItemId(found.id);
+                      const el = document.getElementById(`item-${found.id}`);
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }
+                  setActiveInAppAlert(null);
+                }}
+                className="px-4 py-2 rounded-full bg-[#F5B726] hover:bg-[#E5AA20] text-black text-xs font-black transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <span>Voir le plat</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* TOAST ALERT FEEDBACK */}
         {alertToast && (
@@ -543,6 +619,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               🎟️
             </div>
           </div>
+        </section>
+
+        {/* CROWD GAUGE: WAZE DU CAMPUS UPGC (Méthode 2 Participative) */}
+        <section>
+          <CommunityCrowdMeter crowdReport={data.crowdReport} />
         </section>
 
         {/* NOTIFICATION SUBSCRIPTION BANNER CARD */}

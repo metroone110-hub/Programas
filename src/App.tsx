@@ -13,9 +13,11 @@ export default function App() {
   const [view, setView] = useState<'student' | 'admin'>('student');
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
-  const fetchMenuData = async () => {
+  const fetchMenuData = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) {
+        setLoading(true);
+      }
       setError(null);
       const res = await fetch('/api/menu');
       if (!res.ok) {
@@ -25,14 +27,37 @@ export default function App() {
       setData(json);
     } catch (err: any) {
       console.error('Fetch menu failed:', err);
-      setError(err.message || 'Impossible de charger le menu du jour.');
+      if (!isBackground) {
+        setError(err.message || 'Impossible de charger le menu du jour.');
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchMenuData();
+    fetchMenuData(false);
+
+    // Background polling every 10 seconds to detect newly published menus and crowd updates immediately
+    const pollInterval = setInterval(() => {
+      fetchMenuData(true);
+    }, 10000);
+
+    // Immediate refetch when user switches back to the tab
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchMenuData(true);
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', () => fetchMenuData(true));
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   if (loading && !data) {
@@ -67,7 +92,7 @@ export default function App() {
           </h3>
           <p className="text-xs text-slate-500 mb-4">{error}</p>
           <button
-            onClick={fetchMenuData}
+            onClick={() => fetchMenuData(false)}
             className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black transition-colors inline-flex items-center gap-1.5 shadow-md shadow-orange-500/20"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -92,7 +117,7 @@ export default function App() {
         <AdminPanel
           data={data}
           onBackToStudent={() => setView('student')}
-          onRefreshData={fetchMenuData}
+          onRefreshData={() => fetchMenuData(false)}
           onOpenGuide={() => setIsGuideOpen(true)}
         />
       )}

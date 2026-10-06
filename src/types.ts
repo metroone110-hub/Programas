@@ -53,6 +53,17 @@ export interface LoginResponse {
   error?: string;
 }
 
+export interface CommunityCrowdData {
+  currentLevel: 'fluide' | 'moyen' | 'fort';
+  totalVotes: number;
+  lastVoteAt?: string;
+  votes: {
+    fluide: number;
+    moyen: number;
+    fort: number;
+  };
+}
+
 export interface RestaurantHours {
   midi: string;
   soir: string;
@@ -73,6 +84,7 @@ export interface RestaurantData {
   hours: RestaurantHours;
   currentMenu: ServiceMenu;
   menuHistory?: ServiceMenu[];
+  crowdReport?: CommunityCrowdData;
   updatedAt: string;
 }
 

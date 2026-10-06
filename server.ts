@@ -10,6 +10,8 @@ import {
   publishMenuWithHistory,
   deleteHistoricMenu,
   resetToDefaults,
+  recordCrowdVote,
+  getCurrentCrowdReport,
 } from './server/db.ts';
 import {
   getAdminStatus,
@@ -211,6 +213,39 @@ app.post('/api/info', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating restaurant info:', error);
     return res.status(500).json({ error: 'Erreur lors de la mise à jour des informations' });
+  }
+});
+
+// Community Crowd Voting: Méthode 2 (Waze du Campus UPGC)
+app.post('/api/crowd/vote', (req: Request, res: Response) => {
+  try {
+    const { status } = req.body;
+    if (!status || !['fluide', 'moyen', 'fort'].includes(status)) {
+      return res.status(400).json({ error: 'Statut d\'affluence invalide (fluide, moyen, fort)' });
+    }
+
+    const report = recordCrowdVote(status as 'fluide' | 'moyen' | 'fort');
+    return res.json({
+      success: true,
+      message: 'Vote d\'affluence enregistré avec succès !',
+      data: report,
+    });
+  } catch (error) {
+    console.error('Error recording crowd vote:', error);
+    return res.status(500).json({ error: 'Erreur lors de l\'enregistrement de l\'affluence' });
+  }
+});
+
+app.get('/api/crowd/status', (_req: Request, res: Response) => {
+  try {
+    const report = getCurrentCrowdReport();
+    return res.json({
+      success: true,
+      data: report,
+    });
+  } catch (error) {
+    console.error('Error fetching crowd status:', error);
+    return res.status(500).json({ error: 'Erreur statut affluence' });
   }
 });
 
