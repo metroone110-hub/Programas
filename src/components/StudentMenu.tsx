@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Calendar, 
   MapPin, 
@@ -26,7 +26,7 @@ import {
   Heart,
   ChevronLeft,
   ChevronRight,
-  HelpCircle
+  MoveHorizontal
 } from 'lucide-react';
 import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType } from '../types';
 import { DietaryBadge } from './Badge';
@@ -54,6 +54,7 @@ interface StudentMenuProps {
 }
 
 type HorizontalSection = 'history' | 'main_menu' | 'info';
+const SECTIONS_ORDER: HorizontalSection[] = ['history', 'main_menu', 'info'];
 
 const CATEGORY_MAP: Record<MealCategory, { name: string; icon: string; bgClass: string; textClass: string }> = {
   plat: {
@@ -141,6 +142,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   // 'history' (Gauche) | 'main_menu' (Page Principale / Centre) | 'info' (Droite)
   const [activeSection, setActiveSection] = useState<HorizontalSection>('main_menu');
 
+  // Horizontal Swipe Container Ref for native 1:1 finger scrolling
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
   const [copiedLink, setCopiedLink] = useState(false);
   const [showAllergensFor, setShowAllergensFor] = useState<MenuItem | null>(null);
   const [showHoursModal, setShowHoursModal] = useState<boolean>(false);
@@ -192,6 +198,68 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     }
     return list;
   }, [data.currentMenu, data.menuHistory]);
+
+  // Initial scroll position: land directly on the center (Page Principale / Menu du Jour)
+  useEffect(() => {
+    const setInitialPosition = () => {
+      if (scrollContainerRef.current) {
+        const width = scrollContainerRef.current.clientWidth;
+        scrollContainerRef.current.scrollLeft = width; // Index 1: main_menu
+      }
+    };
+
+    setInitialPosition();
+    const timer = setTimeout(setInitialPosition, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Smoothly scroll container to selected horizontal section
+  const scrollToSection = (sec: HorizontalSection) => {
+    setActiveSection(sec);
+    if (!scrollContainerRef.current) return;
+    const index = SECTIONS_ORDER.indexOf(sec);
+    const width = scrollContainerRef.current.clientWidth;
+    scrollContainerRef.current.scrollTo({
+      left: index * width,
+      behavior: 'smooth'
+    });
+  };
+
+  // Sync activeSection indicator as user drags / swipes with their fingers
+  const handleContainerScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollLeft, clientWidth } = scrollContainerRef.current;
+    if (clientWidth <= 0) return;
+    const index = Math.round(scrollLeft / clientWidth);
+    const current = SECTIONS_ORDER[index];
+    if (current && current !== activeSection) {
+      setActiveSection(current);
+    }
+  };
+
+  // Touch Swipe Gesture Detectors for snappy feel
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+
+    // Detect intentional horizontal finger swipe
+    if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+      if (deltaX < 0) {
+        // Swiped Left -> Advance to right section
+        if (activeSection === 'history') scrollToSection('main_menu');
+        else if (activeSection === 'main_menu') scrollToSection('info');
+      } else {
+        // Swiped Right -> Retreat to left section
+        if (activeSection === 'info') scrollToSection('main_menu');
+        else if (activeSection === 'main_menu') scrollToSection('history');
+      }
+    }
+  };
 
   // Check and notify whenever menu data updates
   useEffect(() => {
@@ -433,7 +501,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   return (
     <div className="min-h-screen bg-[#F5F0E8] text-slate-900 font-['Plus_Jakarta_Sans',sans-serif] antialiased selection:bg-[#F5B726] selection:text-black">
       {/* Container matches the sleek mobile/tablet width */}
-      <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto px-4 sm:px-6 pt-5 pb-32 space-y-5">
+      <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto px-4 sm:px-6 pt-5 pb-32 space-y-4">
 
         {/* TOP STATUS BAR & HEADER */}
         <header className="flex items-center justify-between gap-3">
@@ -462,7 +530,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             </div>
           </div>
 
-          {/* Action icon buttons: Bell, Share, Admin */}
+          {/* Action icon buttons: WhatsApp, Admin */}
           <div className="flex items-center gap-2">
             {/* Quick WhatsApp Share Button in Header */}
             <a
@@ -487,50 +555,89 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         </header>
 
         {/* HORIZONTAL NAVIGATION BAR (DE GAUCHE À DROITE) */}
-        {/* Permet de naviguer horizontalement : Jours Passés (Gauche) <-> Menu du Jour (Principal) <-> Alertes & Infos (Droite) */}
-        <nav aria-label="Sections horizontales" className="bg-white p-1.5 rounded-[28px] border border-black/5 shadow-xs flex items-center justify-between gap-1">
-          {/* Gauche : Jours Passés (-3j) */}
-          <button
-            onClick={() => setActiveSection('history')}
-            className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
-              activeSection === 'history'
-                ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
-                : 'text-slate-600 hover:text-black hover:bg-slate-100'
-            }`}
-          >
-            <span>📅</span>
-            <span className="truncate">Jours Passés</span>
-          </button>
+        <div className="space-y-1.5">
+          <nav aria-label="Sections horizontales" className="bg-white p-1.5 rounded-[28px] border border-black/5 shadow-xs flex items-center justify-between gap-1">
+            {/* Gauche : Jours Passés (-3j) */}
+            <button
+              onClick={() => scrollToSection('history')}
+              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+                activeSection === 'history'
+                  ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
+                  : 'text-slate-600 hover:text-black hover:bg-slate-100'
+              }`}
+            >
+              <span>📅</span>
+              <span className="truncate">Jours Passés</span>
+            </button>
 
-          {/* Centre : Page Principale (Menu du Jour) */}
-          <button
-            onClick={() => {
-              setActiveSection('main_menu');
-              setSelectedDate(todayStr);
-            }}
-            className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
-              activeSection === 'main_menu'
-                ? 'bg-[#F5B726] text-slate-950 shadow-md font-black scale-[1.03] ring-2 ring-amber-400/40'
-                : 'text-slate-600 hover:text-black hover:bg-slate-100'
-            }`}
-          >
-            <span>🍽️</span>
-            <span className="truncate">Menu du Jour</span>
-          </button>
+            {/* Centre : Page Principale (Menu du Jour) */}
+            <button
+              onClick={() => {
+                scrollToSection('main_menu');
+                setSelectedDate(todayStr);
+              }}
+              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+                activeSection === 'main_menu'
+                  ? 'bg-[#F5B726] text-slate-950 shadow-md font-black scale-[1.03] ring-2 ring-amber-400/40'
+                  : 'text-slate-600 hover:text-black hover:bg-slate-100'
+              }`}
+            >
+              <span>🍽️</span>
+              <span className="truncate">Menu du Jour</span>
+            </button>
 
-          {/* Droite : Alertes & Infos Pratiques */}
-          <button
-            onClick={() => setActiveSection('info')}
-            className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
-              activeSection === 'info'
-                ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
-                : 'text-slate-600 hover:text-black hover:bg-slate-100'
-            }`}
-          >
-            <span>🔔</span>
-            <span className="truncate">Alertes & Infos</span>
-          </button>
-        </nav>
+            {/* Droite : Alertes & Infos Pratiques */}
+            <button
+              onClick={() => scrollToSection('info')}
+              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+                activeSection === 'info'
+                  ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
+                  : 'text-slate-600 hover:text-black hover:bg-slate-100'
+              }`}
+            >
+              <span>🔔</span>
+              <span className="truncate">Alertes & Infos</span>
+            </button>
+          </nav>
+
+          {/* Swipe indicator dots & touch hint */}
+          <div className="flex items-center justify-between px-2 text-[11px] font-semibold text-slate-400">
+            <span className="flex items-center gap-1">
+              <ChevronLeft className="w-3 h-3 text-slate-400" />
+              <span>Glissez vers la gauche</span>
+            </span>
+
+            {/* Dots */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => scrollToSection('history')}
+                className={`h-1.5 rounded-full transition-all ${
+                  activeSection === 'history' ? 'w-5 bg-[#18181B]' : 'w-2 bg-slate-300'
+                }`}
+                title="Jours passés"
+              />
+              <button
+                onClick={() => scrollToSection('main_menu')}
+                className={`h-1.5 rounded-full transition-all ${
+                  activeSection === 'main_menu' ? 'w-6 bg-[#F5B726]' : 'w-2 bg-slate-300'
+                }`}
+                title="Menu du jour"
+              />
+              <button
+                onClick={() => scrollToSection('info')}
+                className={`h-1.5 rounded-full transition-all ${
+                  activeSection === 'info' ? 'w-5 bg-[#18181B]' : 'w-2 bg-slate-300'
+                }`}
+                title="Alertes & infos"
+              />
+            </div>
+
+            <span className="flex items-center gap-1">
+              <span>Glissez vers la droite</span>
+              <ChevronRight className="w-3 h-3 text-slate-400" />
+            </span>
+          </div>
+        </div>
 
         {/* ACTIVE IN-APP NOTIFICATION BANNER (Audio & Visual Alert for favorites & new menus) */}
         {activeInAppAlert && activeInAppAlert.type !== 'meal_time' && (
@@ -566,7 +673,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                     const found = currentDisplayedMenu.items.find(i => dishMatchesQuery(i.title, i.description, activeInAppAlert.dishName!));
                     if (found) {
                       setHighlightedItemId(found.id);
-                      setActiveSection('main_menu');
+                      scrollToSection('main_menu');
                       const el = document.getElementById(`item-${found.id}`);
                       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
@@ -611,11 +718,22 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* VUE 1 : GAUCHE -> LES JOURS DES PLATS PLANIFIÉS QUI SONT PASSÉS (HISTORIQUE) */}
-        {/* ========================================================================= */}
-        {activeSection === 'history' && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-left-4 duration-200">
+        {/* ========================================================================================= */}
+        {/* NATIVE HORIZONTAL SWIPEABLE SLIDER CONTAINER (SWIPE AU DOIGT GAUCHE ↔ CENTRE ↔ DROITE)    */}
+        {/* ========================================================================================= */}
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleContainerScroll}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="flex w-full overflow-x-auto snap-x snap-mandatory no-scrollbar transition-all scroll-smooth"
+          style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch' }}
+        >
+
+          {/* --------------------------------------------------------------------------------------- */}
+          {/* SLIDE 0 (GAUCHE) : LES JOURS DES PLATS PLANIFIÉS QUI SONT PASSÉS (HISTORIQUE -3J)       */}
+          {/* --------------------------------------------------------------------------------------- */}
+          <div className="w-full shrink-0 snap-start snap-always space-y-5 px-0.5">
             {/* Header section de gauche */}
             <div className="bg-white p-5 rounded-[28px] border border-black/5 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
@@ -632,7 +750,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </p>
 
               {/* Sélecteur de jours passés (Hier, -2j, -3j) */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar overscroll-contain">
                 {pastDaysTabs.map((tab) => {
                   const isSelected = selectedDate === tab.date;
                   const hasRecordedMenu = allMenus.some(m => m.date === tab.date && m.items.length > 0);
@@ -818,7 +936,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               <button
                 onClick={() => {
                   setSelectedDate(todayStr);
-                  setActiveSection('main_menu');
+                  scrollToSection('main_menu');
                 }}
                 className="w-full py-3.5 rounded-full bg-[#F5B726] hover:bg-[#E5AA20] text-slate-950 text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
               >
@@ -827,13 +945,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </button>
             </div>
           </div>
-        )}
 
-        {/* ========================================================================= */}
-        {/* VUE 2 : CENTRE -> TABLEAU DE MENU DU JOUR (PAGE PRINCIPALE)               */}
-        {/* ========================================================================= */}
-        {activeSection === 'main_menu' && (
-          <div className="space-y-5 animate-in fade-in duration-200">
+          {/* --------------------------------------------------------------------------------------- */}
+          {/* SLIDE 1 (CENTRE) : TABLEAU DE MENU DU JOUR (PAGE PRINCIPALE)                             */}
+          {/* --------------------------------------------------------------------------------------- */}
+          <div className="w-full shrink-0 snap-start snap-always space-y-5 px-0.5">
             {/* HERO TITLE DU MENU DU JOUR */}
             <section className="space-y-1">
               <div className="flex items-center justify-between">
@@ -957,7 +1073,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </div>
 
               {/* Segmented category pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar overscroll-contain">
                 <button
                   onClick={() => setSelectedCategoryFilter('all')}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-colors ${
@@ -1004,7 +1120,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                     La cuisine du CROU-K n'a pas encore validé les plats pour ce service. Ils apparaîtront ici dès leur publication officielle.
                   </p>
                   <button
-                    onClick={() => setActiveSection('history')}
+                    onClick={() => scrollToSection('history')}
                     className="px-4 py-2.5 rounded-full bg-[#18181B] text-white text-xs font-black inline-flex items-center gap-2 shadow-sm"
                   >
                     <span>📅 Voir ce qui était servi hier (-3j)</span>
@@ -1120,7 +1236,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             {/* BOUTONS DE NAVIGATION HORIZONTALE RAPIDE EN BAS */}
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
-                onClick={() => setActiveSection('history')}
+                onClick={() => scrollToSection('history')}
                 className="p-3.5 rounded-[22px] bg-white hover:bg-slate-100 text-slate-900 border border-black/5 text-xs font-black shadow-xs flex items-center justify-center gap-1.5 transition-all"
               >
                 <ChevronLeft className="w-4 h-4 text-[#F5B726]" />
@@ -1128,7 +1244,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </button>
 
               <button
-                onClick={() => setActiveSection('info')}
+                onClick={() => scrollToSection('info')}
                 className="p-3.5 rounded-[22px] bg-white hover:bg-slate-100 text-slate-900 border border-black/5 text-xs font-black shadow-xs flex items-center justify-center gap-1.5 transition-all"
               >
                 <span>Alertes & Tarifs</span>
@@ -1136,13 +1252,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </button>
             </div>
           </div>
-        )}
 
-        {/* ========================================================================= */}
-        {/* VUE 3 : DROITE -> ALERTES, NOTIFICATIONS DUOLINGO & INFOS PRATIQUES       */}
-        {/* ========================================================================= */}
-        {activeSection === 'info' && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-200">
+          {/* --------------------------------------------------------------------------------------- */}
+          {/* SLIDE 2 (DROITE) : ALERTES, NOTIFICATIONS DUOLINGO & INFOS PRATIQUES                     */}
+          {/* --------------------------------------------------------------------------------------- */}
+          <div className="w-full shrink-0 snap-start snap-always space-y-5 px-0.5">
             {/* Header section de droite */}
             <div className="space-y-1">
               <span className="text-xs font-black uppercase tracking-wider text-amber-900 bg-[#FEF3C7] px-3 py-1 rounded-full border border-amber-200">
@@ -1255,7 +1369,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             <button
               onClick={() => {
                 setSelectedDate(todayStr);
-                setActiveSection('main_menu');
+                scrollToSection('main_menu');
               }}
               className="w-full py-3.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
             >
@@ -1263,7 +1377,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               <span>Revenir au Menu du Jour (Page Principale)</span>
             </button>
           </div>
-        )}
+
+        </div>
 
         {/* FLOATING DARK BOTTOM NAVIGATION DOCK (DE GAUCHE À DROITE) */}
         <nav 
@@ -1272,7 +1387,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         >
           {/* 1. Gauche : Jours Passés */}
           <button
-            onClick={() => setActiveSection('history')}
+            onClick={() => scrollToSection('history')}
             className={`p-1.5 transition-colors ${
               activeSection === 'history' ? 'text-[#F5B726]' : 'text-white/70 hover:text-white'
             }`}
@@ -1285,7 +1400,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           <button
             onClick={() => {
               setSelectedDate(todayStr);
-              setActiveSection('main_menu');
+              scrollToSection('main_menu');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             className={`p-1.5 transition-colors ${
@@ -1307,7 +1422,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
           {/* 4. Droite : Alertes & Infos */}
           <button
-            onClick={() => setActiveSection('info')}
+            onClick={() => scrollToSection('info')}
             className={`p-1.5 transition-colors relative ${
               activeSection === 'info' ? 'text-[#F5B726]' : 'text-white/70 hover:text-white'
             }`}
@@ -1347,7 +1462,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           }}
           onViewMenu={() => {
             setActiveInAppAlert(null);
-            setActiveSection('main_menu');
+            scrollToSection('main_menu');
             const el = document.getElementById('menu-items-grid');
             if (el) el.scrollIntoView({ behavior: 'smooth' });
           }}
