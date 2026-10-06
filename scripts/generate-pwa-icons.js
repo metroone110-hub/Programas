@@ -1,4 +1,3 @@
-import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -143,6 +142,15 @@ const pochetteSvg = `
 `;
 
 async function generate() {
+  let sharp;
+  try {
+    const mod = await import('sharp');
+    sharp = mod.default;
+  } catch (e) {
+    console.log('Sharp not installed, skipping asset generation (assets are already committed in /public)');
+    return;
+  }
+
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
   }

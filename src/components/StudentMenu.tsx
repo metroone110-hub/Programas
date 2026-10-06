@@ -12,6 +12,7 @@ import {
   CalendarDays,
   Sparkles,
   ArrowRight,
+  ArrowLeft,
   Bell,
   Utensils,
   Home,
@@ -22,7 +23,10 @@ import {
   Check,
   Flame,
   X,
-  Heart
+  Heart,
+  ChevronLeft,
+  ChevronRight,
+  HelpCircle
 } from 'lucide-react';
 import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType } from '../types';
 import { DietaryBadge } from './Badge';
@@ -48,6 +52,8 @@ interface StudentMenuProps {
   onOpenAdmin: () => void;
   onOpenGuide: () => void;
 }
+
+type HorizontalSection = 'history' | 'main_menu' | 'info';
 
 const CATEGORY_MAP: Record<MealCategory, { name: string; icon: string; bgClass: string; textClass: string }> = {
   plat: {
@@ -131,6 +137,10 @@ function getRelativeDateLabel(dateStr: string, todayStr: string): string {
 }
 
 export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onOpenGuide }) => {
+  // Horizontal Section State:
+  // 'history' (Gauche) | 'main_menu' (Page Principale / Centre) | 'info' (Droite)
+  const [activeSection, setActiveSection] = useState<HorizontalSection>('main_menu');
+
   const [copiedLink, setCopiedLink] = useState(false);
   const [showAllergensFor, setShowAllergensFor] = useState<MenuItem | null>(null);
   const [showHoursModal, setShowHoursModal] = useState<boolean>(false);
@@ -203,7 +213,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     };
 
     checkSchedule();
-    const interval = setInterval(checkSchedule, 20000);
+    const interval = setInterval(checkSchedule, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -231,6 +241,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     days.sort((a, b) => b.date.localeCompare(a.date));
     return days;
   }, []);
+
+  // Past days strictly (Hier, -2j, -3j) for the left history section
+  const pastDaysTabs = useMemo(() => {
+    return dateTabs.filter(d => d.isPast);
+  }, [dateTabs]);
 
   // Find the menu for currently selected date & service
   const currentDisplayedMenu = useMemo<ServiceMenu>(() => {
@@ -417,8 +432,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
   return (
     <div className="min-h-screen bg-[#F5F0E8] text-slate-900 font-['Plus_Jakarta_Sans',sans-serif] antialiased selection:bg-[#F5B726] selection:text-black">
-      {/* Container matches the sleek mobile/tablet width from the reference */}
-      <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto px-4 sm:px-6 pt-5 pb-32 space-y-6">
+      {/* Container matches the sleek mobile/tablet width */}
+      <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto px-4 sm:px-6 pt-5 pb-32 space-y-5">
 
         {/* TOP STATUS BAR & HEADER */}
         <header className="flex items-center justify-between gap-3">
@@ -449,28 +464,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
           {/* Action icon buttons: Bell, Share, Admin */}
           <div className="flex items-center gap-2">
-            {/* Notification Center Trigger */}
-            <button
-              onClick={() => setShowNotificationModal(true)}
-              className="w-10 h-10 rounded-full bg-white text-slate-700 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95"
-              title="Alertes Menus & Plats Favoris"
-            >
-              <Bell className="w-4 h-4" />
-              {notificationSettings.enabled ? (
-                <span className="w-2.5 h-2.5 rounded-full bg-[#F5B726] absolute top-1.5 right-1.5 border-2 border-white animate-pulse"></span>
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-slate-300 absolute top-2 right-2"></span>
-              )}
-            </button>
-
-            <button
-              onClick={handleShare}
-              className="w-10 h-10 rounded-full bg-white text-slate-700 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center transition-transform active:scale-95"
-              title="Partager le menu"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-
             {/* Quick WhatsApp Share Button in Header */}
             <a
               href={whatsappShareUrl}
@@ -492,6 +485,52 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             </button>
           </div>
         </header>
+
+        {/* HORIZONTAL NAVIGATION BAR (DE GAUCHE À DROITE) */}
+        {/* Permet de naviguer horizontalement : Jours Passés (Gauche) <-> Menu du Jour (Principal) <-> Alertes & Infos (Droite) */}
+        <nav aria-label="Sections horizontales" className="bg-white p-1.5 rounded-[28px] border border-black/5 shadow-xs flex items-center justify-between gap-1">
+          {/* Gauche : Jours Passés (-3j) */}
+          <button
+            onClick={() => setActiveSection('history')}
+            className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+              activeSection === 'history'
+                ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
+                : 'text-slate-600 hover:text-black hover:bg-slate-100'
+            }`}
+          >
+            <span>📅</span>
+            <span className="truncate">Jours Passés</span>
+          </button>
+
+          {/* Centre : Page Principale (Menu du Jour) */}
+          <button
+            onClick={() => {
+              setActiveSection('main_menu');
+              setSelectedDate(todayStr);
+            }}
+            className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+              activeSection === 'main_menu'
+                ? 'bg-[#F5B726] text-slate-950 shadow-md font-black scale-[1.03] ring-2 ring-amber-400/40'
+                : 'text-slate-600 hover:text-black hover:bg-slate-100'
+            }`}
+          >
+            <span>🍽️</span>
+            <span className="truncate">Menu du Jour</span>
+          </button>
+
+          {/* Droite : Alertes & Infos Pratiques */}
+          <button
+            onClick={() => setActiveSection('info')}
+            className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+              activeSection === 'info'
+                ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
+                : 'text-slate-600 hover:text-black hover:bg-slate-100'
+            }`}
+          >
+            <span>🔔</span>
+            <span className="truncate">Alertes & Infos</span>
+          </button>
+        </nav>
 
         {/* ACTIVE IN-APP NOTIFICATION BANNER (Audio & Visual Alert for favorites & new menus) */}
         {activeInAppAlert && activeInAppAlert.type !== 'meal_time' && (
@@ -527,6 +566,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                     const found = currentDisplayedMenu.items.find(i => dishMatchesQuery(i.title, i.description, activeInAppAlert.dishName!));
                     if (found) {
                       setHighlightedItemId(found.id);
+                      setActiveSection('main_menu');
                       const el = document.getElementById(`item-${found.id}`);
                       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
@@ -571,535 +611,707 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           </div>
         )}
 
-        {/* HERO TITLE (matching "Let's Find Perfect Match") */}
-        <section className="space-y-1">
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight">
-            Menu du Jour & Plats Chauds
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 font-medium">
-            Repas équilibrés du campus Peleforo Gon Coulibaly au tarif étudiant de 200 FCFA.
-          </p>
-        </section>
-
-        {/* SIGNATURE BENTO GRID */}
-        <section className="space-y-3">
-          {/* Top 2 Golden Yellow Cards */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Card 1: Déjeuner (Midi) */}
-            <div
-              onClick={() => setSelectedService('dejeuner')}
-              className={`p-4 sm:p-5 rounded-[26px] cursor-pointer transition-all active:scale-[0.98] flex flex-col justify-between relative overflow-hidden ${
-                selectedService === 'dejeuner'
-                  ? 'bg-[#F5B726] shadow-md ring-2 ring-black/10'
-                  : 'bg-[#F6BE3C]/90 hover:bg-[#F5B726]'
-              }`}
-            >
+        {/* ========================================================================= */}
+        {/* VUE 1 : GAUCHE -> LES JOURS DES PLATS PLANIFIÉS QUI SONT PASSÉS (HISTORIQUE) */}
+        {/* ========================================================================= */}
+        {activeSection === 'history' && (
+          <div className="space-y-5 animate-in fade-in slide-in-from-left-4 duration-200">
+            {/* Header section de gauche */}
+            <div className="bg-white p-5 rounded-[28px] border border-black/5 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <span className="bg-[#18181B] text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
-                  Midi
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-[#F5B726]" />
+                  <span>Jours Passés & Archives (Fenêtre 3 jours)</span>
                 </span>
-                <div className="w-9 h-9 rounded-full bg-white/30 backdrop-blur-xs flex items-center justify-center text-slate-950 font-bold">
-                  ☀️
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <h3 className="font-black text-slate-950 text-base sm:text-lg leading-tight">
-                  Service Déjeuner
-                </h3>
-                <p className="text-slate-800 text-xs font-semibold mt-0.5">
-                  {data.hours.midi}
-                </p>
-              </div>
-
-              {selectedService === 'dejeuner' && (
-                <div className="mt-3 flex items-center gap-1 text-[11px] font-extrabold text-slate-950 bg-white/40 rounded-full px-2.5 py-0.5 w-fit">
-                  <Check className="w-3 h-3 stroke-[3]" />
-                  <span>Actif</span>
-                </div>
-              )}
-            </div>
-
-            {/* Card 2: Dîner (Soir) */}
-            <div
-              onClick={() => setSelectedService('diner')}
-              className={`p-4 sm:p-5 rounded-[26px] cursor-pointer transition-all active:scale-[0.98] flex flex-col justify-between relative overflow-hidden ${
-                selectedService === 'diner'
-                  ? 'bg-[#F5B726] shadow-md ring-2 ring-black/10'
-                  : 'bg-[#F6BE3C]/90 hover:bg-[#F5B726]'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="bg-[#18181B] text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
-                  Soir
-                </span>
-                <div className="w-9 h-9 rounded-full bg-white/30 backdrop-blur-xs flex items-center justify-center text-slate-950 font-bold">
-                  🌙
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <h3 className="font-black text-slate-950 text-base sm:text-lg leading-tight">
-                  Service Dîner
-                </h3>
-                <p className="text-slate-800 text-xs font-semibold mt-0.5">
-                  {data.hours.soir}
-                </p>
-              </div>
-
-              {selectedService === 'diner' && (
-                <div className="mt-3 flex items-center gap-1 text-[11px] font-extrabold text-slate-950 bg-white/40 rounded-full px-2.5 py-0.5 w-fit">
-                  <Check className="w-3 h-3 stroke-[3]" />
-                  <span>Actif</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Wide Card: Manage / Ticket 200 FCFA */}
-          <div 
-            onClick={() => setShowHoursModal(true)}
-            className="bg-white p-4 sm:p-5 rounded-[26px] border border-black/5 shadow-xs flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 transition-all active:scale-[0.99]"
-          >
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="bg-[#18181B] text-white text-[11px] font-extrabold px-3 py-1 rounded-full">
-                  Ticket Unique
-                </span>
-                <span className="text-xs font-bold text-slate-500">
-                  CROU-K
+                <span className="text-[11px] font-bold text-amber-900 bg-[#FEF3C7] px-2.5 py-0.5 rounded-full">
+                  Purge auto après 3j
                 </span>
               </div>
-              <h3 className="font-black text-slate-950 text-base sm:text-lg mt-2 tracking-tight">
-                Tarif Étudiant · 200 FCFA
-              </h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Tickets papier & Mobile Money (Wave, Orange, MTN, Moov).
+              <p className="text-xs text-slate-500 font-medium">
+                Consultez ce qui a été servi les jours précédents au Resto U UPGC ou recherchez un repas passé.
               </p>
-            </div>
 
-            <div className="w-12 h-12 rounded-full bg-[#F5B726] text-black font-black text-xl flex items-center justify-center shadow-sm shrink-0">
-              🎟️
-            </div>
-          </div>
-        </section>
+              {/* Sélecteur de jours passés (Hier, -2j, -3j) */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar">
+                {pastDaysTabs.map((tab) => {
+                  const isSelected = selectedDate === tab.date;
+                  const hasRecordedMenu = allMenus.some(m => m.date === tab.date && m.items.length > 0);
 
-        {/* NOTIFICATION SUBSCRIPTION BANNER CARD WITH DUOLINGO REMINDER */}
-        <section className="bg-white p-4 sm:p-5 rounded-[26px] border border-black/5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-[#FEF3C7] text-amber-900 flex items-center justify-center text-xl shrink-0 font-bold border border-amber-200/50">
-              👨‍🍳
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="font-black text-slate-950 text-sm">
-                  Rappels Duolingo (11h30, 14h30, 18h30) & Plats Favoris
-                </h4>
-                <span className="text-[9px] font-black uppercase bg-[#F5B726] text-black px-1.5 py-0.2 rounded-full">
-                  Style Duolingo
-                </span>
+                  return (
+                    <button
+                      key={tab.date}
+                      onClick={() => {
+                        setSelectedDate(tab.date);
+                        setHighlightedItemId(null);
+                      }}
+                      className={`px-4 py-2.5 rounded-[20px] text-xs font-extrabold transition-all shrink-0 flex flex-col items-center gap-0.5 border ${
+                        isSelected
+                          ? 'bg-[#18181B] text-white border-[#18181B] shadow-md shadow-black/10 scale-[1.02]'
+                          : 'bg-[#F5F0E8] hover:bg-slate-200 text-slate-800 border-black/5'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {tab.label}
+                        {hasRecordedMenu && (
+                          <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-[#F5B726]' : 'bg-emerald-500'}`}></span>
+                        )}
+                      </span>
+                      <span className={`text-[10px] font-medium capitalize ${isSelected ? 'text-[#F5B726]' : 'text-slate-500'}`}>
+                        {tab.shortDate}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5 leading-relaxed">
-                Alertes automatiques « À table ! Il est l'heure ! » + notifications dès que vos plats favoris sont cuisinés.
-              </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
-            <button
-              onClick={() => {
-                const testAlert = triggerTestMealTimeAlert('11h30');
-                setActiveInAppAlert(testAlert);
-              }}
-              className="px-3.5 py-2.5 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-xs font-black transition-transform active:scale-95 shadow-2xs border border-amber-300 flex items-center gap-1.5"
-              title="Tester le rappel incessant du chef"
-            >
-              <span>⚡ Tester rappel</span>
-            </button>
-            <button
-              onClick={() => setShowNotificationModal(true)}
-              className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black transition-transform active:scale-95 shadow-xs flex items-center justify-center gap-1.5"
-            >
-              <Bell className="w-3.5 h-3.5 text-[#F5B726]" />
-              <span>{notificationSettings.enabled ? 'Gérer alertes' : 'Activer'}</span>
-            </button>
-          </div>
-        </section>
 
-        {/* DATE SELECTOR: 3 DERNIERS JOURS (Strict Option A) */}
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <CalendarDays className="w-3.5 h-3.5 text-[#F5B726]" />
-              <span>Historique des 3 derniers jours</span>
-            </span>
-            <span className="text-[11px] text-slate-400 font-semibold">
-              Purge auto après 3j
-            </span>
-          </div>
-
-          {/* Day selection tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {dateTabs.map((tab) => {
-              const isSelected = selectedDate === tab.date;
-              const hasRecordedMenu = allMenus.some(m => m.date === tab.date && m.items.length > 0);
-
-              return (
+            {/* Barre de recherche dans l'historique des jours passés */}
+            <div className="bg-white rounded-full p-2 pl-4 pr-3 shadow-xs border border-black/5 flex items-center gap-2.5 focus-within:ring-2 focus-within:ring-[#F5B726] transition-all">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={foodSearchQuery}
+                onChange={(e) => setFoodSearchQuery(e.target.value)}
+                placeholder="Quel repas recherchez-vous dans les jours passés ? (ex: attiéké, sauce graine...)"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-hidden"
+              />
+              {foodSearchQuery ? (
                 <button
-                  key={tab.date}
-                  onClick={() => {
-                    setSelectedDate(tab.date);
-                    setHighlightedItemId(null);
-                  }}
-                  className={`px-4 py-2.5 rounded-[20px] text-xs font-extrabold transition-all shrink-0 flex flex-col items-center gap-0.5 border ${
-                    isSelected
-                      ? 'bg-[#18181B] text-white border-[#18181B] shadow-md shadow-black/10 scale-[1.02]'
-                      : 'bg-white hover:bg-slate-100 text-slate-700 border-black/5'
-                  }`}
+                  onClick={() => setFoodSearchQuery('')}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2"
                 >
-                  <span className="flex items-center gap-1.5">
-                    {tab.label}
-                    {hasRecordedMenu && (
-                      <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-[#F5B726]' : 'bg-emerald-500'}`}></span>
-                    )}
-                  </span>
-                  <span className={`text-[10px] font-medium capitalize ${isSelected ? 'text-[#F5B726]' : 'text-slate-400'}`}>
-                    {tab.shortDate}
-                  </span>
+                  ✕
                 </button>
-              );
-            })}
-          </div>
-        </section>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#F5F0E8] text-slate-600 flex items-center justify-center text-xs">
+                  🔍
+                </div>
+              )}
+            </div>
 
-        {/* SEARCH BAR */}
-        <section className="relative">
-          <div className="bg-white rounded-full p-2 pl-4 pr-3 shadow-xs border border-black/5 flex items-center gap-2.5 focus-within:ring-2 focus-within:ring-[#F5B726] transition-all">
-            <Search className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              value={foodSearchQuery}
-              onChange={(e) => setFoodSearchQuery(e.target.value)}
-              placeholder="Quel plat recherchez-vous ? (ex: attiéké, poulet, riz gras...)"
-              className="w-full bg-transparent text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-hidden"
-            />
-            {foodSearchQuery ? (
-              <button
-                onClick={() => setFoodSearchQuery('')}
-                className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2"
-              >
-                ✕
-              </button>
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-[#F5F0E8] text-slate-600 flex items-center justify-center text-xs">
-                🍽️
+            {/* Résultats de la recherche d'historique */}
+            {foodSearchQuery.trim().length >= 2 && (
+              <div className="p-4 bg-white rounded-[26px] border border-black/5 shadow-xl space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-slate-800 pb-2 border-b border-slate-100">
+                  <span className="flex items-center gap-1.5 text-slate-900">
+                    <History className="w-3.5 h-3.5 text-[#F5B726]" />
+                    Repas trouvés dans l'historique ({foodSearchResults.length})
+                  </span>
+                </div>
+
+                {foodSearchResults.length === 0 ? (
+                  <div className="py-4 text-center text-xs text-slate-500">
+                    Aucun repas trouvé pour « <strong className="text-slate-800">{foodSearchQuery}</strong> » dans les 3 derniers jours.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                    {foodSearchResults.map((res, idx) => (
+                      <div
+                        key={`${res.item.id}-${idx}`}
+                        onClick={() => handleSelectSearchResult(res)}
+                        className="py-2.5 px-2 hover:bg-[#FEF9C3]/50 rounded-xl cursor-pointer flex items-center justify-between gap-3 transition-colors"
+                      >
+                        <div>
+                          <div className="text-xs font-black text-slate-900 flex items-center gap-2">
+                            <span>{res.item.title}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                              {CATEGORY_MAP[res.item.category]?.name || res.item.category}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+                            <span className="font-bold text-amber-800">
+                              📅 {res.formattedDate}
+                            </span>
+                            <span>·</span>
+                            <span>{res.service === 'dejeuner' ? 'Midi' : 'Soir'}</span>
+                            <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">
+                              {res.relativeLabel}
+                            </span>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-          </div>
 
-          {/* Real-time search dropdown for the 3-day history */}
-          {foodSearchQuery.trim().length >= 2 && (
-            <div className="mt-2 p-3 bg-white rounded-[24px] border border-black/5 shadow-xl animate-in fade-in duration-150 absolute left-0 right-0 z-20">
-              <div className="flex items-center justify-between text-xs font-black text-slate-800 pb-2 border-b border-slate-100">
-                <span className="flex items-center gap-1.5 text-slate-900">
-                  <History className="w-3.5 h-3.5 text-[#F5B726]" />
-                  Historique trouvé ({foodSearchResults.length})
-                </span>
-                <span className="text-[11px] text-slate-400">
-                  Cliquez pour afficher
-                </span>
+            {/* Affichage des repas du jour passé sélectionné */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div>
+                  <h3 className="font-black text-slate-950 text-base">
+                    Menu servi : {relativeBadge}
+                  </h3>
+                  <p className="text-xs text-slate-500 capitalize">
+                    {formattedFullDate} · Service {selectedService === 'dejeuner' ? 'Déjeuner (Midi)' : 'Dîner (Soir)'}
+                  </p>
+                </div>
+
+                {/* Switch Midi / Soir pour ce jour passé */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-black/5">
+                  <button
+                    onClick={() => setSelectedService('dejeuner')}
+                    className={`px-3 py-1 rounded-full text-[11px] font-black transition-colors ${
+                      selectedService === 'dejeuner' ? 'bg-[#F5B726] text-black' : 'text-slate-600'
+                    }`}
+                  >
+                    Midi
+                  </button>
+                  <button
+                    onClick={() => setSelectedService('diner')}
+                    className={`px-3 py-1 rounded-full text-[11px] font-black transition-colors ${
+                      selectedService === 'diner' ? 'bg-[#F5B726] text-black' : 'text-slate-600'
+                    }`}
+                  >
+                    Soir
+                  </button>
+                </div>
               </div>
 
-              {foodSearchResults.length === 0 ? (
-                <div className="py-4 text-center text-xs text-slate-500">
-                  Aucun repas trouvé pour « <strong className="text-slate-800">{foodSearchQuery}</strong> » dans les 3 derniers jours.
+              {/* Liste des plats servis ce jour passé */}
+              {displayedItems.length === 0 ? (
+                <div className="bg-white rounded-[26px] p-6 text-center border border-black/5 shadow-xs space-y-2">
+                  <div className="text-2xl">📋</div>
+                  <h4 className="font-bold text-slate-800 text-sm">
+                    Aucun plat enregistré pour ce service
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Aucun plat n'a été consigné pour {relativeBadge} ({selectedService === 'dejeuner' ? 'Midi' : 'Soir'}).
+                  </p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto mt-1">
-                  {foodSearchResults.map((res, idx) => (
-                    <div
-                      key={`${res.item.id}-${idx}`}
-                      onClick={() => handleSelectSearchResult(res)}
-                      className="py-2.5 px-2 hover:bg-[#FEF9C3]/50 rounded-xl cursor-pointer flex items-center justify-between gap-3 transition-colors group"
-                    >
-                      <div>
-                        <div className="text-xs font-black text-slate-900 flex items-center gap-2">
-                          <span>{res.item.title}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                            {CATEGORY_MAP[res.item.category]?.name || res.item.category}
-                          </span>
+                <div className="space-y-2.5">
+                  {displayedItems.map((item) => {
+                    const catInfo = CATEGORY_MAP[item.category] || CATEGORY_MAP.plat;
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-white p-4 rounded-[22px] border border-black/5 shadow-2xs flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full ${catInfo.bgClass} ${catInfo.textClass} flex items-center justify-center text-lg font-bold shrink-0`}>
+                            {catInfo.icon}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-slate-900 text-sm leading-tight">
+                              {item.title}
+                            </h4>
+                            <span className="text-[11px] text-slate-500 font-medium">
+                              {catInfo.name} · Servi au tarif étudiant de 200 FCFA
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-0.5">
-                          <span className="font-bold text-amber-700">
-                            📅 {res.formattedDate}
-                          </span>
-                          <span>·</span>
-                          <span>{res.service === 'dejeuner' ? 'Midi' : 'Soir'}</span>
-                          <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">
-                            {res.relativeLabel}
-                          </span>
-                        </div>
+                        <span className="px-3 py-1 rounded-full bg-[#18181B] text-white text-xs font-black shrink-0">
+                          200 FCFA
+                        </span>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-black group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
-          )}
-        </section>
 
-        {/* MENU HEADER & CATEGORY TABS */}
-        <section className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2">
-              <h3 className="font-black text-slate-950 text-lg tracking-tight">
-                Plats au Menu
-              </h3>
-              <span className="text-xs font-black px-2 py-0.5 rounded-full bg-white text-slate-800 shadow-2xs border border-black/5">
-                {displayedItems.length}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between sm:justify-end gap-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-                <span>{relativeBadge}</span>
-                <span>·</span>
-                <span className="capitalize">{formattedFullDate}</span>
-              </div>
-
-              {/* Bouton de partage WhatsApp en 1 clic */}
-              <a
-                href={whatsappShareUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-1.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-xs transition-all shrink-0"
-                title="Partager le menu sur WhatsApp"
+            {/* Bouton de retour direct vers la page principale */}
+            <div className="pt-2 text-center">
+              <button
+                onClick={() => {
+                  setSelectedDate(todayStr);
+                  setActiveSection('main_menu');
+                }}
+                className="w-full py-3.5 rounded-full bg-[#F5B726] hover:bg-[#E5AA20] text-slate-950 text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
               >
-                <WhatsAppIcon className="w-3.5 h-3.5 fill-white" />
-                <span>WhatsApp</span>
-              </a>
+                <span>🍽️ Revenir au Menu du Jour (Page Principale)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
+        )}
 
-          {/* Segmented category pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-            <button
-              onClick={() => setSelectedCategoryFilter('all')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-colors ${
-                selectedCategoryFilter === 'all'
-                  ? 'bg-[#18181B] text-white shadow-xs'
-                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-black/5'
-              }`}
-            >
-              Tous ({currentDisplayedMenu.items.length})
-            </button>
-            {(['plat', 'accompagnement', 'vegetarien', 'entree', 'dessert'] as MealCategory[]).map((cat) => {
-              const count = currentDisplayedMenu.items.filter(i => i.category === cat).length;
-              if (count === 0 && selectedCategoryFilter !== cat) return null;
-              const catInfo = CATEGORY_MAP[cat];
+        {/* ========================================================================= */}
+        {/* VUE 2 : CENTRE -> TABLEAU DE MENU DU JOUR (PAGE PRINCIPALE)               */}
+        {/* ========================================================================= */}
+        {activeSection === 'main_menu' && (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            {/* HERO TITLE DU MENU DU JOUR */}
+            <section className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-900 bg-[#FEF3C7] px-3 py-1 rounded-full border border-amber-200">
+                  🍽️ Page Principale · Resto U UPGC
+                </span>
+                <span className="text-xs font-extrabold text-slate-500">
+                  Ticket 200 FCFA
+                </span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight pt-1">
+                Menu du Jour en Direct
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 font-medium">
+                {formattedFullDate} · Campus Peleforo Gon Coulibaly (CROU-K).
+              </p>
+            </section>
 
-              return (
+            {/* SERVICE TOGGLE BENTO CARDS (MIDI / SOIR) */}
+            <section className="grid grid-cols-2 gap-3">
+              {/* Carte Déjeuner (Midi) */}
+              <div
+                onClick={() => {
+                  setSelectedDate(todayStr);
+                  setSelectedService('dejeuner');
+                }}
+                className={`p-4 sm:p-5 rounded-[26px] cursor-pointer transition-all active:scale-[0.98] flex flex-col justify-between relative overflow-hidden ${
+                  selectedService === 'dejeuner'
+                    ? 'bg-[#F5B726] shadow-md ring-2 ring-black/10'
+                    : 'bg-[#F6BE3C]/90 hover:bg-[#F5B726]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="bg-[#18181B] text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
+                    Midi
+                  </span>
+                  <div className="w-9 h-9 rounded-full bg-white/30 backdrop-blur-xs flex items-center justify-center text-slate-950 font-bold">
+                    ☀️
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <h3 className="font-black text-slate-950 text-base sm:text-lg leading-tight">
+                    Service Déjeuner
+                  </h3>
+                  <p className="text-slate-800 text-xs font-semibold mt-0.5">
+                    {data.hours.midi}
+                  </p>
+                </div>
+
+                {selectedService === 'dejeuner' && (
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-extrabold text-slate-950 bg-white/40 rounded-full px-2.5 py-0.5 w-fit">
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>Actif</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Carte Dîner (Soir) */}
+              <div
+                onClick={() => {
+                  setSelectedDate(todayStr);
+                  setSelectedService('diner');
+                }}
+                className={`p-4 sm:p-5 rounded-[26px] cursor-pointer transition-all active:scale-[0.98] flex flex-col justify-between relative overflow-hidden ${
+                  selectedService === 'diner'
+                    ? 'bg-[#F5B726] shadow-md ring-2 ring-black/10'
+                    : 'bg-[#F6BE3C]/90 hover:bg-[#F5B726]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="bg-[#18181B] text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
+                    Soir
+                  </span>
+                  <div className="w-9 h-9 rounded-full bg-white/30 backdrop-blur-xs flex items-center justify-center text-slate-950 font-bold">
+                    🌙
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <h3 className="font-black text-slate-950 text-base sm:text-lg leading-tight">
+                    Service Dîner
+                  </h3>
+                  <p className="text-slate-800 text-xs font-semibold mt-0.5">
+                    {data.hours.soir}
+                  </p>
+                </div>
+
+                {selectedService === 'diner' && (
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-extrabold text-slate-950 bg-white/40 rounded-full px-2.5 py-0.5 w-fit">
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>Actif</span>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* CATEGORY FILTER CHIPS & QUICK ACTIONS */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-slate-950 text-base sm:text-lg tracking-tight">
+                    Plats Disponibles
+                  </h3>
+                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-white text-slate-800 shadow-2xs border border-black/5">
+                    {displayedItems.length}
+                  </span>
+                </div>
+
+                {/* Bouton de partage WhatsApp en 1 clic */}
+                <a
+                  href={whatsappShareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-xs transition-all shrink-0"
+                  title="Partager le menu du jour sur WhatsApp"
+                >
+                  <WhatsAppIcon className="w-3.5 h-3.5 fill-white" />
+                  <span>WhatsApp</span>
+                </a>
+              </div>
+
+              {/* Segmented category pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 <button
-                  key={cat}
-                  onClick={() => setSelectedCategoryFilter(cat)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                    selectedCategoryFilter === cat
+                  onClick={() => setSelectedCategoryFilter('all')}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-colors ${
+                    selectedCategoryFilter === 'all'
                       ? 'bg-[#18181B] text-white shadow-xs'
                       : 'bg-white text-slate-700 hover:bg-slate-100 border border-black/5'
                   }`}
                 >
-                  <span>{catInfo.icon}</span>
-                  <span>{catInfo.name}</span>
-                  <span className="opacity-60 text-[10px]">({count})</span>
+                  Tous ({currentDisplayedMenu.items.length})
                 </button>
-              );
-            })}
-          </div>
+                {(['plat', 'accompagnement', 'vegetarien', 'entree', 'dessert'] as MealCategory[]).map((cat) => {
+                  const count = currentDisplayedMenu.items.filter(i => i.category === cat).length;
+                  if (count === 0 && selectedCategoryFilter !== cat) return null;
+                  const catInfo = CATEGORY_MAP[cat];
 
-          {/* DISHES LIST CARDS */}
-          {displayedItems.length === 0 ? (
-            <div className="bg-white rounded-[26px] p-8 text-center border border-black/5 shadow-xs space-y-3">
-              <div className="w-14 h-14 rounded-full bg-[#F5F0E8] flex items-center justify-center text-2xl mx-auto">
-                📋
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategoryFilter(cat)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                        selectedCategoryFilter === cat
+                          ? 'bg-[#18181B] text-white shadow-xs'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-black/5'
+                      }`}
+                    >
+                      <span>{catInfo.icon}</span>
+                      <span>{catInfo.name}</span>
+                      <span className="opacity-60 text-[10px]">({count})</span>
+                    </button>
+                  );
+                })}
               </div>
-              <h4 className="font-black text-slate-900 text-base">
-                Aucun plat enregistré pour ce jour
-              </h4>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                {currentDisplayedMenu.date === todayStr
-                  ? "Le menu d'aujourd'hui n'a pas encore été publié par la cuisine du CROU-K. Il apparaîtra dès sa validation."
-                  : `Aucun repas n'a été publié pour ${relativeBadge} (${currentDisplayedMenu.service === 'dejeuner' ? 'Midi' : 'Soir'}).`}
-              </p>
-              {selectedDate !== todayStr && (
-                <button
-                  onClick={() => {
-                    setSelectedDate(todayStr);
-                    setSelectedService('dejeuner');
-                  }}
-                  className="px-4 py-2 rounded-full bg-[#18181B] text-white text-xs font-black inline-flex items-center gap-1.5 shadow-sm"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Revenir à aujourd'hui</span>
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {displayedItems.map((item) => {
-                const catInfo = CATEGORY_MAP[item.category] || CATEGORY_MAP.plat;
-                const isHighlighted = highlightedItemId === item.id;
-                const isFavorited = notificationSettings.favoriteDishes.some(
-                  d => d.toLowerCase().trim() === item.title.toLowerCase().trim()
-                );
 
-                return (
-                  <div
-                    key={item.id}
-                    id={`item-${item.id}`}
-                    className={`bg-white p-4 sm:p-5 rounded-[26px] border border-black/5 shadow-xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                      isHighlighted ? 'ring-2 ring-[#F5B726] bg-[#FEF9C3]/20' : ''
-                    } ${!item.isAvailable ? 'opacity-60 bg-slate-50/50' : ''}`}
-                  >
-                    {/* Left: Avatar + Title & Meta */}
-                    <div className="flex items-start gap-3.5">
-                      {/* Circular icon container */}
-                      <div className={`w-12 h-12 rounded-full ${catInfo.bgClass} ${catInfo.textClass} flex items-center justify-center text-xl shrink-0 font-bold border border-black/5`}>
-                        {catInfo.icon}
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-black text-slate-950 text-base leading-snug">
-                            {item.title}
-                          </h4>
-                          {isHighlighted && (
-                            <span className="bg-[#F5B726] text-black text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
-                              Trouvé !
-                            </span>
-                          )}
-                        </div>
-
-                        {item.description && (
-                          <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                            {item.description}
-                          </p>
-                        )}
-
-                        {/* Soft pastel chips row & specific dish alert button */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${catInfo.bgClass} ${catInfo.textClass}`}>
-                            {catInfo.name}
-                          </span>
-
-                          {item.tags?.map((t) => (
-                            <DietaryBadge key={t} tag={t} size="sm" />
-                          ))}
-
-                          {item.isAvailable ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#DCFCE7] text-[#166534]">
-                              En Cuisine
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#FDE2E4] text-[#991B1B]">
-                              Épuisé
-                            </span>
-                          )}
-
-                          {/* Specific dish alert bell button */}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleDishAlert(item.title)}
-                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 transition-all ${
-                              isFavorited
-                                ? 'bg-[#FEF3C7] text-amber-950 border border-amber-300 shadow-2xs'
-                                : 'bg-slate-100 hover:bg-[#FEF3C7] text-slate-600 hover:text-amber-950'
-                            }`}
-                            title={`Alerte notification pour ${item.title}`}
-                          >
-                            <Bell className={`w-3 h-3 ${isFavorited ? 'fill-[#F5B726] text-amber-900' : ''}`} />
-                            <span>{isFavorited ? 'Alerte active' : "M'alerter si servi"}</span>
-                          </button>
-
-                          {item.allergens && item.allergens.length > 0 && (
-                            <button
-                              onClick={() => setShowAllergensFor(item)}
-                              className="text-[11px] text-amber-800 hover:text-amber-950 font-bold underline flex items-center gap-1 ml-1"
-                            >
-                              <Info className="w-3 h-3" />
-                              <span>Allergènes</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: Black pill price badge */}
-                    <div className="sm:self-center shrink-0 flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                      <span className="text-xs font-bold text-slate-400 sm:hidden">
-                        Tarif CROU-K
-                      </span>
-                      <span className="bg-[#18181B] text-white font-black px-4 py-2 rounded-full text-xs shrink-0 tracking-wide shadow-xs flex items-center gap-1.5">
-                        <span>{item.priceExtra ? item.priceExtra : '200 FCFA'}</span>
-                      </span>
-                    </div>
+              {/* LISTE DES PLATS DU MENU PRINCIPAL */}
+              {displayedItems.length === 0 ? (
+                <div className="bg-white rounded-[26px] p-8 text-center border border-black/5 shadow-xs space-y-3">
+                  <div className="w-14 h-14 rounded-full bg-[#F5F0E8] flex items-center justify-center text-2xl mx-auto">
+                    🍽️
                   </div>
-                );
-              })}
+                  <h4 className="font-black text-slate-900 text-base">
+                    Le menu de ce service est en préparation
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    La cuisine du CROU-K n'a pas encore validé les plats pour ce service. Ils apparaîtront ici dès leur publication officielle.
+                  </p>
+                  <button
+                    onClick={() => setActiveSection('history')}
+                    className="px-4 py-2.5 rounded-full bg-[#18181B] text-white text-xs font-black inline-flex items-center gap-2 shadow-sm"
+                  >
+                    <span>📅 Voir ce qui était servi hier (-3j)</span>
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3" id="menu-items-grid">
+                  {displayedItems.map((item) => {
+                    const catInfo = CATEGORY_MAP[item.category] || CATEGORY_MAP.plat;
+                    const isHighlighted = highlightedItemId === item.id;
+                    const isFavorited = notificationSettings.favoriteDishes.some(
+                      d => d.toLowerCase().trim() === item.title.toLowerCase().trim()
+                    );
+
+                    return (
+                      <div
+                        key={item.id}
+                        id={`item-${item.id}`}
+                        className={`bg-white p-4 sm:p-5 rounded-[26px] border border-black/5 shadow-xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                          isHighlighted ? 'ring-2 ring-[#F5B726] bg-[#FEF9C3]/20' : ''
+                        } ${!item.isAvailable ? 'opacity-60 bg-slate-50/50' : ''}`}
+                      >
+                        {/* Left: Avatar + Title & Meta */}
+                        <div className="flex items-start gap-3.5">
+                          {/* Circular icon container */}
+                          <div className={`w-12 h-12 rounded-full ${catInfo.bgClass} ${catInfo.textClass} flex items-center justify-center text-xl shrink-0 font-bold border border-black/5`}>
+                            {catInfo.icon}
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-black text-slate-950 text-base leading-snug">
+                                {item.title}
+                              </h4>
+                              {isHighlighted && (
+                                <span className="bg-[#F5B726] text-black text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                                  Trouvé !
+                                </span>
+                              )}
+                            </div>
+
+                            {item.description && (
+                              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                                {item.description}
+                              </p>
+                            )}
+
+                            {/* Soft pastel chips row & specific dish alert button */}
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${catInfo.bgClass} ${catInfo.textClass}`}>
+                                {catInfo.name}
+                              </span>
+
+                              {item.tags?.map((t) => (
+                                <DietaryBadge key={t} tag={t} size="sm" />
+                              ))}
+
+                              {item.isAvailable ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#DCFCE7] text-[#166534]">
+                                  En Cuisine
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#FDE2E4] text-[#991B1B]">
+                                  Épuisé
+                                </span>
+                              )}
+
+                              {/* Specific dish alert bell button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDishAlert(item.title)}
+                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 transition-all ${
+                                  isFavorited
+                                    ? 'bg-[#FEF3C7] text-amber-950 border border-amber-300 shadow-2xs'
+                                    : 'bg-slate-100 hover:bg-[#FEF3C7] text-slate-600 hover:text-amber-950'
+                                }`}
+                                title={`Alerte notification pour ${item.title}`}
+                              >
+                                <Bell className={`w-3 h-3 ${isFavorited ? 'fill-[#F5B726] text-amber-900' : ''}`} />
+                                <span>{isFavorited ? 'Alerte active' : "M'alerter si servi"}</span>
+                              </button>
+
+                              {item.allergens && item.allergens.length > 0 && (
+                                <button
+                                  onClick={() => setShowAllergensFor(item)}
+                                  className="text-[11px] text-amber-800 hover:text-amber-950 font-bold underline flex items-center gap-1 ml-1"
+                                >
+                                  <Info className="w-3 h-3" />
+                                  <span>Allergènes</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right: Black pill price badge */}
+                        <div className="sm:self-center shrink-0 flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                          <span className="text-xs font-bold text-slate-400 sm:hidden">
+                            Tarif CROU-K
+                          </span>
+                          <span className="bg-[#18181B] text-white font-black px-4 py-2 rounded-full text-xs shrink-0 tracking-wide shadow-xs flex items-center gap-1.5">
+                            <span>{item.priceExtra ? item.priceExtra : '200 FCFA'}</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* BOUTONS DE NAVIGATION HORIZONTALE RAPIDE EN BAS */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => setActiveSection('history')}
+                className="p-3.5 rounded-[22px] bg-white hover:bg-slate-100 text-slate-900 border border-black/5 text-xs font-black shadow-xs flex items-center justify-center gap-1.5 transition-all"
+              >
+                <ChevronLeft className="w-4 h-4 text-[#F5B726]" />
+                <span>Jours passés (-3j)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('info')}
+                className="p-3.5 rounded-[22px] bg-white hover:bg-slate-100 text-slate-900 border border-black/5 text-xs font-black shadow-xs flex items-center justify-center gap-1.5 transition-all"
+              >
+                <span>Alertes & Tarifs</span>
+                <ChevronRight className="w-4 h-4 text-[#F5B726]" />
+              </button>
             </div>
-          )}
-        </section>
+          </div>
+        )}
 
-        {/* PWA INSTALL CARD */}
-        <PWAInstallButton variant="banner" />
+        {/* ========================================================================= */}
+        {/* VUE 3 : DROITE -> ALERTES, NOTIFICATIONS DUOLINGO & INFOS PRATIQUES       */}
+        {/* ========================================================================= */}
+        {activeSection === 'info' && (
+          <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-200">
+            {/* Header section de droite */}
+            <div className="space-y-1">
+              <span className="text-xs font-black uppercase tracking-wider text-amber-900 bg-[#FEF3C7] px-3 py-1 rounded-full border border-amber-200">
+                🔔 Section Droite · Alertes & Pratique
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight leading-tight pt-1">
+                Alertes Repas & Infos CROU-K
+              </h2>
+              <p className="text-xs text-slate-500 font-medium">
+                Rappels automatiques du Chef (Duolingo 11h30, 14h30, 18h30) et tarifs officiels.
+              </p>
+            </div>
 
-        {/* FLOATING DARK BOTTOM NAVIGATION DOCK */}
+            {/* Carte Rappels Incessants Duolingo */}
+            <div className="bg-white p-5 rounded-[28px] border-2 border-[#F5B726] shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full bg-[#FEF3C7] text-amber-950 font-black text-lg flex items-center justify-center border border-amber-300">
+                    👨‍🍳
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-950 text-sm">
+                      Rappels Duolingo (11h30, 14h30, 18h30)
+                    </h4>
+                    <span className="text-[10px] font-black uppercase bg-[#F5B726] text-black px-2 py-0.2 rounded-full">
+                      Système automatique actif
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                Des notifications incessantes et motivantes retentissent chaque jour à l'heure du déjeuner et du dîner :  
+                *« À table ! Il est l'heure ! Le CROU-K t'attend ! »*
+              </p>
+
+              {/* Boutons de test direct des 3 créneaux */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Tester immédiatement les rappels du Chef :
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => {
+                      const alert = triggerTestMealTimeAlert('11h30');
+                      setActiveInAppAlert(alert);
+                    }}
+                    className="py-2.5 px-2 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-[11px] font-black border border-amber-300 transition-all flex items-center justify-center gap-1"
+                  >
+                    <span>☀️ 11h30</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const alert = triggerTestMealTimeAlert('14h30');
+                      setActiveInAppAlert(alert);
+                    }}
+                    className="py-2.5 px-2 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-[11px] font-black border border-amber-300 transition-all flex items-center justify-center gap-1"
+                  >
+                    <span>🏃‍♂️ 14h30</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const alert = triggerTestMealTimeAlert('18h30');
+                      setActiveInAppAlert(alert);
+                    }}
+                    className="py-2.5 px-2 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 text-[11px] font-black border border-amber-300 transition-all flex items-center justify-center gap-1"
+                  >
+                    <span>🌙 18h30</span>
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowNotificationModal(true)}
+                className="w-full py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black transition-colors"
+              >
+                Configurer mes plats favoris surveillés ({notificationSettings.favoriteDishes.length})
+              </button>
+            </div>
+
+            {/* Carte Tarifs & Horaires Pratiques */}
+            <div className="bg-white p-5 rounded-[28px] border border-black/5 shadow-xs space-y-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#F5B726]" />
+                <h4 className="font-black text-slate-950 text-sm">
+                  Horaires d'Ouverture du Resto U UPGC
+                </h4>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="p-3 rounded-2xl bg-[#F5F0E8] flex items-center justify-between">
+                  <span className="font-bold text-slate-700">Déjeuner (Midi)</span>
+                  <span className="font-black text-slate-950">{data.hours.midi}</span>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#F5F0E8] flex items-center justify-between">
+                  <span className="font-bold text-slate-700">Dîner (Soir)</span>
+                  <span className="font-black text-slate-950">{data.hours.soir}</span>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#F5F0E8] flex items-center justify-between">
+                  <span className="font-bold text-slate-700">Tarif Unique</span>
+                  <span className="font-black text-slate-950">200 FCFA le plateau</span>
+                </div>
+              </div>
+            </div>
+
+            {/* PWA Install Button */}
+            <PWAInstallButton variant="banner" />
+
+            {/* Bouton pour revenir au menu principal */}
+            <button
+              onClick={() => {
+                setSelectedDate(todayStr);
+                setActiveSection('main_menu');
+              }}
+              className="w-full py-3.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Revenir au Menu du Jour (Page Principale)</span>
+            </button>
+          </div>
+        )}
+
+        {/* FLOATING DARK BOTTOM NAVIGATION DOCK (DE GAUCHE À DROITE) */}
         <nav 
           aria-label="Menu principal" 
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-[#18181B] text-white px-5 sm:px-6 py-2.5 rounded-full flex items-center gap-6 sm:gap-7 shadow-2xl border border-white/10 backdrop-blur-md"
         >
-          {/* 1. Home / Reset to Today */}
+          {/* 1. Gauche : Jours Passés */}
+          <button
+            onClick={() => setActiveSection('history')}
+            className={`p-1.5 transition-colors ${
+              activeSection === 'history' ? 'text-[#F5B726]' : 'text-white/70 hover:text-white'
+            }`}
+            title="Jours passés (-3j)"
+          >
+            <Calendar className="w-5 h-5" />
+          </button>
+
+          {/* 2. Centre : Menu du Jour (Principal) */}
           <button
             onClick={() => {
               setSelectedDate(todayStr);
-              setSelectedService('dejeuner');
-              setFoodSearchQuery('');
+              setActiveSection('main_menu');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className="p-1.5 text-white/80 hover:text-white transition-colors"
-            title="Accueil / Aujourd'hui"
+            className={`p-1.5 transition-colors ${
+              activeSection === 'main_menu' ? 'text-[#F5B726]' : 'text-white/70 hover:text-white'
+            }`}
+            title="Menu du Jour (Page Principale)"
           >
-            <Home className="w-5 h-5 text-white" />
+            <Utensils className="w-5 h-5" />
           </button>
 
-          {/* 2. Search / History */}
-          <button
-            onClick={() => {
-              const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-              if (input) {
-                input.focus();
-                input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }}
-            className="p-1.5 text-white/80 hover:text-white transition-colors"
-            title="Recherche de plat"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-
-          {/* 3. PROMINENT CENTRAL YELLOW BUTTON: Espace Gestionnaire (+) */}
+          {/* 3. Bouton central jaune (+) : Espace Gestionnaire */}
           <button
             onClick={onOpenAdmin}
             className="w-12 h-12 rounded-full bg-[#F5B726] text-black font-black text-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all -my-2"
-            title="Espace Gestionnaire (Publier / Modifier)"
+            title="Espace Gestionnaire"
           >
             <Plus className="w-6 h-6 stroke-[3]" />
           </button>
 
-          {/* 4. Notification Alerts Center */}
+          {/* 4. Droite : Alertes & Infos */}
           <button
-            onClick={() => setShowNotificationModal(true)}
-            className="p-1.5 text-white/80 hover:text-white transition-colors relative"
-            title="Alertes Menus & Plats Favoris"
+            onClick={() => setActiveSection('info')}
+            className={`p-1.5 transition-colors relative ${
+              activeSection === 'info' ? 'text-[#F5B726]' : 'text-white/70 hover:text-white'
+            }`}
+            title="Alertes & Infos"
           >
             <Bell className="w-5 h-5" />
             {notificationSettings.enabled && (
@@ -1107,7 +1319,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             )}
           </button>
 
-          {/* 5. WhatsApp Quick Share */}
+          {/* 5. Partage WhatsApp */}
           <a
             href={whatsappShareUrl}
             target="_blank"
@@ -1117,15 +1329,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           >
             <WhatsAppIcon className="w-5 h-5 fill-[#25D366]" />
           </a>
-
-          {/* 6. Hours & Info */}
-          <button
-            onClick={() => setShowHoursModal(true)}
-            className="p-1.5 text-white/80 hover:text-white transition-colors"
-            title="Horaires et tarifs"
-          >
-            <Clock className="w-5 h-5" />
-          </button>
         </nav>
 
         {/* DUOLINGO INCESSANT MEAL TIME POPUP (11h30, 14h30, 18h30) */}
@@ -1144,6 +1347,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           }}
           onViewMenu={() => {
             setActiveInAppAlert(null);
+            setActiveSection('main_menu');
             const el = document.getElementById('menu-items-grid');
             if (el) el.scrollIntoView({ behavior: 'smooth' });
           }}
@@ -1203,59 +1407,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                 className="mt-5 w-full py-3 bg-[#18181B] hover:bg-black text-white rounded-full text-xs font-black transition-colors"
               >
                 Fermer
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* HOURS & PRACTICAL INFO MODAL */}
-        {showHoursModal && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-[#F5F0E8] rounded-[32px] max-w-md w-full p-6 shadow-2xl border border-black/5 animate-in fade-in zoom-in-95 duration-150 space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-[#FEF3C7] px-2.5 py-0.5 rounded-full">
-                    Resto U · UPGC Korhogo
-                  </span>
-                  <h4 className="font-black text-slate-950 text-lg mt-1.5 leading-snug">
-                    Horaires & Règlement CROU-K
-                  </h4>
-                </div>
-                <button
-                  onClick={() => setShowHoursModal(false)}
-                  className="w-8 h-8 rounded-full bg-white text-slate-700 flex items-center justify-center font-bold shadow-xs"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="space-y-2.5 text-xs">
-                <div className="bg-white p-4 rounded-[22px] shadow-2xs border border-black/5">
-                  <span className="text-slate-400 font-bold uppercase text-[10px] block">Service Déjeuner (Midi)</span>
-                  <span className="font-black text-slate-950 text-base">{data.hours.midi}</span>
-                </div>
-
-                <div className="bg-white p-4 rounded-[22px] shadow-2xs border border-black/5">
-                  <span className="text-slate-400 font-bold uppercase text-[10px] block">Service Dîner (Soir)</span>
-                  <span className="font-black text-slate-950 text-base">{data.hours.soir}</span>
-                </div>
-
-                <div className="bg-white p-4 rounded-[22px] shadow-2xs border border-black/5">
-                  <span className="text-slate-400 font-bold uppercase text-[10px] block">Paiements Acceptés</span>
-                  <span className="font-black text-slate-950 text-sm">Tickets CROU-K & Mobile Money (Wave, Orange, MTN, Moov)</span>
-                </div>
-
-                <div className="bg-white p-4 rounded-[22px] shadow-2xs border border-black/5">
-                  <span className="text-slate-400 font-bold uppercase text-[10px] block">Tarif Unique</span>
-                  <span className="font-black text-slate-950 text-sm">200 FCFA le ticket subventionné</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowHoursModal(false)}
-                className="w-full py-3 bg-[#18181B] hover:bg-black text-white rounded-full text-xs font-black transition-colors"
-              >
-                Compris
               </button>
             </div>
           </div>
