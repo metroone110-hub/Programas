@@ -78,6 +78,12 @@ const CATEGORY_MAP: Record<MealCategory, { name: string; icon: string; bgClass: 
   }
 };
 
+const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.41a8.17 8.17 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.44 0-2.85-.38-4.09-1.11l-.29-.17-3.04.8 1.05-2.96-.19-.3a8.19 8.19 0 0 1-1.25-4.5c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.48-.73-1.71-.81-.23-.09-.4-.13-.57.13-.17.25-.66.81-.81.98-.15.17-.3.19-.55.06-.25-.13-1.07-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.13-.15.17-.25.25-.42.08-.17.04-.32-.02-.45-.06-.13-.57-1.37-.78-1.88-.2-.49-.41-.43-.57-.44l-.49-.01c-.17 0-.44.06-.67.32-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.03 2.61.13.17 1.78 2.72 4.31 3.81.6.26 1.07.42 1.44.54.61.19 1.16.17 1.6.1.49-.07 1.48-.61 1.69-1.19.21-.59.21-1.09.15-1.19-.06-.1-.23-.17-.48-.29z"/>
+  </svg>
+);
+
 // Helper to format ISO date to French string
 function formatFrenchDate(dateStr: string, options?: Intl.DateTimeFormatOptions): string {
   try {
@@ -360,6 +366,28 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     }
   };
 
+  // Generate formatted WhatsApp share URL with meal items, date, price and app link
+  const whatsappShareUrl = useMemo(() => {
+    const serviceLabel = currentDisplayedMenu.service === 'dejeuner' ? 'Déjeuner (Midi)' : 'Dîner (Soir)';
+    const dishesList = currentDisplayedMenu.items && currentDisplayedMenu.items.length > 0
+      ? currentDisplayedMenu.items.map(item => `🍗 *${item.title}*${item.description ? ` (${item.description})` : ''}`).join('\n')
+      : '• Aucun plat renseigné pour le moment';
+
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : 'https://programas.ci';
+
+    const text = 
+      `🍽️ *MENU DU JOUR • PROGRAMAS* 🇨🇮\n` +
+      `📍 *Resto U UPGC Korhogo (CROU-K)*\n` +
+      `📅 *Date :* ${formattedFullDate} (${serviceLabel})\n` +
+      `🎟️ *Tarif unique :* 200 FCFA\n\n` +
+      `📋 *Au menu ce jour :*\n` +
+      `${dishesList}\n\n` +
+      `📲 *Consulte le menu complet et les alertes en direct :*\n` +
+      `${shareUrl}`;
+
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  }, [currentDisplayedMenu, formattedFullDate]);
+
   // Filter items by category tab
   const displayedItems = useMemo(() => {
     if (selectedCategoryFilter === 'all') return currentDisplayedMenu.items;
@@ -417,6 +445,17 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             >
               <Share2 className="w-4 h-4" />
             </button>
+
+            {/* Quick WhatsApp Share Button in Header */}
+            <a
+              href={whatsappShareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-10 h-10 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xs border border-emerald-600/20 flex items-center justify-center transition-transform active:scale-95 shrink-0"
+              title="Partager le menu sur WhatsApp"
+            >
+              <WhatsAppIcon className="w-4 h-4 fill-white" />
+            </a>
 
             <button
               onClick={onOpenAdmin}
@@ -769,7 +808,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
         {/* MENU HEADER & CATEGORY TABS */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex items-center gap-2">
               <h3 className="font-black text-slate-950 text-lg tracking-tight">
                 Plats au Menu
@@ -779,10 +818,24 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-              <span>{relativeBadge}</span>
-              <span>·</span>
-              <span className="capitalize">{formattedFullDate}</span>
+            <div className="flex items-center justify-between sm:justify-end gap-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                <span>{relativeBadge}</span>
+                <span>·</span>
+                <span className="capitalize">{formattedFullDate}</span>
+              </div>
+
+              {/* Bouton de partage WhatsApp en 1 clic */}
+              <a
+                href={whatsappShareUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-xs transition-all shrink-0"
+                title="Partager le menu sur WhatsApp"
+              >
+                <WhatsAppIcon className="w-3.5 h-3.5 fill-white" />
+                <span>WhatsApp</span>
+              </a>
             </div>
           </div>
 
@@ -1012,7 +1065,18 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             )}
           </button>
 
-          {/* 5. Hours & Info */}
+          {/* 5. WhatsApp Quick Share */}
+          <a
+            href={whatsappShareUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 text-[#25D366] hover:text-white transition-colors"
+            title="Partager le menu sur WhatsApp"
+          >
+            <WhatsAppIcon className="w-5 h-5 fill-[#25D366]" />
+          </a>
+
+          {/* 6. Hours & Info */}
           <button
             onClick={() => setShowHoursModal(true)}
             className="p-1.5 text-white/80 hover:text-white transition-colors"
