@@ -26,7 +26,8 @@ import {
   Heart,
   ChevronLeft,
   ChevronRight,
-  MoveHorizontal
+  MoveHorizontal,
+  Smartphone
 } from 'lucide-react';
 import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType } from '../types';
 import { DietaryBadge } from './Badge';
@@ -43,9 +44,14 @@ import {
   sendLocalNotification, 
   dishMatchesQuery,
   clearSignaturesForDish,
+  getUnreadBadgeCount,
+  setAppBadgeCount,
+  incrementAppBadge,
+  clearAppBadge,
   InAppAlert,
   NotificationSettings 
 } from '../utils/notifications';
+import { trackShare, trackInteraction } from '../utils/analytics';
 
 interface StudentMenuProps {
   data: RestaurantData;
@@ -142,6 +148,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   // 'history' (Gauche) | 'main_menu' (Page Principale / Centre) | 'info' (Droite)
   const [activeSection, setActiveSection] = useState<HorizontalSection>('main_menu');
 
+  // Red Badge Counter Pastille (Badging API + in-app)
+  const [unreadBadgeCount, setUnreadBadgeCount] = useState<number>(() => getUnreadBadgeCount());
+
   // Horizontal Swipe Container Ref for native 1:1 finger scrolling
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number>(0);
@@ -198,6 +207,26 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     }
     return list;
   }, [data.currentMenu, data.menuHistory]);
+
+  // Synchronisation en direct de la pastille rouge numérotée (Badging API, Favicon & In-app)
+  useEffect(() => {
+    // Initialisation au chargement de l'app
+    const initial = getUnreadBadgeCount();
+    setUnreadBadgeCount(initial);
+    setAppBadgeCount(initial);
+
+    const handleBadgeUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ count: number }>;
+      if (customEvent.detail && typeof customEvent.detail.count === 'number') {
+        setUnreadBadgeCount(customEvent.detail.count);
+      } else {
+        setUnreadBadgeCount(getUnreadBadgeCount());
+      }
+    };
+
+    window.addEventListener('programas-badge-updated', handleBadgeUpdate);
+    return () => window.removeEventListener('programas-badge-updated', handleBadgeUpdate);
+  }, []);
 
   // Initial scroll position: land directly on the center (Page Principale / Menu du Jour)
   useEffect(() => {
@@ -403,9 +432,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         d => d.toLowerCase().trim() !== dishTitle.toLowerCase().trim()
       );
       message = `Alerte retirée pour « ${dishTitle} ».`;
+      trackInteraction('favorite_toggle', { dish: dishTitle, action: 'removed' });
     } else {
       updatedFavorites = [...notificationSettings.favoriteDishes, dishTitle.trim()];
       message = `🔔 Alerte activée pour « ${dishTitle} » ! Vous serez prévenu dès qu'il sera servi.`;
+      trackInteraction('favorite_toggle', { dish: dishTitle, action: 'added' });
 
       // Clear any cached signatures for this dish so it immediately triggers
       clearSignaturesForDish(dishTitle);
@@ -437,6 +468,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           type: 'favorite',
           timestamp: Date.now()
         });
+        const c = incrementAppBadge(1);
+        setUnreadBadgeCount(c);
       } else {
         sendLocalNotification(
           `🔔 Surveillance de « ${dishTitle} » activée !`,
@@ -458,12 +491,14 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
   const handleShare = () => {
     if (navigator.share) {
+      trackShare('system_share', { date: selectedDate, service: selectedService });
       navigator.share({
         title: `Programas - Resto U UPGC Korhogo`,
         text: `Consultez le menu du jour (${formattedFullDate}) sur Programas - Resto U UPGC Korhogo (Ticket à 200 FCFA).`,
         url: window.location.href
       }).catch(() => {});
     } else {
+      trackShare('link_copied', { date: selectedDate, service: selectedService });
       navigator.clipboard.writeText(window.location.href);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -506,13 +541,20 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         {/* TOP STATUS BAR & HEADER */}
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            {/* Avatar / Campus Icon */}
-            <div className="w-12 h-12 rounded-[16px] overflow-hidden shadow-sm border border-amber-300/40 shrink-0 bg-white">
-              <img
-                src="/icon.svg"
-                alt="Programas Logo"
-                className="w-full h-full object-cover"
-              />
+            {/* Avatar / Campus Icon with red badge pastille */}
+            <div className="relative">
+              <div className="w-12 h-12 rounded-[16px] overflow-hidden shadow-sm border border-amber-300/40 shrink-0 bg-white">
+                <img
+                  src="/icon.svg"
+                  alt="Programas Logo"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {unreadBadgeCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-bounce">
+                  {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
+                </span>
+              )}
             </div>
             <div>
               <div className="flex items-center gap-1.5">
@@ -530,13 +572,32 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             </div>
           </div>
 
-          {/* Action icon buttons: WhatsApp, Admin */}
+          {/* Action icon buttons: Bell, WhatsApp, Admin */}
           <div className="flex items-center gap-2">
+            {/* Cloche de notifications avec la vraie pastille rouge numérotée (style iOS / Android) */}
+            <button
+              onClick={() => {
+                setShowNotificationModal(true);
+                clearAppBadge();
+                setUnreadBadgeCount(0);
+              }}
+              className="w-10 h-10 rounded-full bg-white text-slate-800 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95 shrink-0"
+              title="Centre de notifications et alertes"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadBadgeCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-pulse">
+                  {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
+                </span>
+              )}
+            </button>
+
             {/* Quick WhatsApp Share Button in Header */}
             <a
               href={whatsappShareUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => trackShare('whatsapp_share', { date: selectedDate, service: selectedService, location: 'header' })}
               className="w-10 h-10 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xs border border-emerald-600/20 flex items-center justify-center transition-transform active:scale-95 shrink-0"
               title="Partager le menu sur WhatsApp"
             >
@@ -545,7 +606,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
             <button
               onClick={onOpenAdmin}
-              className="px-3.5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95"
+              className="px-3.5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"
               title="Espace Gestionnaire"
             >
               <ChefHat className="w-3.5 h-3.5 text-[#F5B726]" />
@@ -588,8 +649,12 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
             {/* Droite : Alertes & Infos Pratiques */}
             <button
-              onClick={() => scrollToSection('info')}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+              onClick={() => {
+                scrollToSection('info');
+                clearAppBadge();
+                setUnreadBadgeCount(0);
+              }}
+              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black relative ${
                 activeSection === 'info'
                   ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
                   : 'text-slate-600 hover:text-black hover:bg-slate-100'
@@ -597,15 +662,23 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             >
               <span>🔔</span>
               <span className="truncate">Alertes & Infos</span>
+              {unreadBadgeCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-black shrink-0">
+                  {unreadBadgeCount}
+                </span>
+              )}
             </button>
           </nav>
 
           {/* Swipe indicator dots & touch hint */}
           <div className="flex items-center justify-between px-2 text-[11px] font-semibold text-slate-400">
-            <span className="flex items-center gap-1">
-              <ChevronLeft className="w-3 h-3 text-slate-400" />
-              <span>Glissez vers la gauche</span>
-            </span>
+            <button 
+              onClick={() => scrollToSection('history')} 
+              className="flex items-center gap-1 hover:text-slate-700"
+            >
+              <ChevronLeft className="w-3 h-3 text-[#F5B726]" />
+              <span>Jours passés</span>
+            </button>
 
             {/* Dots */}
             <div className="flex items-center gap-1.5">
@@ -632,10 +705,13 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               />
             </div>
 
-            <span className="flex items-center gap-1">
-              <span>Glissez vers la droite</span>
-              <ChevronRight className="w-3 h-3 text-slate-400" />
-            </span>
+            <button 
+              onClick={() => scrollToSection('info')} 
+              className="flex items-center gap-1 hover:text-slate-700"
+            >
+              <span>Alertes & infos</span>
+              <ChevronRight className="w-3 h-3 text-[#F5B726]" />
+            </button>
           </div>
         </div>
 
@@ -1064,6 +1140,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                   href={whatsappShareUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => trackShare('whatsapp_share', { date: selectedDate, service: selectedService, location: 'dishes_list' })}
                   className="px-3.5 py-1.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-xs transition-all shrink-0"
                   title="Partager le menu du jour sur WhatsApp"
                 >
@@ -1270,6 +1347,74 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </p>
             </div>
 
+            {/* PASTILLE ROUGE NUMÉROTÉE SUR L'ICÔNE (BADGING API STYLE IOS / ANDROID) */}
+            <div className="bg-white p-5 rounded-[28px] border border-black/5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative">
+                    <div className="w-11 h-11 rounded-2xl bg-[#F5B726] text-black font-black flex items-center justify-center text-xl shadow-xs">
+                      📱
+                    </div>
+                    {unreadBadgeCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-pulse">
+                        {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-950 text-sm">
+                      Pastille Rouge sur l'Icône de l'App
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-semibold">
+                      Chiffre rouge sur l'écran d'accueil (comme WhatsApp, Snapchat, Messages)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-[#F5F0E8] rounded-2xl flex items-center justify-between text-xs font-bold text-slate-800">
+                <span>Compteur de notifications non lues :</span>
+                <span className="px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black">
+                  {unreadBadgeCount > 0 ? `${unreadBadgeCount} alerte(s)` : '0 (Aucune)'}
+                </span>
+              </div>
+
+              {/* Boutons pour tester le badge */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={() => {
+                    const next = incrementAppBadge(1);
+                    setAlertToast(`🔴 Pastille mise à jour : +1 (Total : ${next})`);
+                    setTimeout(() => setAlertToast(null), 2500);
+                  }}
+                  className="flex-1 py-2 px-3 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                >
+                  <span>🔴 Tester +1</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAppBadgeCount(5);
+                    setAlertToast("🔴 Pastille rouge mise à 5 notifications !");
+                    setTimeout(() => setAlertToast(null), 2500);
+                  }}
+                  className="flex-1 py-2 px-3 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 border border-amber-300 text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                >
+                  <span>🔴 Mettre à 5</span>
+                </button>
+                <button
+                  onClick={() => {
+                    clearAppBadge();
+                    setAlertToast("✓ Pastille effacée (0)");
+                    setTimeout(() => setAlertToast(null), 2000);
+                  }}
+                  className="py-2 px-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all active:scale-95"
+                  title="Effacer"
+                >
+                  <span>Effacer</span>
+                </button>
+              </div>
+            </div>
+
             {/* Carte Rappels Incessants Duolingo */}
             <div className="bg-white p-5 rounded-[28px] border-2 border-[#F5B726] shadow-xs space-y-3">
               <div className="flex items-center justify-between">
@@ -1420,17 +1565,23 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             <Plus className="w-6 h-6 stroke-[3]" />
           </button>
 
-          {/* 4. Droite : Alertes & Infos */}
+          {/* 4. Droite : Alertes & Infos avec Pastille Rouge */}
           <button
-            onClick={() => scrollToSection('info')}
+            onClick={() => {
+              scrollToSection('info');
+              clearAppBadge();
+              setUnreadBadgeCount(0);
+            }}
             className={`p-1.5 transition-colors relative ${
               activeSection === 'info' ? 'text-[#F5B726]' : 'text-white/70 hover:text-white'
             }`}
             title="Alertes & Infos"
           >
             <Bell className="w-5 h-5" />
-            {notificationSettings.enabled && (
-              <span className="w-2 h-2 rounded-full bg-[#F5B726] absolute top-1 right-1"></span>
+            {unreadBadgeCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center border-2 border-[#18181B] shadow-xs">
+                {unreadBadgeCount > 9 ? '9+' : unreadBadgeCount}
+              </span>
             )}
           </button>
 
@@ -1439,6 +1590,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             href={whatsappShareUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackShare('whatsapp_share', { date: selectedDate, service: selectedService, location: 'dock' })}
             className="p-1.5 text-[#25D366] hover:text-white transition-colors"
             title="Partager le menu sur WhatsApp"
           >

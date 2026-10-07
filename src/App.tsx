@@ -5,6 +5,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { DeployGuideModal } from './components/DeployGuideModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { RefreshCw, Utensils, AlertTriangle } from 'lucide-react';
+import { trackVisit } from './utils/analytics';
 
 export default function App() {
   const [data, setData] = useState<RestaurantData | null>(null);
@@ -39,6 +40,7 @@ export default function App() {
 
   useEffect(() => {
     fetchMenuData(false);
+    trackVisit();
 
     // Background polling every 10 seconds to detect newly published menus and crowd updates immediately
     const pollInterval = setInterval(() => {

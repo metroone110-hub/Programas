@@ -89,6 +89,165 @@ export function isNotificationSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window;
 }
 
+/**
+ * App Badging API & Pastille Rouge Numérotée (Style iOS, Android, WhatsApp, Duolingo)
+ * Compatible avec :
+ * 1. L'écran d'accueil du téléphone (Android PWA, iOS 16.4+ PWA "Sur l'écran d'accueil", macOS, Windows)
+ * 2. L'icône de l'onglet du navigateur (Favicon dynamique généré avec pastille rouge et chiffre)
+ * 3. Le titre de l'onglet : (1) Programas, (2) Programas...
+ * 4. Les icônes internes de l'application (en-tête, cloche, barre de navigation)
+ */
+const UNREAD_BADGE_KEY = 'programas_unread_badge_count_v1';
+
+export function updateFaviconBadge(count: number): void {
+  if (typeof document === 'undefined') return;
+  try {
+    const iconLinks = document.querySelectorAll("link[rel*='icon']");
+    if (count <= 0) {
+      iconLinks.forEach(link => {
+        const el = link as HTMLLinkElement;
+        if (el.type === 'image/svg+xml') el.href = '/icon.svg';
+        else if (el.rel.includes('apple-touch-icon')) el.href = '/apple-touch-icon.png';
+        else el.href = '/favicon.png';
+      });
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.drawImage(img, 0, 0, 64, 64);
+
+      // Pastille rouge badge
+      const badgeText = count > 99 ? '99+' : String(count);
+      const isWide = badgeText.length > 1;
+      const badgeHeight = 24;
+      const badgeWidth = isWide ? 36 : 24;
+      const cx = 64 - badgeWidth / 2 - 2;
+      const cy = 13;
+
+      // Cercle ou pilule rouge éclatant
+      ctx.fillStyle = '#E11D48'; // Rose/Rouge vif natif iOS/Android
+      ctx.beginPath();
+      if (isWide && typeof (ctx as any).roundRect === 'function') {
+        (ctx as any).roundRect(64 - badgeWidth - 2, 2, badgeWidth, badgeHeight, 12);
+      } else {
+        ctx.arc(64 - 13, 13, 13, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // Bordure blanche éclatante
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Chiffre centré en blanc
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `bold ${isWide ? 12 : 14}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, isWide ? 64 - badgeWidth / 2 - 2 : 64 - 13, 14);
+
+      const dataUrl = canvas.toDataURL('image/png');
+      iconLinks.forEach(link => {
+        (link as HTMLLinkElement).href = dataUrl;
+      });
+    };
+    img.onerror = () => {
+      // Fallback
+      ctx.fillStyle = '#F5B726';
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#E11D48';
+      ctx.beginPath();
+      ctx.arc(48, 16, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(count > 9 ? '9+' : String(count), 48, 16);
+      const dataUrl = canvas.toDataURL('image/png');
+      iconLinks.forEach(link => {
+        (link as HTMLLinkElement).href = dataUrl;
+      });
+    };
+    img.src = '/favicon.png';
+  } catch (err) {
+    console.warn('Erreur mise à jour badge favicon:', err);
+  }
+}
+
+export function updateDocumentTitle(count: number): void {
+  if (typeof document === 'undefined') return;
+  const baseTitle = "Programas - Resto U UPGC Korhogo";
+  if (count > 0) {
+    document.title = `(${count}) ${baseTitle}`;
+  } else {
+    document.title = baseTitle;
+  }
+}
+
+export function getUnreadBadgeCount(): number {
+  try {
+    const raw = localStorage.getItem(UNREAD_BADGE_KEY);
+    return raw !== null ? parseInt(raw, 10) || 0 : 1; // 1 par défaut au chargement
+  } catch {
+    return 1;
+  }
+}
+
+export function setAppBadgeCount(count: number): void {
+  try {
+    const safeCount = Math.max(0, count);
+    localStorage.setItem(UNREAD_BADGE_KEY, String(safeCount));
+    
+    // 1. Support natif de l'API Badging sur l'OS mobile/bureau (PWA Android, iOS 16.4+, macOS, Windows)
+    if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+      if (safeCount > 0) {
+        (navigator as any).setAppBadge(safeCount).catch(() => {});
+      } else {
+        (navigator as any).clearAppBadge().catch(() => {});
+      }
+    }
+
+    // 2. Favicon dynamique avec pastille rouge et chiffre en direct sur l'onglet
+    updateFaviconBadge(safeCount);
+
+    // 3. Titre de l'onglet avec le chiffre : (1) Programas, (2) Programas...
+    updateDocumentTitle(safeCount);
+
+    // 4. Synchronisation instantanée de tous les composants React via événement personnalisé
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('programas-badge-updated', { detail: { count: safeCount } })
+      );
+    }
+  } catch (e) {
+    console.error('Erreur pastille badge:', e);
+  }
+}
+
+export function incrementAppBadge(by = 1): number {
+  const current = getUnreadBadgeCount();
+  const next = current + by;
+  setAppBadgeCount(next);
+  return next;
+}
+
+export function clearAppBadge(): void {
+  setAppBadgeCount(0);
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!isNotificationSupported()) return false;
 
@@ -161,6 +320,7 @@ export function playNotificationSound(urgent = false): void {
 
 export function sendLocalNotification(title: string, body: string, dataUrl?: string, urgent = false): boolean {
   playNotificationSound(urgent);
+  incrementAppBadge(1);
 
   if (!isNotificationSupported()) return false;
   if (Notification.permission !== 'granted') return false;

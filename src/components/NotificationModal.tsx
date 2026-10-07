@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bell, 
   Check, 
@@ -11,7 +11,8 @@ import {
   Heart,
   Send,
   Clock,
-  RotateCcw
+  RotateCcw,
+  Smartphone
 } from 'lucide-react';
 import { 
   NotificationSettings, 
@@ -20,7 +21,11 @@ import {
   sendLocalNotification, 
   isNotificationSupported,
   clearNotificationSignatures,
-  clearSignaturesForDish
+  clearSignaturesForDish,
+  getUnreadBadgeCount,
+  setAppBadgeCount,
+  incrementAppBadge,
+  clearAppBadge
 } from '../utils/notifications';
 
 interface NotificationModalProps {
@@ -54,6 +59,20 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   const [testSent, setTestSent] = useState(false);
   const [resetDone, setResetDone] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [modalBadgeCount, setModalBadgeCount] = useState<number>(() => getUnreadBadgeCount());
+
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ count: number }>;
+      if (customEvent.detail && typeof customEvent.detail.count === 'number') {
+        setModalBadgeCount(customEvent.detail.count);
+      } else {
+        setModalBadgeCount(getUnreadBadgeCount());
+      }
+    };
+    window.addEventListener('programas-badge-updated', handleUpdate);
+    return () => window.removeEventListener('programas-badge-updated', handleUpdate);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -327,6 +346,77 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               onChange={handleToggleNewMenu}
               className="w-5 h-5 accent-[#18181B] rounded-md cursor-pointer shrink-0"
             />
+          </div>
+        </div>
+
+        {/* SECTION DÉDIÉE : PASTILLE ROUGE & CHIFFRES SUR L'APPLICATION (BADGES STYLE IOS / ANDROID) */}
+        <div className="bg-white p-4 rounded-[26px] border border-black/5 shadow-2xs space-y-3">
+          <div className="flex items-center gap-3">
+            {/* Simulation visuelle de l'icône de l'app avec la pastille rouge animée */}
+            <div className="relative shrink-0">
+              <div className="w-12 h-12 rounded-[16px] bg-white border border-amber-300/40 p-1 shadow-sm flex items-center justify-center overflow-hidden">
+                <img src="/icon.svg" alt="App Icon" className="w-full h-full object-contain" />
+              </div>
+              {modalBadgeCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-bounce">
+                  {modalBadgeCount > 99 ? '99+' : modalBadgeCount}
+                </span>
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h5 className="font-extrabold text-xs text-slate-950 leading-tight">
+                  Chiffres & Pastille Rouge sur l'App
+                </h5>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${modalBadgeCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {modalBadgeCount > 0 ? `${modalBadgeCount} non lu(s)` : '0 alerte'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-snug">
+                Chiffre rouge sur l'écran d'accueil du téléphone (Android/iPhone), sur l'onglet du navigateur et dans l'app.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-[#F5F0E8] rounded-2xl flex items-center justify-between text-xs font-bold text-slate-800">
+            <span>Compteur actuel :</span>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${modalBadgeCount > 0 ? 'bg-rose-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'}`}>
+              {modalBadgeCount > 0 ? `${modalBadgeCount} alerte(s) en attente` : '0 (Aucune pastille)'}
+            </span>
+          </div>
+
+          {/* Boutons d'interaction directe pour tester et contrôler la pastille */}
+          <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                incrementAppBadge(1);
+              }}
+              className="py-2 px-2 rounded-full bg-[#18181B] hover:bg-black text-white text-[11px] font-black transition-all active:scale-95 flex items-center justify-center gap-1 shadow-2xs"
+              title="Ajoute 1 notification pour voir le chiffre monter"
+            >
+              <span>🔴 +1 Alerte</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAppBadgeCount(3);
+              }}
+              className="py-2 px-2 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-amber-950 border border-amber-300 text-[11px] font-black transition-all active:scale-95 flex items-center justify-center gap-1 shadow-2xs"
+              title="Met la pastille à 3 pour tester le rendu"
+            >
+              <span>🔴 Mettre à 3</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearAppBadge();
+              }}
+              className="py-2 px-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all active:scale-95 flex items-center justify-center"
+              title="Efface la pastille rouge"
+            >
+              <span>Effacer (0)</span>
+            </button>
           </div>
         </div>
 

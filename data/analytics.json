@@ -1,0 +1,29 @@
+{
+  "totalVisits": 0,
+  "totalUniqueVisitors": 0,
+  "totalInteractions": 0,
+  "totalShares": 0,
+  "uniqueVisitorsList": [],
+  "sharesBreakdown": {
+    "whatsapp": 0,
+    "linkCopied": 0,
+    "systemShare": 0
+  },
+  "interactionsBreakdown": {
+    "favoriteToggle": 0,
+    "menuView": 0,
+    "dateSwitch": 0,
+    "notificationToggle": 0,
+    "dishSearch": 0,
+    "hoursView": 0
+  },
+  "deviceBreakdown": {
+    "android": 0,
+    "ios": 0,
+    "desktop": 0,
+    "other": 0
+  },
+  "dailyStats": {},
+  "recentEvents": [],
+  "lastUpdated": "2026-10-07T08:31:40.445Z"
+}

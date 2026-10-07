@@ -19,6 +19,11 @@ import {
   updateAdminCredentials,
 } from './server/auth.ts';
 import { parseMenuImageWithGemini } from './server/gemini.ts';
+import {
+  recordAnalyticsEvent,
+  getAnalyticsData,
+  resetAnalyticsData,
+} from './server/analytics.ts';
 import type { RestaurantData, ServiceMenu } from './src/types.ts';
 
 dotenv.config();
@@ -255,6 +260,66 @@ app.post('/api/menu/reset', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Reset error:', error);
     return res.status(500).json({ error: 'Erreur de réinitialisation' });
+  }
+});
+
+// 7. ANALYTICS ROUTES (DEVELOPER AUDIENCE & INTERACTION MONITORING)
+// POST /api/analytics/track - Public: anonymous telemetry beacon
+app.post('/api/analytics/track', (req: Request, res: Response) => {
+  try {
+    const { visitorId, type, action, device, metadata } = req.body;
+    if (!visitorId || !type || !action) {
+      return res.status(400).json({ error: 'Données de suivi incomplètes' });
+    }
+    recordAnalyticsEvent({
+      visitorId: String(visitorId).slice(0, 64),
+      type,
+      action,
+      device: typeof device === 'string' ? device.slice(0, 64) : undefined,
+      metadata: typeof metadata === 'object' ? metadata : {},
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Analytics tracking error:', error);
+    return res.status(500).json({ error: 'Erreur enregistrement télémétrie' });
+  }
+});
+
+// GET /api/analytics - Admin/Dev only: get aggregated metrics
+app.get('/api/analytics', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    const data = getAnalyticsData();
+    // Do not expose raw internal visitor IDs array
+    const { uniqueVisitorsList, ...safeData } = data;
+    return res.json({
+      success: true,
+      analytics: safeData,
+    });
+  } catch (error) {
+    console.error('Fetch analytics error:', error);
+    return res.status(500).json({ error: 'Erreur récupération statistiques' });
+  }
+});
+
+// POST /api/analytics/reset - Admin/Dev only: reset metrics
+app.post('/api/analytics/reset', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    const fresh = resetAnalyticsData();
+    const { uniqueVisitorsList, ...safeData } = fresh;
+    return res.json({
+      success: true,
+      message: 'Statistiques réinitialisées avec succès',
+      analytics: safeData,
+    });
+  } catch (error) {
+    console.error('Reset analytics error:', error);
+    return res.status(500).json({ error: 'Erreur réinitialisation statistiques' });
   }
 });
 
