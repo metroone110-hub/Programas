@@ -1,1 +1,54 @@
 @import "tailwindcss";
+
+/* 
+ * Configuration de verrouillage et stabilité Native App 
+ * Élimine le tiraillement élastique ("rubber-banding"), le flottement et les rebonds de fenêtre
+ */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: #F5F0E8;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Permettre la sélection de texte seulement dans les champs de saisie */
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Empêcher le glisser-déposer parasite des images (effet d'image qui flotte ou s'étire) */
+img, svg {
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: auto;
+}
+
+/* Conteneurs avec défilement interne figé et propre */
+.overscroll-contain {
+  overscroll-behavior: contain;
+  -webkit-overscroll-behavior: contain;
+}
+
+/* Masquer les barres de défilement tout en préservant le défilement */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

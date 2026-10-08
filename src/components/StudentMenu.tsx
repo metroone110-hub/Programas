@@ -153,8 +153,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
 
   // Horizontal Swipe Container Ref for native 1:1 finger scrolling
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const touchStartX = useRef<number>(0);
-  const touchStartY = useRef<number>(0);
 
   const [copiedLink, setCopiedLink] = useState(false);
   const [showAllergensFor, setShowAllergensFor] = useState<MenuItem | null>(null);
@@ -242,7 +240,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     return () => clearTimeout(timer);
   }, []);
 
-  // Smoothly scroll container to selected horizontal section
+  // Smoothly scroll container to selected horizontal section (utilisé lors du clic sur un onglet ou bouton)
   const scrollToSection = (sec: HorizontalSection) => {
     setActiveSection(sec);
     if (!scrollContainerRef.current) return;
@@ -254,7 +252,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     });
   };
 
-  // Sync activeSection indicator as user drags / swipes with their fingers
+  // Sync activeSection indicator as user drags / swipes with their fingers (défilement fluide 60fps natif)
   const handleContainerScroll = () => {
     if (!scrollContainerRef.current) return;
     const { scrollLeft, clientWidth } = scrollContainerRef.current;
@@ -263,30 +261,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
     const current = SECTIONS_ORDER[index];
     if (current && current !== activeSection) {
       setActiveSection(current);
-    }
-  };
-
-  // Touch Swipe Gesture Detectors for snappy feel
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
-    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-
-    // Detect intentional horizontal finger swipe
-    if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
-      if (deltaX < 0) {
-        // Swiped Left -> Advance to right section
-        if (activeSection === 'history') scrollToSection('main_menu');
-        else if (activeSection === 'main_menu') scrollToSection('info');
-      } else {
-        // Swiped Right -> Retreat to left section
-        if (activeSection === 'info') scrollToSection('main_menu');
-        else if (activeSection === 'main_menu') scrollToSection('history');
-      }
     }
   };
 
@@ -538,180 +512,183 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
       {/* Container matches the sleek mobile/tablet width */}
       <div className="max-w-md sm:max-w-xl md:max-w-2xl mx-auto px-4 sm:px-6 pt-5 pb-32 space-y-4">
 
-        {/* TOP STATUS BAR & HEADER */}
-        <header className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {/* Avatar / Campus Icon with red badge pastille */}
-            <div className="relative">
-              <div className="w-12 h-12 rounded-[16px] overflow-hidden shadow-sm border border-amber-300/40 shrink-0 bg-white">
-                <img
-                  src="/icon.svg"
-                  alt="Programas Logo"
-                  className="w-full h-full object-cover"
-                />
+        {/* BARRE SUPÉRIEURE FIGÉE (HEADER + ONGLETS HORIZONTAUX ANCRÉS COMME UNE APPLICATION NATIVE) */}
+        <div className="sticky top-0 z-30 bg-[#F5F0E8]/95 backdrop-blur-md pt-2 pb-2.5 space-y-3 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-black/5 shadow-2xs">
+          {/* TOP STATUS BAR & HEADER */}
+          <header className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {/* Avatar / Campus Icon with red badge pastille */}
+              <div className="relative">
+                <div className="w-12 h-12 rounded-[16px] overflow-hidden shadow-sm border border-amber-300/40 shrink-0 bg-white">
+                  <img
+                    src="/icon.svg"
+                    alt="Programas Logo"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                {unreadBadgeCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-bounce">
+                    {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
+                  </span>
+                )}
               </div>
-              {unreadBadgeCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-bounce">
-                  {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
-                </span>
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-extrabold text-slate-950 text-base leading-none tracking-tight">
-                  Programas
-                </h1>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FEF3C7] text-amber-900">
-                  CROU-K
-                </span>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h1 className="font-extrabold text-slate-950 text-base leading-none tracking-tight">
+                    Programas
+                  </h1>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FEF3C7] text-amber-900">
+                    CROU-K
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-[#F5B726] shrink-0" />
+                  <span>Resto U · UPGC Korhogo</span>
+                </p>
               </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-[#F5B726] shrink-0" />
-                <span>Resto U · UPGC Korhogo</span>
-              </p>
             </div>
-          </div>
 
-          {/* Action icon buttons: Bell, WhatsApp, Admin */}
-          <div className="flex items-center gap-2">
-            {/* Cloche de notifications avec la vraie pastille rouge numérotée (style iOS / Android) */}
-            <button
-              onClick={() => {
-                setShowNotificationModal(true);
-                clearAppBadge();
-                setUnreadBadgeCount(0);
-              }}
-              className="w-10 h-10 rounded-full bg-white text-slate-800 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95 shrink-0"
-              title="Centre de notifications et alertes"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadBadgeCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-pulse">
-                  {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
-                </span>
-              )}
-            </button>
+            {/* Action icon buttons: Bell, WhatsApp, Admin */}
+            <div className="flex items-center gap-2">
+              {/* Cloche de notifications avec la vraie pastille rouge numérotée (style iOS / Android) */}
+              <button
+                onClick={() => {
+                  setShowNotificationModal(true);
+                  clearAppBadge();
+                  setUnreadBadgeCount(0);
+                }}
+                className="w-10 h-10 rounded-full bg-white text-slate-800 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95 shrink-0"
+                title="Centre de notifications et alertes"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadBadgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-pulse">
+                    {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
+                  </span>
+                )}
+              </button>
 
-            {/* Quick WhatsApp Share Button in Header */}
-            <a
-              href={whatsappShareUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => trackShare('whatsapp_share', { date: selectedDate, service: selectedService, location: 'header' })}
-              className="w-10 h-10 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xs border border-emerald-600/20 flex items-center justify-center transition-transform active:scale-95 shrink-0"
-              title="Partager le menu sur WhatsApp"
-            >
-              <WhatsAppIcon className="w-4 h-4 fill-white" />
-            </a>
+              {/* Quick WhatsApp Share Button in Header */}
+              <a
+                href={whatsappShareUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackShare('whatsapp_share', { date: selectedDate, service: selectedService, location: 'header' })}
+                className="w-10 h-10 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xs border border-emerald-600/20 flex items-center justify-center transition-transform active:scale-95 shrink-0"
+                title="Partager le menu sur WhatsApp"
+              >
+                <WhatsAppIcon className="w-4 h-4 fill-white" />
+              </a>
 
-            <button
-              onClick={onOpenAdmin}
-              className="px-3.5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"
-              title="Espace Gestionnaire"
-            >
-              <ChefHat className="w-3.5 h-3.5 text-[#F5B726]" />
-              <span className="hidden sm:inline">Admin</span>
-            </button>
-          </div>
-        </header>
+              <button
+                onClick={onOpenAdmin}
+                className="px-3.5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"
+                title="Espace Gestionnaire"
+              >
+                <ChefHat className="w-3.5 h-3.5 text-[#F5B726]" />
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            </div>
+          </header>
 
-        {/* HORIZONTAL NAVIGATION BAR (DE GAUCHE À DROITE) */}
-        <div className="space-y-1.5">
-          <nav aria-label="Sections horizontales" className="bg-white p-1.5 rounded-[28px] border border-black/5 shadow-xs flex items-center justify-between gap-1">
-            {/* Gauche : Jours Passés (-3j) */}
-            <button
-              onClick={() => scrollToSection('history')}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
-                activeSection === 'history'
-                  ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
-                  : 'text-slate-600 hover:text-black hover:bg-slate-100'
-              }`}
-            >
-              <span>📅</span>
-              <span className="truncate">Jours Passés</span>
-            </button>
-
-            {/* Centre : Page Principale (Menu du Jour) */}
-            <button
-              onClick={() => {
-                scrollToSection('main_menu');
-                setSelectedDate(todayStr);
-              }}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
-                activeSection === 'main_menu'
-                  ? 'bg-[#F5B726] text-slate-950 shadow-md font-black scale-[1.03] ring-2 ring-amber-400/40'
-                  : 'text-slate-600 hover:text-black hover:bg-slate-100'
-              }`}
-            >
-              <span>🍽️</span>
-              <span className="truncate">Menu du Jour</span>
-            </button>
-
-            {/* Droite : Alertes & Infos Pratiques */}
-            <button
-              onClick={() => {
-                scrollToSection('info');
-                clearAppBadge();
-                setUnreadBadgeCount(0);
-              }}
-              className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black relative ${
-                activeSection === 'info'
-                  ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
-                  : 'text-slate-600 hover:text-black hover:bg-slate-100'
-              }`}
-            >
-              <span>🔔</span>
-              <span className="truncate">Alertes & Infos</span>
-              {unreadBadgeCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-black shrink-0">
-                  {unreadBadgeCount}
-                </span>
-              )}
-            </button>
-          </nav>
-
-          {/* Swipe indicator dots & touch hint */}
-          <div className="flex items-center justify-between px-2 text-[11px] font-semibold text-slate-400">
-            <button 
-              onClick={() => scrollToSection('history')} 
-              className="flex items-center gap-1 hover:text-slate-700"
-            >
-              <ChevronLeft className="w-3 h-3 text-[#F5B726]" />
-              <span>Jours passés</span>
-            </button>
-
-            {/* Dots */}
-            <div className="flex items-center gap-1.5">
+          {/* HORIZONTAL NAVIGATION BAR (DE GAUCHE À DROITE) */}
+          <div className="space-y-1.5">
+            <nav aria-label="Sections horizontales" className="bg-white p-1.5 rounded-[28px] border border-black/5 shadow-xs flex items-center justify-between gap-1">
+              {/* Gauche : Jours Passés (-3j) */}
               <button
                 onClick={() => scrollToSection('history')}
-                className={`h-1.5 rounded-full transition-all ${
-                  activeSection === 'history' ? 'w-5 bg-[#18181B]' : 'w-2 bg-slate-300'
+                className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+                  activeSection === 'history'
+                    ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
+                    : 'text-slate-600 hover:text-black hover:bg-slate-100'
                 }`}
-                title="Jours passés"
-              />
-              <button
-                onClick={() => scrollToSection('main_menu')}
-                className={`h-1.5 rounded-full transition-all ${
-                  activeSection === 'main_menu' ? 'w-6 bg-[#F5B726]' : 'w-2 bg-slate-300'
-                }`}
-                title="Menu du jour"
-              />
-              <button
-                onClick={() => scrollToSection('info')}
-                className={`h-1.5 rounded-full transition-all ${
-                  activeSection === 'info' ? 'w-5 bg-[#18181B]' : 'w-2 bg-slate-300'
-                }`}
-                title="Alertes & infos"
-              />
-            </div>
+              >
+                <span>📅</span>
+                <span className="truncate">Jours Passés</span>
+              </button>
 
-            <button 
-              onClick={() => scrollToSection('info')} 
-              className="flex items-center gap-1 hover:text-slate-700"
-            >
-              <span>Alertes & infos</span>
-              <ChevronRight className="w-3 h-3 text-[#F5B726]" />
-            </button>
+              {/* Centre : Page Principale (Menu du Jour) */}
+              <button
+                onClick={() => {
+                  scrollToSection('main_menu');
+                  setSelectedDate(todayStr);
+                }}
+                className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+                  activeSection === 'main_menu'
+                    ? 'bg-[#F5B726] text-slate-950 shadow-md font-black scale-[1.03] ring-2 ring-amber-400/40'
+                    : 'text-slate-600 hover:text-black hover:bg-slate-100'
+                }`}
+              >
+                <span>🍽️</span>
+                <span className="truncate">Menu du Jour</span>
+              </button>
+
+              {/* Droite : Alertes & Infos Pratiques */}
+              <button
+                onClick={() => {
+                  scrollToSection('info');
+                  clearAppBadge();
+                  setUnreadBadgeCount(0);
+                }}
+                className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black relative ${
+                  activeSection === 'info'
+                    ? 'bg-[#18181B] text-white shadow-sm scale-[1.02]'
+                    : 'text-slate-600 hover:text-black hover:bg-slate-100'
+                }`}
+              >
+                <span>🔔</span>
+                <span className="truncate">Alertes & Infos</span>
+                {unreadBadgeCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-black shrink-0">
+                    {unreadBadgeCount}
+                  </span>
+                )}
+              </button>
+            </nav>
+
+            {/* Swipe indicator dots & touch hint */}
+            <div className="flex items-center justify-between px-2 text-[11px] font-semibold text-slate-400">
+              <button 
+                onClick={() => scrollToSection('history')} 
+                className="flex items-center gap-1 hover:text-slate-700"
+              >
+                <ChevronLeft className="w-3 h-3 text-[#F5B726]" />
+                <span>Jours passés</span>
+              </button>
+
+              {/* Dots */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => scrollToSection('history')}
+                  className={`h-1.5 rounded-full transition-all ${
+                    activeSection === 'history' ? 'w-5 bg-[#18181B]' : 'w-2 bg-slate-300'
+                  }`}
+                  title="Jours passés"
+                />
+                <button
+                  onClick={() => scrollToSection('main_menu')}
+                  className={`h-1.5 rounded-full transition-all ${
+                    activeSection === 'main_menu' ? 'w-6 bg-[#F5B726]' : 'w-2 bg-slate-300'
+                  }`}
+                  title="Menu du jour"
+                />
+                <button
+                  onClick={() => scrollToSection('info')}
+                  className={`h-1.5 rounded-full transition-all ${
+                    activeSection === 'info' ? 'w-5 bg-[#18181B]' : 'w-2 bg-slate-300'
+                  }`}
+                  title="Alertes & infos"
+                />
+              </div>
+
+              <button 
+                onClick={() => scrollToSection('info')} 
+                className="flex items-center gap-1 hover:text-slate-700"
+              >
+                <span>Alertes & infos</span>
+                <ChevronRight className="w-3 h-3 text-[#F5B726]" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -800,10 +777,13 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         <div
           ref={scrollContainerRef}
           onScroll={handleContainerScroll}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          className="flex w-full overflow-x-auto snap-x snap-mandatory no-scrollbar transition-all scroll-smooth"
-          style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch' }}
+          className="flex w-full overflow-x-auto snap-x snap-mandatory no-scrollbar overscroll-contain select-none"
+          style={{ 
+            scrollSnapType: 'x mandatory', 
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorX: 'contain',
+            touchAction: 'pan-x pan-y'
+          }}
         >
 
           {/* --------------------------------------------------------------------------------------- */}
@@ -1528,7 +1508,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
         {/* FLOATING DARK BOTTOM NAVIGATION DOCK (DE GAUCHE À DROITE) */}
         <nav 
           aria-label="Menu principal" 
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-[#18181B] text-white px-5 sm:px-6 py-2.5 rounded-full flex items-center gap-6 sm:gap-7 shadow-2xl border border-white/10 backdrop-blur-md"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 bg-[#18181B] text-white px-5 sm:px-6 py-2.5 rounded-full flex items-center gap-6 sm:gap-7 shadow-2xl border border-white/10 backdrop-blur-md select-none"
         >
           {/* 1. Gauche : Jours Passés */}
           <button
