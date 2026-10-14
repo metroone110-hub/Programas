@@ -1237,7 +1237,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 flex flex-col justify-center">
                   <span className="font-bold text-slate-900 mb-1">ℹ️ Règle de tarification UPGC</span>
-                  <span>Conformément aux instructions, le ticket repas est facturé à 200 FCFA de manière uniforme. Le paiement des tickets s'effectue exclusivement via Wave.</span>
+                  <span>Conformément aux instructions, le ticket repas est facturé à 200 FCFA de manière uniforme. Les moyens de paiement acceptés incluent les tickets CROU-K physiques et les portefeuilles Wave, Orange Money et MTN MoMo.</span>
                 </div>
               </div>
             </div>

@@ -15,7 +15,7 @@ const INITIAL_DATA: RestaurantData = {
   campus: 'Campus Principal UPGC, Korhogo (Côte d’Ivoire)',
   address: 'BP 1328 Korhogo, Région du Poro, Côte d’Ivoire',
   announcement: '🇨🇮 Bienvenue sur Programas - Resto U UPGC Korhogo (CROU-K)',
-  paymentMethods: ['Wave', 'Tickets CROU-K'],
+  paymentMethods: ['Tickets CROU-K', 'Wave', 'Orange Money', 'MTN Mobile Money', 'Moov Money'],
   pricing: {
     ticketUnique: 200, // 200 FCFA pour tout le monde
     boursier: 200,

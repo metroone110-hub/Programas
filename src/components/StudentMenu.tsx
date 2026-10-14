@@ -27,15 +27,13 @@ import {
   ChevronLeft,
   ChevronRight,
   MoveHorizontal,
-  Smartphone,
-  Ticket
+  Smartphone
 } from 'lucide-react';
 import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType } from '../types';
 import { DietaryBadge } from './Badge';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
 import { DuolingoMealPopup } from './DuolingoMealPopup';
-import { StudentTicketsModal } from './StudentTicketsModal';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
@@ -160,27 +158,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   const [showAllergensFor, setShowAllergensFor] = useState<MenuItem | null>(null);
   const [showHoursModal, setShowHoursModal] = useState<boolean>(false);
   const [showNotificationModal, setShowNotificationModal] = useState<boolean>(false);
-  const [showTicketsModal, setShowTicketsModal] = useState<boolean>(false);
-  const [activeTicketsCount, setActiveTicketsCount] = useState<number>(0);
-
-  const fetchActiveTicketsCount = async () => {
-    try {
-      const visitorId = getOrGenerateVisitorId();
-      const res = await fetch(`/api/tickets/my-tickets?visitorId=${encodeURIComponent(visitorId)}`);
-      if (res.ok) {
-        const json = await res.json();
-        const valid = (json.tickets || []).filter((t: any) => t.status === 'valid');
-        setActiveTicketsCount(valid.length);
-      }
-    } catch {
-      // Graceful non-blocking fallback
-    }
-  };
-
-  useEffect(() => {
-    fetchActiveTicketsCount();
-  }, []);
-
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getNotificationSettings());
   const [alertToast, setAlertToast] = useState<string | null>(null);
   const [activeInAppAlert, setActiveInAppAlert] = useState<InAppAlert | null>(null);
@@ -614,24 +591,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </button>
             </div>
           </header>
-
-          {/* BANNIÈRE COLORÉE D'ACCÈS RAPIDE AUX TICKETS (TABLEAUX DE COULEUR 200 F & SOUCHE 2000 F) */}
-          <button
-            onClick={() => setShowTicketsModal(true)}
-            className="w-full py-2.5 px-3.5 rounded-[20px] bg-gradient-to-r from-[#FEF3C7] via-[#FFFBEB] to-[#DCFCE7] border border-amber-300 text-slate-900 text-xs font-bold flex items-center justify-between shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
-            title="Consulter les tarifs des tickets 200 F & 2 000 F via Wave"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-base">🎟️</span>
-              <span className="font-extrabold text-slate-900 text-xs">
-                Tickets : <span className="text-amber-900">200 F</span> & <span className="text-emerald-800">Souche 2 000 F</span>
-              </span>
-            </div>
-            <span className="text-[11px] font-black text-[#0066FF] flex items-center gap-1">
-              <span>Wave 🌊</span>
-              <span className="text-slate-400 font-bold">›</span>
-            </span>
-          </button>
 
           {/* HORIZONTAL NAVIGATION BAR (DE GAUCHE À DROITE) */}
           <div className="space-y-1.5">
@@ -1439,47 +1398,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </div>
             </div>
 
-            {/* CARTE ESPACE TICKETS VIRTUELS (200 FCFA & SOUCHE 2 000 FCFA) */}
-            <div className="bg-white p-5 rounded-[28px] border-2 border-amber-300 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-[#FEF3C7] text-amber-950 font-black flex items-center justify-center border border-amber-300">
-                    <Ticket className="w-5 h-5 text-amber-800" />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-slate-950 text-sm">
-                      Tickets Virtuels & Souche 2 000 F
-                    </h4>
-                    <span className="text-[10px] font-black uppercase bg-[#18181B] text-white px-2 py-0.5 rounded-full">
-                      Guichet UPGC Korhogo
-                    </span>
-                  </div>
-                </div>
-                {activeTicketsCount > 0 && (
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500 text-white text-xs font-black">
-                    {activeTicketsCount} actif(s)
-                  </span>
-                )}
-              </div>
-
-              <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                Consultez vos tickets de cantine et présentez votre QR code au guichet du Resto U (200 FCFA le repas / 2 000 FCFA la souche de 10 tickets).
-              </p>
-
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
-                  Bientôt disponible
-                </span>
-                <button
-                  onClick={() => setShowTicketsModal(true)}
-                  className="px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black inline-flex items-center gap-1.5 shadow-sm transition-transform active:scale-95"
-                >
-                  <Ticket className="w-3.5 h-3.5 text-[#F5B726]" />
-                  <span>Ouvrir mes tickets</span>
-                </button>
-              </div>
-            </div>
-
             {/* Carte Rappels Incessants Duolingo */}
             <div className="bg-white p-5 rounded-[28px] border-2 border-[#F5B726] shadow-xs space-y-3">
               <div className="flex items-center justify-between">
@@ -1695,13 +1613,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             const alert = triggerTestMealTimeAlert(slot);
             setActiveInAppAlert(alert);
           }}
-        />
-
-        {/* Modal Espace Tickets CROU-K (200 F / Souche 2 000 F) */}
-        <StudentTicketsModal
-          isOpen={showTicketsModal}
-          onClose={() => setShowTicketsModal(false)}
-          onTicketsUpdated={fetchActiveTicketsCount}
         />
 
         {/* ALLERGENS MODAL */}
