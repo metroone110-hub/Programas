@@ -91,3 +91,46 @@ export interface ScanMenuResult {
   pricing?: Partial<RestaurantPricing>;
   detectedNotes?: string;
 }
+
+export type TicketStatus = 'valid' | 'used' | 'expired';
+
+export interface VirtualTicket {
+  id: string;
+  token: string;
+  type: 'unitaire' | 'carnet_unit';
+  packId?: string;
+  unitIndex?: number;
+  label: string;
+  price: number;
+  currency: string;
+  status: TicketStatus;
+  createdAt: string;
+  usedAt?: string;
+  validatedBy?: string;
+  securityCode: string;
+  studentVisitorId: string;
+}
+
+export interface TicketValidationResult {
+  success: boolean;
+  code: 'VALID' | 'ALREADY_USED' | 'NOT_FOUND' | 'EXPIRED';
+  message: string;
+  ticket?: VirtualTicket;
+  alreadyUsedAt?: string;
+}
+
+export interface TicketStats {
+  totalCreated: number;
+  totalValid: number;
+  totalUsed: number;
+  revenueEstFCFA: number;
+  todayUsedCount: number;
+  todayFraudAttemptsBlocked: number;
+  recentScans: Array<{
+    ticketId: string;
+    token: string;
+    status: TicketStatus;
+    validatedAt: string;
+    isDoubleAttempt?: boolean;
+  }>;
+}

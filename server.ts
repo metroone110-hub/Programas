@@ -18,12 +18,21 @@ import {
   verifySessionToken,
   updateAdminCredentials,
 } from './server/auth.ts';
-import { parseMenuImageWithGemini } from './server/gemini.ts';
+import {
+  parseMenuImageWithGemini,
+} from './server/gemini.ts';
 import {
   recordAnalyticsEvent,
   getAnalyticsData,
   resetAnalyticsData,
 } from './server/analytics.ts';
+import {
+  getStudentTickets,
+  createStudentTickets,
+  validateTicketAtCounter,
+  getTicketStats,
+  resetAllTickets,
+} from './server/tickets.ts';
 import type { RestaurantData, ServiceMenu } from './src/types.ts';
 
 dotenv.config();
@@ -320,6 +329,82 @@ app.post('/api/analytics/reset', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Reset analytics error:', error);
     return res.status(500).json({ error: 'Erreur réinitialisation statistiques' });
+  }
+});
+
+// 8. VIRTUAL TICKETS ENDPOINTS (CROU-K TICKETING & VERIFICATION)
+// GET /api/tickets/my-tickets - Fetch tickets for a student
+app.get('/api/tickets/my-tickets', (req: Request, res: Response) => {
+  try {
+    const visitorId = String(req.query.visitorId || '');
+    if (!visitorId) {
+      return res.json({ tickets: [] });
+    }
+    const tickets = getStudentTickets(visitorId);
+    return res.json({ tickets });
+  } catch (error) {
+    console.error('Fetch student tickets error:', error);
+    return res.status(500).json({ error: 'Erreur récupération des tickets' });
+  }
+});
+
+// POST /api/tickets/create-demo - Create demo tickets (unitaire 200 FCFA or souche 2000 FCFA)
+app.post('/api/tickets/create-demo', (req: Request, res: Response) => {
+  try {
+    const { visitorId, type } = req.body;
+    if (!visitorId) {
+      return res.status(400).json({ error: 'Identifiant étudiant manquant' });
+    }
+    const tickets = createStudentTickets(visitorId, type === 'souche' ? 'souche' : 'unitaire');
+    return res.json({
+      success: true,
+      message: type === 'souche' ? 'Carnet de 10 tickets (2 000 FCFA) généré' : 'Ticket repas (200 FCFA) généré',
+      tickets,
+    });
+  } catch (error) {
+    console.error('Create demo ticket error:', error);
+    return res.status(500).json({ error: 'Erreur création ticket' });
+  }
+});
+
+// POST /api/tickets/validate - Admin counter verification
+app.post('/api/tickets/validate', (req: Request, res: Response) => {
+  try {
+    const { tokenOrCode, validatedBy } = req.body;
+    const result = validateTicketAtCounter(tokenOrCode, validatedBy || 'Guichet Resto U UPGC');
+    return res.json(result);
+  } catch (error) {
+    console.error('Validate ticket error:', error);
+    return res.status(500).json({
+      success: false,
+      code: 'NOT_FOUND',
+      message: 'Erreur serveur lors de la validation du ticket',
+    });
+  }
+});
+
+// GET /api/tickets/stats - Admin ticket statistics & fraud monitor
+app.get('/api/tickets/stats', (req: Request, res: Response) => {
+  try {
+    const stats = getTicketStats();
+    return res.json(stats);
+  } catch (error) {
+    console.error('Fetch ticket stats error:', error);
+    return res.status(500).json({ error: 'Erreur récupération statistiques tickets' });
+  }
+});
+
+// POST /api/tickets/reset - Admin: reset ticket storage
+app.post('/api/tickets/reset', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    resetAllTickets();
+    return res.json({ success: true, message: 'Registre de tickets réinitialisé' });
+  } catch (error) {
+    console.error('Reset tickets error:', error);
+    return res.status(500).json({ error: 'Erreur réinitialisation tickets' });
   }
 });
 

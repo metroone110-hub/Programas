@@ -1,5 +1,10 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import type { ScanMenuResult, MealCategory, DietaryTag, ServiceType } from '../src/types.ts';
+import type { 
+  ScanMenuResult, 
+  MealCategory, 
+  DietaryTag, 
+  ServiceType 
+} from '../src/types.ts';
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -59,7 +64,7 @@ Détecte si possible :
   };
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+    model: 'gemini-2.5-flash',
     contents: {
       parts: [imagePart, textPart],
     },

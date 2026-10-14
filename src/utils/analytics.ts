@@ -4,7 +4,7 @@
 const VISITOR_ID_KEY = 'programas_anon_visitor_id';
 const SESSION_VISIT_KEY = 'programas_session_tracked';
 
-function getOrGenerateVisitorId(): string {
+export function getOrGenerateVisitorId(): string {
   try {
     let id = localStorage.getItem(VISITOR_ID_KEY);
     if (!id) {

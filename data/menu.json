@@ -6,11 +6,8 @@
   "address": "BP 1328 Korhogo, Région du Poro, Côte d’Ivoire",
   "announcement": "",
   "paymentMethods": [
-    "Tickets CROU-K",
     "Wave",
-    "Orange Money",
-    "MTN Mobile Money",
-    "Moov Money"
+    "Tickets CROU-K"
   ],
   "pricing": {
     "ticketUnique": 200,

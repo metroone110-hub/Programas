@@ -32,6 +32,7 @@ import type {
 import { DietaryBadge, TAG_LABELS } from './Badge';
 import { AIScanModal } from './AIScanModal';
 import { AdminAnalyticsView } from './AdminAnalyticsView';
+import { AdminTicketScanner } from './AdminTicketScanner';
 
 interface AdminPanelProps {
   data: RestaurantData;
@@ -77,8 +78,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [securityError, setSecurityError] = useState<string | null>(null);
   const [isUpdatingSecurity, setIsUpdatingSecurity] = useState<boolean>(false);
 
-  // Active Admin Tab: 'menu' | 'hours_tarifs' | 'analytics' | 'security'
-  const [activeTab, setActiveTab] = useState<'menu' | 'hours_tarifs' | 'analytics' | 'security'>('menu');
+  // Active Admin Tab: 'menu' | 'hours_tarifs' | 'tickets' | 'analytics' | 'security'
+  const [activeTab, setActiveTab] = useState<'menu' | 'hours_tarifs' | 'tickets' | 'analytics' | 'security'>('menu');
 
   // Working state for menu editing
   const [workingMenu, setWorkingMenu] = useState<ServiceMenu>(() => JSON.parse(JSON.stringify(data.currentMenu)));
@@ -725,6 +726,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <span>⚙️ Tarifs & Horaires (200 FCFA)</span>
           </button>
           <button
+            onClick={() => setActiveTab('tickets')}
+            className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+              activeTab === 'tickets'
+                ? 'border-[#F5B726] text-[#F5B726]'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>🎟️ Guichet & Scanner Tickets</span>
+          </button>
+          <button
             onClick={() => setActiveTab('analytics')}
             className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'analytics'
@@ -1237,7 +1248,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 flex flex-col justify-center">
                   <span className="font-bold text-slate-900 mb-1">ℹ️ Règle de tarification UPGC</span>
-                  <span>Conformément aux instructions, le ticket repas est facturé à 200 FCFA de manière uniforme. Les moyens de paiement acceptés incluent les tickets CROU-K physiques et les portefeuilles Wave, Orange Money et MTN MoMo.</span>
+                  <span>Conformément aux instructions, le ticket repas est facturé à 200 FCFA de manière uniforme. Le paiement des tickets s'effectue exclusivement via Wave.</span>
                 </div>
               </div>
             </div>
@@ -1294,6 +1305,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB: GUICHET & SCANNER TICKETS CROU-K */}
+        {activeTab === 'tickets' && (
+          <div className="max-w-6xl mx-auto">
+            <AdminTicketScanner token={token} />
           </div>
         )}
 
