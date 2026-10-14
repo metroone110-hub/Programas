@@ -32,7 +32,6 @@ import type {
 import { DietaryBadge, TAG_LABELS } from './Badge';
 import { AIScanModal } from './AIScanModal';
 import { AdminAnalyticsView } from './AdminAnalyticsView';
-import { AdminTicketScanner } from './AdminTicketScanner';
 
 interface AdminPanelProps {
   data: RestaurantData;
@@ -78,8 +77,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [securityError, setSecurityError] = useState<string | null>(null);
   const [isUpdatingSecurity, setIsUpdatingSecurity] = useState<boolean>(false);
 
-  // Active Admin Tab: 'menu' | 'hours_tarifs' | 'tickets' | 'analytics' | 'security'
-  const [activeTab, setActiveTab] = useState<'menu' | 'hours_tarifs' | 'tickets' | 'analytics' | 'security'>('menu');
+  // Active Admin Tab: 'menu' | 'hours_tarifs' | 'analytics' | 'security'
+  const [activeTab, setActiveTab] = useState<'menu' | 'hours_tarifs' | 'analytics' | 'security'>('menu');
 
   // Working state for menu editing
   const [workingMenu, setWorkingMenu] = useState<ServiceMenu>(() => JSON.parse(JSON.stringify(data.currentMenu)));
@@ -726,16 +725,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <span>⚙️ Tarifs & Horaires (200 FCFA)</span>
           </button>
           <button
-            onClick={() => setActiveTab('tickets')}
-            className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-              activeTab === 'tickets'
-                ? 'border-[#F5B726] text-[#F5B726]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🎟️ Guichet & Scanner Tickets</span>
-          </button>
-          <button
             onClick={() => setActiveTab('analytics')}
             className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'analytics'
@@ -1305,13 +1294,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
             </div>
-          </div>
-        )}
-
-        {/* TAB: GUICHET & SCANNER TICKETS CROU-K */}
-        {activeTab === 'tickets' && (
-          <div className="max-w-6xl mx-auto">
-            <AdminTicketScanner token={token} />
           </div>
         )}
 

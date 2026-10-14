@@ -571,27 +571,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </div>
             </div>
 
-            {/* Action icon buttons: Tickets, Bell, WhatsApp, Admin */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* Espace Tickets CROU-K (200 F / Souche 2 000 F) */}
-              <button
-                onClick={() => setShowTicketsModal(true)}
-                className="h-10 px-3 sm:px-3.5 rounded-full bg-white hover:bg-slate-50 text-slate-800 shadow-xs border border-black/5 flex items-center gap-1.5 transition-transform active:scale-95 shrink-0"
-                title="Espace Tickets Virtuels (200 F & Souche 2 000 F)"
-              >
-                <Ticket className="w-4 h-4 text-amber-600" />
-                <span className="text-xs font-black hidden xs:inline sm:inline">Tickets</span>
-                {activeTicketsCount > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px] font-black">
-                    {activeTicketsCount}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-extrabold text-amber-900 bg-[#FEF3C7] px-1.5 py-0.5 rounded-full">
-                    200 F
-                  </span>
-                )}
-              </button>
-
+            {/* Action icon buttons: Bell, WhatsApp, Admin */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Cloche de notifications avec la vraie pastille rouge numérotée (style iOS / Android) */}
               <button
                 onClick={() => {
@@ -599,12 +580,12 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                   clearAppBadge();
                   setUnreadBadgeCount(0);
                 }}
-                className="w-10 h-10 rounded-full bg-white text-slate-800 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95 shrink-0"
+                className="w-9 h-9 rounded-full bg-white text-slate-800 hover:text-black hover:bg-slate-50 shadow-xs border border-black/5 flex items-center justify-center relative transition-transform active:scale-95 shrink-0"
                 title="Centre de notifications et alertes"
               >
                 <Bell className="w-4 h-4" />
                 {unreadBadgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-md animate-pulse">
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center border-2 border-white shadow-md animate-pulse">
                     {unreadBadgeCount > 99 ? '99+' : unreadBadgeCount}
                   </span>
                 )}
@@ -616,22 +597,41 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => trackShare('whatsapp_share', { date: selectedDate, service: selectedService, location: 'header' })}
-                className="w-10 h-10 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xs border border-emerald-600/20 flex items-center justify-center transition-transform active:scale-95 shrink-0"
+                className="w-9 h-9 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xs border border-emerald-600/20 flex items-center justify-center transition-transform active:scale-95 shrink-0"
                 title="Partager le menu sur WhatsApp"
               >
                 <WhatsAppIcon className="w-4 h-4 fill-white" />
               </a>
 
+              {/* BOUTON ADMINISTRATEUR : VISIBLE À 100% ET CLAIR */}
               <button
                 onClick={onOpenAdmin}
-                className="px-3.5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"
-                title="Espace Gestionnaire"
+                className="h-9 px-3.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"
+                title="Espace Gestionnaire / Administration"
               >
                 <ChefHat className="w-3.5 h-3.5 text-[#F5B726]" />
-                <span className="hidden sm:inline">Admin</span>
+                <span>Admin</span>
               </button>
             </div>
           </header>
+
+          {/* BANNIÈRE COLORÉE D'ACCÈS RAPIDE AUX TICKETS (TABLEAUX DE COULEUR 200 F & SOUCHE 2000 F) */}
+          <button
+            onClick={() => setShowTicketsModal(true)}
+            className="w-full py-2.5 px-3.5 rounded-[20px] bg-gradient-to-r from-[#FEF3C7] via-[#FFFBEB] to-[#DCFCE7] border border-amber-300 text-slate-900 text-xs font-bold flex items-center justify-between shadow-2xs hover:shadow-xs transition-all active:scale-[0.99]"
+            title="Consulter les tarifs des tickets 200 F & 2 000 F via Wave"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">🎟️</span>
+              <span className="font-extrabold text-slate-900 text-xs">
+                Tickets : <span className="text-amber-900">200 F</span> & <span className="text-emerald-800">Souche 2 000 F</span>
+              </span>
+            </div>
+            <span className="text-[11px] font-black text-[#0066FF] flex items-center gap-1">
+              <span>Wave 🌊</span>
+              <span className="text-slate-400 font-bold">›</span>
+            </span>
+          </button>
 
           {/* HORIZONTAL NAVIGATION BAR (DE GAUCHE À DROITE) */}
           <div className="space-y-1.5">
