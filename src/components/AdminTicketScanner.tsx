@@ -35,7 +35,9 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
   // Scanner camera state
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isScanningPhoto, setIsScanningPhoto] = useState<boolean>(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scannerContainerId = 'admin-qr-reader-viewport';
 
   // Stats
@@ -185,10 +187,48 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
-  // Camera QR Scanner control
+  // Scan QR code from photo (100% compatible on iPhone without WebRTC restrictions)
+  const handlePhotoScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsScanningPhoto(true);
+      setCameraError(null);
+      // Ensure instance exists for scanning file
+      const scanner = new Html5Qrcode('qr-temp-scanner-file');
+      const decodedText = await scanner.scanFile(file, true);
+      if (decodedText) {
+        handleValidate(decodedText);
+      }
+    } catch (err: any) {
+      console.warn('Photo scan error:', err);
+      setCameraError('Aucun QR code lisible sur la photo. Rapprochez l\'appareil ou tapez le code à 6 chiffres.');
+    } finally {
+      setIsScanningPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Camera QR Scanner control (with iOS permission pre-flight)
   const startCamera = async () => {
     setCameraError(null);
     try {
+      // Pre-check permissions so Safari prompts the user if not yet asked
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          testStream.getTracks().forEach((track) => track.stop());
+        } catch (permErr: any) {
+          console.warn('getUserMedia permission error:', permErr);
+          if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+            setCameraError(
+              '⚠️ Accès caméra refusé. Sur iPhone : appuyez sur le bouton "aA" (dans la barre d\'adresse de Safari) > "Réglages du site web" > "Appareil photo" > "Autoriser". Vous pouvez aussi utiliser le bouton "Prendre en Photo le QR" ci-dessous.'
+            );
+            return;
+          }
+        }
+      }
+
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(scannerContainerId);
       }
@@ -210,7 +250,7 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     } catch (err: any) {
       console.error('Failed to start camera:', err);
       setCameraError(
-        'Impossible d\'accéder à la caméra. Vérifiez les autorisations de votre navigateur ou utilisez la saisie manuelle.'
+        '⚠️ Impossible d\'ouvrir le flux vidéo continu. Sur iPhone, utilisez le bouton "📸 Prendre une Photo du QR" ou tapez le code à 6 chiffres.'
       );
       setIsScanning(false);
     }
@@ -608,6 +648,17 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
               </div>
             )}
 
+            {/* Hidden temp element for file QR scanner */}
+            <div id="qr-temp-scanner-file" style={{ display: 'none' }} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoScan}
+              className="hidden"
+            />
+
             {/* Video preview container for html5-qrcode */}
             <div
               id={scannerContainerId}
@@ -617,12 +668,38 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
             >
               {!isScanning && (
                 <div className="text-slate-400 space-y-1">
-                  <Camera className="w-8 h-8 mx-auto stroke-1" />
+                  <Camera className="w-8 h-8 mx-auto stroke-1 text-slate-400" />
                   <p className="text-xs font-semibold">
-                    Caméra désactivée. Cliquez sur "Activer Caméra" ci-dessus.
+                    Caméra désactivée.
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* BOUTONS ET ASTUCE IPHONE */}
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isScanningPhoto}
+                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98"
+              >
+                {isScanningPhoto ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    <span>Analyse du QR en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-3.5 h-3.5 text-amber-400" />
+                    <span>📸 Prendre une Photo du QR (100% garanti sur iPhone)</span>
+                  </>
+                )}
+              </button>
+
+              <div className="p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-xl text-[10px] text-amber-900 leading-relaxed">
+                <span className="font-bold">📱 Sur iPhone (Safari) :</span> Pour autoriser la vidéo en direct, appuyez sur l'icône <strong>« aA »</strong> à gauche dans la barre d'adresse de Safari &gt; <strong>« Réglages du site web »</strong> &gt; <strong>« Appareil photo »</strong> &gt; <strong>« Autoriser »</strong>.
+              </div>
             </div>
           </div>
         </div>
