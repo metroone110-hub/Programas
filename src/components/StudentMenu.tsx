@@ -27,13 +27,15 @@ import {
   ChevronLeft,
   ChevronRight,
   MoveHorizontal,
-  Smartphone
+  Smartphone,
+  Ticket
 } from 'lucide-react';
 import type { RestaurantData, MealCategory, MenuItem, ServiceMenu, ServiceType } from '../types';
 import { DietaryBadge } from './Badge';
 import { PWAInstallButton } from './PWAInstallButton';
 import { NotificationModal } from './NotificationModal';
 import { DuolingoMealPopup } from './DuolingoMealPopup';
+import { StudentTicketsModal } from './StudentTicketsModal';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
@@ -158,6 +160,29 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   const [showAllergensFor, setShowAllergensFor] = useState<MenuItem | null>(null);
   const [showHoursModal, setShowHoursModal] = useState<boolean>(false);
   const [showNotificationModal, setShowNotificationModal] = useState<boolean>(false);
+  const [showTicketsModal, setShowTicketsModal] = useState<boolean>(false);
+  const [activeTicketsCount, setActiveTicketsCount] = useState<number>(0);
+  const visitorId = useMemo(() => getOrGenerateVisitorId(), []);
+
+  const fetchTicketsCount = async () => {
+    try {
+      const res = await fetch(`/api/tickets/my-tickets?visitorId=${encodeURIComponent(visitorId)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.tickets) {
+          const active = json.tickets.filter((t: any) => t.status === 'valid').length;
+          setActiveTicketsCount(active);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchTicketsCount();
+  }, [visitorId]);
+
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getNotificationSettings());
   const [alertToast, setAlertToast] = useState<string | null>(null);
   const [activeInAppAlert, setActiveInAppAlert] = useState<InAppAlert | null>(null);
@@ -614,7 +639,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                   scrollToSection('main_menu');
                   setSelectedDate(todayStr);
                 }}
-                className={`flex-1 py-2.5 px-2 sm:px-3 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
+                className={`flex-1 py-2.5 px-2 sm:px-2.5 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black ${
                   activeSection === 'main_menu'
                     ? 'bg-[#F5B726] text-slate-950 shadow-md font-black scale-[1.03] ring-2 ring-amber-400/40'
                     : 'text-slate-600 hover:text-black hover:bg-slate-100'
@@ -622,6 +647,21 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               >
                 <span>🍽️</span>
                 <span className="truncate">Menu du Jour</span>
+              </button>
+
+              {/* Tickets MoMo (200 F / Souche 2 000 F) */}
+              <button
+                onClick={() => setShowTicketsModal(true)}
+                className="flex-1 py-2.5 px-1.5 sm:px-2 rounded-[22px] transition-all flex items-center justify-center gap-1 text-xs font-black bg-amber-50 text-amber-950 border border-amber-300 hover:bg-[#FFCC00] hover:text-slate-950 active:scale-95"
+                title="Acheter ou présenter mes tickets repas (MTN MoMo)"
+              >
+                <span>🎟️</span>
+                <span className="truncate">Tickets (200 F)</span>
+                {activeTicketsCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[9px] font-black shrink-0">
+                    {activeTicketsCount}
+                  </span>
+                )}
               </button>
 
               {/* Droite : Alertes & Infos Pratiques */}
@@ -1026,6 +1066,43 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                 {formattedFullDate} · Campus Peleforo Gon Coulibaly (CROU-K).
               </p>
             </section>
+
+            {/* MTN MOMO VIRTUAL TICKETS INTERACTIVE BENTO CARD */}
+            <div 
+              onClick={() => setShowTicketsModal(true)}
+              className="p-3.5 sm:p-4 rounded-3xl bg-amber-50/90 border-2 border-[#FFCC00] shadow-xs cursor-pointer hover:shadow-md transition-all flex items-center justify-between gap-3 active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#FFCC00] text-slate-950 font-black flex items-center justify-center shrink-0 shadow-xs">
+                  <Ticket className="w-5 h-5 text-slate-950" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FFCC00] text-slate-950">
+                      MTN MoMo
+                    </span>
+                    <span className="text-xs font-black text-slate-900">
+                      Tickets CROU-K (200 F · Souche 2 000 F)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                    {activeTicketsCount > 0 
+                      ? `🎟️ Vous avez ${activeTicketsCount} ticket${activeTicketsCount > 1 ? 's' : ''} disponible${activeTicketsCount > 1 ? 's' : ''} · Tapez pour présenter au guichet` 
+                      : 'Achetez votre ticket 1 repas (200 F) ou carnet 10 repas (2 000 F)'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTicketsModal(true);
+                }}
+                className="px-3.5 py-2 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-black shrink-0 flex items-center gap-1 transition-transform active:scale-95"
+              >
+                <span>{activeTicketsCount > 0 ? 'Mes Tickets' : 'Acheter'}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-[#FFCC00]" />
+              </button>
+            </div>
 
             {/* SERVICE TOGGLE BENTO CARDS (MIDI / SOIR) */}
             <section className="grid grid-cols-2 gap-3">
@@ -1539,6 +1616,20 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             <Utensils className="w-5 h-5" />
           </button>
 
+          {/* Tickets MoMo */}
+          <button
+            onClick={() => setShowTicketsModal(true)}
+            className="p-1.5 transition-colors text-white/70 hover:text-[#FFCC00] relative"
+            title="Espace Tickets CROU-K (MTN MoMo)"
+          >
+            <Ticket className="w-5 h-5" />
+            {activeTicketsCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center border-2 border-[#18181B]">
+                {activeTicketsCount}
+              </span>
+            )}
+          </button>
+
           {/* 3. Bouton central jaune (+) : Espace Gestionnaire */}
           <button
             onClick={onOpenAdmin}
@@ -1613,6 +1704,16 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             const alert = triggerTestMealTimeAlert(slot);
             setActiveInAppAlert(alert);
           }}
+        />
+
+        {/* STUDENT TICKETS MODAL (MTN MOMO & CROU-K) */}
+        <StudentTicketsModal
+          isOpen={showTicketsModal}
+          onClose={() => {
+            setShowTicketsModal(false);
+            fetchTicketsCount();
+          }}
+          visitorId={visitorId}
         />
 
         {/* ALLERGENS MODAL */}

@@ -26,6 +26,13 @@ import {
   getAnalyticsData,
   resetAnalyticsData,
 } from './server/analytics.ts';
+import {
+  getStudentTickets,
+  processMomoPayment,
+  validateTicketAtCounter,
+  getTicketStats,
+  resetAllTickets,
+} from './server/tickets.ts';
 import type { RestaurantData, ServiceMenu } from './src/types.ts';
 
 dotenv.config();
@@ -322,6 +329,92 @@ app.post('/api/analytics/reset', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Reset analytics error:', error);
     return res.status(500).json({ error: 'Erreur réinitialisation statistiques' });
+  }
+});
+
+// ------------------- MTN MOMO & CROU TICKETS API -------------------
+
+// GET /api/tickets/my-tickets - Fetch tickets for student by visitorId or phone
+app.get('/api/tickets/my-tickets', (req: Request, res: Response) => {
+  try {
+    const visitorId = (req.query.visitorId as string) || '';
+    const phone = req.query.phone as string | undefined;
+    if (!visitorId && !phone) {
+      return res.json({ tickets: [] });
+    }
+    const tickets = getStudentTickets(visitorId, phone);
+    return res.json({ success: true, tickets });
+  } catch (error) {
+    console.error('Fetch student tickets error:', error);
+    return res.status(500).json({ error: 'Erreur lors de la récupération des tickets' });
+  }
+});
+
+// POST /api/tickets/pay-momo - Pay via MTN MoMo Collection API (200 F / 2000 F)
+app.post('/api/tickets/pay-momo', async (req: Request, res: Response) => {
+  try {
+    const { phone, type, visitorId } = req.body;
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({ success: false, error: 'Numéro de téléphone MTN MoMo requis' });
+    }
+    if (type !== 'unitaire' && type !== 'souche') {
+      return res.status(400).json({ success: false, error: 'Type de ticket invalide' });
+    }
+
+    const result = await processMomoPayment(
+      phone,
+      type,
+      visitorId || 'vis_' + Date.now().toString(36)
+    );
+
+    return res.json(result);
+  } catch (error: any) {
+    console.error('MTN MoMo payment error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Erreur lors du traitement du paiement MTN MoMo',
+    });
+  }
+});
+
+// POST /api/tickets/validate - Cashier/Admin endpoint to validate ticket at counter
+app.post('/api/tickets/validate', (req: Request, res: Response) => {
+  try {
+    const { identifier } = req.body;
+    if (!identifier) {
+      return res.status(400).json({ valid: false, status: 'not_found', message: 'Identifiant de ticket manquant' });
+    }
+
+    const result = validateTicketAtCounter(identifier);
+    return res.json(result);
+  } catch (error) {
+    console.error('Ticket validation error:', error);
+    return res.status(500).json({ valid: false, status: 'not_found', message: 'Erreur serveur lors de la vérification' });
+  }
+});
+
+// GET /api/tickets/stats - Cashier & Admin stats
+app.get('/api/tickets/stats', (req: Request, res: Response) => {
+  try {
+    const stats = getTicketStats();
+    return res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Ticket stats error:', error);
+    return res.status(500).json({ error: 'Erreur récupération statistiques tickets' });
+  }
+});
+
+// POST /api/tickets/reset - Reset tickets (Admin only)
+app.post('/api/tickets/reset', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    const success = resetAllTickets();
+    return res.json({ success, message: 'Tous les tickets ont été réinitialisés' });
+  } catch (error) {
+    console.error('Reset tickets error:', error);
+    return res.status(500).json({ error: 'Erreur lors de la réinitialisation' });
   }
 });
 

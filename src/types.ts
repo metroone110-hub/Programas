@@ -91,3 +91,58 @@ export interface ScanMenuResult {
   pricing?: Partial<RestaurantPricing>;
   detectedNotes?: string;
 }
+
+export interface VirtualTicket {
+  id: string;
+  type: 'unitaire' | 'carnet_unit';
+  packId?: string;
+  unitIndex?: number;
+  label: string;
+  price: number;
+  currency: string;
+  status: 'valid' | 'used';
+  createdAt: string;
+  usedAt?: string;
+  payerPhone?: string;
+  paymentMethod: 'MTN_MOMO';
+  transactionId?: string;
+  securityCode: string; // 6-digit code for cashier verification
+}
+
+export interface MomoPayRequest {
+  phone: string;
+  type: 'unitaire' | 'souche';
+  visitorId: string;
+}
+
+export interface MomoPayResponse {
+  success: boolean;
+  referenceId: string;
+  status: 'PENDING' | 'SUCCESSFUL' | 'FAILED';
+  message: string;
+  tickets?: VirtualTicket[];
+  amount: number;
+}
+
+export interface TicketValidationResult {
+  valid: boolean;
+  status: 'valid' | 'used' | 'not_found';
+  message: string;
+  ticket?: VirtualTicket;
+  validatedAt?: string;
+}
+
+export interface TicketStats {
+  totalSold: number;
+  totalUsed: number;
+  totalActive: number;
+  totalRevenue: number;
+  currency: string;
+  recentValidations: Array<{
+    id: string;
+    securityCode: string;
+    usedAt: string;
+    label: string;
+    payerPhone?: string;
+  }>;
+}
