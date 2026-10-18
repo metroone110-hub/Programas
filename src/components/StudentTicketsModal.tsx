@@ -71,9 +71,27 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
     }
   };
 
+  const [receiverPhone, setReceiverPhone] = useState<string>('');
+  const [merchantCode, setMerchantCode] = useState<string>('');
+
+  // Fetch payment config (receiver phone & code)
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/tickets/payment-config');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.config) {
+          if (json.config.momoReceiverPhone) setReceiverPhone(json.config.momoReceiverPhone);
+          if (json.config.momoMerchantCode) setMerchantCode(json.config.momoMerchantCode);
+        }
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchMyTickets();
+      fetchConfig();
       // Load saved phone if exists
       const savedPhone = localStorage.getItem('crouk_student_momo_phone');
       if (savedPhone) setPhoneNumber(savedPhone);
@@ -442,10 +460,39 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   </div>
                 </div>
 
+                {/* INSTRUCTIONS DE TRANSFERT DIRECT VERS LE NUMÉRO DE LA CAISSE */}
+                {receiverPhone && (
+                  <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                        <span>📲</span>
+                        <span>Compte Récepteur Caisse CROU-K :</span>
+                      </span>
+                      <span className="font-mono font-black text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-lg text-xs">
+                        {receiverPhone}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Effectuez le transfert de <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sur ce numéro MTN ou via code MoMo Pay {merchantCode ? `(${merchantCode})` : '(*133#)'}.
+                    </p>
+
+                    <div className="pt-1">
+                      <a
+                        href={`tel:${merchantCode ? encodeURIComponent(merchantCode) : '*133%23'}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black rounded-xl text-[11px] shadow-xs transition-transform active:scale-95"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>Composer le code MoMo (*133#) sur mon mobile</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <form onSubmit={(e) => handlePay(e, false)} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1">
-                      Numéro de téléphone MTN MoMo de l'acheteur :
+                      Numéro de téléphone de l'étudiant (acheteur) :
                     </label>
                     <div className="relative">
                       <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
@@ -463,7 +510,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                       />
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">
-                      Entrez votre numéro MTN (05, 07 ou 01).
+                      Permet d'associer votre ticket à votre numéro pour le passage au réfectoire.
                     </p>
                   </div>
 
