@@ -104,24 +104,46 @@ export interface VirtualTicket {
   createdAt: string;
   usedAt?: string;
   payerPhone?: string;
-  paymentMethod: 'MTN_MOMO';
+  paymentMethod: 'MTN_MOMO' | 'DEMO' | 'CASH';
   transactionId?: string;
   securityCode: string; // 6-digit code for cashier verification
+  isSimulation?: boolean;
 }
 
 export interface MomoPayRequest {
   phone: string;
   type: 'unitaire' | 'souche';
   visitorId: string;
+  paymentMethod?: 'MTN_MOMO' | 'DEMO';
+  forceSimulation?: boolean;
 }
 
 export interface MomoPayResponse {
   success: boolean;
   referenceId: string;
-  status: 'PENDING' | 'SUCCESSFUL' | 'FAILED';
+  status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'REJECTED_KEY';
   message: string;
   tickets?: VirtualTicket[];
   amount: number;
+  isSimulation?: boolean;
+  errorDetail?: string;
+  apiStatus?: {
+    connected: boolean;
+    statusCode?: number;
+    reason?: string;
+  };
+}
+
+export interface PaymentDiagnosisResult {
+  momoApiKey: string;
+  status: 'invalid_key' | 'sandbox_ready' | 'live_ready' | 'network_error';
+  statusCode: number;
+  message: string;
+  rawResponse: string;
+  isUsableForRealMoney: boolean;
+  explanations: string[];
+  recommendations: string[];
+  testedAt: string;
 }
 
 export interface TicketValidationResult {

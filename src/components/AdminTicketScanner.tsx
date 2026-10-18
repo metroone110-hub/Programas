@@ -12,10 +12,15 @@ import {
   Search,
   Check,
   TrendingUp,
-  Clock
+  Clock,
+  Activity,
+  Key,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
-import type { TicketValidationResult, TicketStats } from '../types';
+import type { TicketValidationResult, TicketStats, PaymentDiagnosisResult } from '../types';
 import { playScanSound } from '../utils/qrcode';
 
 interface AdminTicketScannerProps {
@@ -37,6 +42,12 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
   const [stats, setStats] = useState<TicketStats | null>(null);
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
 
+  // Diagnosis & Payment Gateway State
+  const [diagnosis, setDiagnosis] = useState<PaymentDiagnosisResult | null>(null);
+  const [testingKey, setTestingKey] = useState<boolean>(false);
+  const [customKeyInput, setCustomKeyInput] = useState<string>('81930870-7db8-4def-85d3-1d84efa082b7');
+  const [showDiagnosticDetails, setShowDiagnosticDetails] = useState<boolean>(true);
+
   // Fetch stats
   const fetchStats = async () => {
     try {
@@ -55,8 +66,84 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
+  // Run live diagnosis on MTN MoMo
+  const runMomoDiagnosis = async (keyToTest?: string) => {
+    try {
+      setTestingKey(true);
+      const url = keyToTest 
+        ? `/api/tickets/momo-diagnosis?key=${encodeURIComponent(keyToTest)}`
+        : '/api/tickets/momo-diagnosis';
+      const res = await fetch(url);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.diagnosis) {
+          setDiagnosis(json.diagnosis);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to run MTN MoMo diagnosis:', err);
+    } finally {
+      setTestingKey(false);
+    }
+  };
+
+  // Receiver phone and merchant code settings
+  const [receiverPhone, setReceiverPhone] = useState<string>('');
+  const [merchantCode, setMerchantCode] = useState<string>('');
+  const [savingConfig, setSavingConfig] = useState<boolean>(false);
+  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+
+  // Fetch payment config
+  const fetchPaymentConfig = async () => {
+    try {
+      const res = await fetch('/api/tickets/payment-config');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.config) {
+          setReceiverPhone(json.config.momoReceiverPhone || '');
+          setMerchantCode(json.config.momoMerchantCode || '');
+          if (json.config.momoApiKey) {
+            setCustomKeyInput(json.config.momoApiKey);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load payment config:', e);
+    }
+  };
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingConfig(true);
+      setSaveSuccess(false);
+      const res = await fetch('/api/tickets/payment-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
+        body: JSON.stringify({
+          momoReceiverPhone: receiverPhone,
+          momoMerchantCode: merchantCode,
+          momoApiKey: customKeyInput,
+        }),
+      });
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to save config:', err);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
+    runMomoDiagnosis();
+    fetchPaymentConfig();
   }, []);
 
   // Process ticket validation
@@ -98,54 +185,56 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
-  // Start HTML5 Camera Scanner
+  // Camera QR Scanner control
   const startCamera = async () => {
     setCameraError(null);
     try {
-      const qrScanner = new Html5Qrcode(scannerContainerId);
-      scannerRef.current = qrScanner;
-
-      await qrScanner.start(
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode(scannerContainerId);
+      }
+      setIsScanning(true);
+      await scannerRef.current.start(
         { facingMode: 'environment' },
         {
           fps: 10,
           qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
         },
         (decodedText) => {
           handleValidate(decodedText);
         },
         () => {
-          // Frame scan error, ignore normal empty frames
+          // scanning frame, ignore continuous errors
         }
       );
-      setIsScanning(true);
     } catch (err: any) {
-      console.error('Camera start failed:', err);
+      console.error('Failed to start camera:', err);
       setCameraError(
-        err.message || 'Impossible d\'accéder à la caméra. Vérifiez les permissions de votre navigateur.'
+        'Impossible d\'accéder à la caméra. Vérifiez les autorisations de votre navigateur ou utilisez la saisie manuelle.'
       );
       setIsScanning(false);
     }
   };
 
-  // Stop Camera Scanner
   const stopCamera = async () => {
-    if (scannerRef.current) {
+    if (scannerRef.current && isScanning) {
       try {
         await scannerRef.current.stop();
-        scannerRef.current.clear();
+        setIsScanning(false);
       } catch (err) {
-        console.error('Error stopping camera:', err);
+        console.error('Failed to stop camera:', err);
       }
-      scannerRef.current = null;
     }
-    setIsScanning(false);
   };
 
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
+        try {
+          if (scannerRef.current.isScanning) {
+            scannerRef.current.stop();
+          }
+        } catch {}
       }
     };
   }, []);
@@ -181,6 +270,180 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
         </button>
       </div>
 
+      {/* DIAGNOSTIC API EN DIRECT DE LA CLÉ FOURNIE (MTN MOMO / WAVE) */}
+      <div className="bg-white rounded-3xl border border-black/10 shadow-sm p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black shadow-xs ${
+              diagnosis?.statusCode === 200 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+            }`}>
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-black text-slate-950 text-sm sm:text-base">
+                  Diagnostic en Direct de l'API MTN MoMo
+                </h4>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  diagnosis?.statusCode === 200
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-rose-100 text-rose-800'
+                }`}>
+                  {diagnosis?.statusCode === 200 ? '🟢 Connecté' : '🔴 HTTP ' + (diagnosis?.statusCode || '401')}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Vérification réelle auprès des serveurs de paiement MTN MoMo
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => runMomoDiagnosis(customKeyInput)}
+            disabled={testingKey}
+            className="px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${testingKey ? 'animate-spin' : ''}`} />
+            <span>Tester la connexion</span>
+          </button>
+        </div>
+
+        {/* INPUT DE TEST DE CLÉ */}
+        <div className="bg-slate-50 p-3.5 rounded-2xl border border-black/5 flex flex-col sm:flex-row gap-2 items-center">
+          <div className="flex items-center gap-2 text-xs font-mono text-slate-600 shrink-0">
+            <Key className="w-3.5 h-3.5 text-amber-500" />
+            <span className="font-bold">Clé testée :</span>
+          </div>
+          <input
+            type="text"
+            value={customKeyInput}
+            onChange={(e) => setCustomKeyInput(e.target.value)}
+            placeholder="Entrez une clé MTN MoMo..."
+            className="flex-1 w-full bg-white px-3 py-1.5 rounded-xl border border-black/10 font-mono text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+          <button
+            onClick={() => runMomoDiagnosis(customKeyInput)}
+            disabled={testingKey}
+            className="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl transition-colors shrink-0"
+          >
+            Vérifier cette clé
+          </button>
+        </div>
+
+        {/* RÉSULTAT DU TEST EN DIRECT */}
+        {diagnosis && (
+          <div className="space-y-3">
+            <div className={`p-4 rounded-2xl border ${
+              diagnosis.statusCode === 200
+                ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                : 'bg-rose-50/80 border-rose-300 text-rose-950'
+            }`}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${
+                  diagnosis.statusCode === 200 ? 'text-emerald-600' : 'text-rose-600'
+                }`} />
+                <div className="space-y-1">
+                  <div className="font-black text-xs sm:text-sm">
+                    {diagnosis.message}
+                  </div>
+                  <div className="text-[11px] text-slate-700 font-mono bg-white/70 p-2 rounded-xl border border-black/5">
+                    Réponse brute du serveur MTN : <code>{diagnosis.rawResponse || 'HTTP 401 Unauthorized'}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* EXPLICATIONS DÉTAILLÉES */}
+            <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 text-xs space-y-2">
+              <div className="font-black text-slate-900 flex items-center gap-1.5">
+                <span>📋</span>
+                <span>Rapport d'analyse pour le gestionnaire CROU :</span>
+              </div>
+              <ul className="space-y-1 list-disc list-inside text-slate-700 text-[11px] leading-relaxed">
+                {diagnosis.explanations.map((exp, idx) => (
+                  <li key={idx}>{exp}</li>
+                ))}
+              </ul>
+
+              <div className="pt-2 border-t border-amber-200/60">
+                <div className="font-black text-slate-900 mb-1">💡 Solutions recommandées pour le campus :</div>
+                <ul className="space-y-1 list-disc list-inside text-slate-700 text-[11px] leading-relaxed">
+                  {diagnosis.recommendations.map((rec, idx) => (
+                    <li key={idx} className="font-medium">{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CONFIGURATION DU NUMÉRO RÉCEPTEUR DE LA CAISSE CROU-K */}
+        <div className="pt-4 border-t border-black/5">
+          <form onSubmit={handleSaveConfig} className="bg-slate-50 p-4 rounded-2xl border border-black/5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h5 className="font-black text-xs text-slate-900">
+                  Numéro Marchand / Récepteur de la Caisse CROU-K
+                </h5>
+                <p className="text-[11px] text-slate-500">
+                  Le numéro ou code USSD où les fonds des tickets doivent être versés
+                </p>
+              </div>
+              {saveSuccess && (
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  ✅ Enregistré avec succès !
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Numéro MTN MoMo de Réception (Caisse CROU-K) :
+                </label>
+                <input
+                  type="text"
+                  value={receiverPhone}
+                  onChange={(e) => setReceiverPhone(e.target.value)}
+                  placeholder="Ex: 05 00 11 22 33"
+                  className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Code Marchand USSD MoMo Pay (Optionnel) :
+                </label>
+                <input
+                  type="text"
+                  value={merchantCode}
+                  onChange={(e) => setMerchantCode(e.target.value)}
+                  placeholder="Ex: *133*554433*200#"
+                  className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="submit"
+                disabled={savingConfig}
+                className="px-4 py-2 bg-[#18181B] hover:bg-black text-white text-xs font-black rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+              >
+                {savingConfig ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    <span>Enregistrement...</span>
+                  </>
+                ) : (
+                  <span>Enregistrer les coordonnées de caisse</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       {/* STATS OVERVIEW CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white p-4 rounded-2xl border border-black/5 shadow-xs">
@@ -191,7 +454,7 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
             {stats?.totalSold ?? 0}
           </div>
           <span className="text-[10px] text-amber-600 font-bold">
-            via MTN MoMo
+            Tarif 200 F / 2000 F
           </span>
         </div>
 

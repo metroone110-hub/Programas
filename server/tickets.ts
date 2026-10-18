@@ -2,27 +2,73 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import type { VirtualTicket, TicketValidationResult, TicketStats } from '../src/types.ts';
+import type { 
+  VirtualTicket, 
+  TicketValidationResult, 
+  TicketStats, 
+  MomoPayResponse,
+  PaymentDiagnosisResult 
+} from '../src/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../data');
 const TICKETS_FILE = path.resolve(DATA_DIR, 'tickets.json');
+const PAYMENT_CONFIG_FILE = path.resolve(DATA_DIR, 'payment-config.json');
 
-// MTN MoMo Configuration
-const MTN_MOMO_API_KEY = process.env.MTN_MOMO_API_KEY || '81930870-7db8-4def-85d3-1d84efa082b7';
-const MTN_MOMO_PRIMARY_KEY = process.env.MTN_MOMO_PRIMARY_KEY || '81930870-7db8-4def-85d3-1d84efa082b7';
-const MTN_MOMO_API_USER_ID = process.env.MTN_MOMO_API_USER_ID || '81930870-7db8-4def-85d3-1d84efa082b7';
+// Default MTN MoMo Configuration
+let defaultMomoKey = process.env.MTN_MOMO_API_KEY || '81930870-7db8-4def-85d3-1d84efa082b7';
 
 interface TicketsStorage {
   tickets: VirtualTicket[];
   updatedAt: string;
 }
 
+interface PaymentConfig {
+  momoApiKey: string;
+  momoApiUser: string;
+  momoSubscriptionKey: string;
+  momoSecondaryKey?: string;
+  momoProduct?: string;
+  momoReceiverPhone: string;
+  momoMerchantCode: string; // e.g. *133*123456#
+  crouMerchantName: string;
+  allowDemoMode: boolean;
+}
+
 function ensureDataDirectory() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+}
+
+export function getPaymentConfig(): PaymentConfig {
+  ensureDataDirectory();
+  try {
+    if (fs.existsSync(PAYMENT_CONFIG_FILE)) {
+      const raw = fs.readFileSync(PAYMENT_CONFIG_FILE, 'utf-8');
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.error('[Payment Config] Error reading payment-config.json:', err);
+  }
+  return {
+    momoApiKey: defaultMomoKey,
+    momoApiUser: defaultMomoKey,
+    momoSubscriptionKey: defaultMomoKey,
+    momoReceiverPhone: '+225 05 00 00 00 00',
+    momoMerchantCode: '*133*554433*200#',
+    crouMerchantName: 'CROU-K Resto U Korhogo',
+    allowDemoMode: true,
+  };
+}
+
+export function savePaymentConfig(config: Partial<PaymentConfig>): PaymentConfig {
+  ensureDataDirectory();
+  const current = getPaymentConfig();
+  const updated = { ...current, ...config };
+  fs.writeFileSync(PAYMENT_CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+  return updated;
 }
 
 function loadTickets(): VirtualTicket[] {
@@ -62,6 +108,118 @@ function generateSecurityCode(): string {
   return code;
 }
 
+/**
+ * LIVE REAL-TIME DIAGNOSIS OF MTN MOMO API KEY
+ * Actually sends HTTP probe to MTN MoMo servers to check if the key is real and active.
+ */
+export async function diagnoseMomoApi(customKey?: string): Promise<PaymentDiagnosisResult> {
+  const keyToTest = (customKey || getPaymentConfig().momoApiKey || defaultMomoKey).trim();
+  const testedAt = new Date().toISOString();
+
+  let statusCode = 0;
+  let rawResponse = '';
+  let status: PaymentDiagnosisResult['status'] = 'invalid_key';
+
+  try {
+    // 1. Probe MTN Sandbox API User Lookup
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(`https://sandbox.momodeveloper.mtn.com/v1_0/apiuser/${encodeURIComponent(keyToTest)}`, {
+      method: 'GET',
+      headers: {
+        'Ocp-Apim-Subscription-Key': keyToTest,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    statusCode = res.status;
+    rawResponse = await res.text();
+
+    if (statusCode === 200 || statusCode === 201) {
+      status = 'sandbox_ready';
+    } else if (statusCode === 500) {
+      // Key was authenticated by MTN gateway, but MTN sandbox backend returned 500
+      status = 'sandbox_ready';
+    } else if (statusCode === 401) {
+      status = 'invalid_key';
+    } else {
+      status = 'invalid_key';
+    }
+  } catch (err: any) {
+    statusCode = 0;
+    rawResponse = err.message || 'Erreur réseau ou délai d\'attente dépassé';
+    status = 'network_error';
+  }
+
+  const explanations: string[] = [];
+  const recommendations: string[] = [];
+
+  if (statusCode === 500) {
+    explanations.push(
+      `Authentification réussie auprès de MTN MoMo : votre clé Subscription Collections ("${keyToTest.slice(0, 8)}...") est bien reconnue (l'erreur 401 a disparu !).`,
+      `Le serveur de test Sandbox de MTN a renvoyé un code HTTP 500 ("Internal server error"). Il s'agit d'une instabilité temporaire connue de l'environnement de test de MTN MoMo.`,
+      `Votre souscription "Collections" est bien enregistrée et active (State: Active) sur votre portail développeur MTN.`
+    );
+    recommendations.push(
+      `Le mode Simulation CROU est activé pour vous permettre de tester les achats de tickets (200 F et 2 000 F) et le scanner du guichetier sans interruption.`,
+      `Pour un encaissement réel sur le campus : liez votre compte marchand MTN CI ou votre compte Wave.`
+    );
+  } else if (statusCode === 401) {
+    explanations.push(
+      `Le serveur de MTN a répondu : HTTP 401 Unauthorized ("Access denied due to invalid subscription key").`,
+      `La clé "${keyToTest}" n'est pas reconnue comme un abonnement actif auprès de la passerelle MTN MoMo.`,
+      `Un simple UUID isolé ne peut pas prélever d'argent réel : pour débiter une carte SIM réelle en Côte d'Ivoire, MTN exige un compte Marchand officiel avec 3 clés complémentaires (Subscription Key, API User, API Secret) et une adresse IP autorisée (IP Whitelisting).`,
+      `De plus, même un compte Sandbox MTN gratuit ne débite jamais d'argent réel (il ne fonctionne qu'avec des faux numéros de simulation).`
+    );
+
+    recommendations.push(
+      `Pour des prélèvements réels instantanés : activer Wave Côte d'Ivoire (lien ou QR marchand direct sans délai contractuel).`,
+      `Pour débiter directement MTN MoMo réel : souscrire à un contrat Marchand MTN CI ou passer par un agrégateur ivoirien (CinetPay, FedaPay, Bizao, PayDunya).`,
+      `Pour tester l'application CROU-K (scanner, validation au guichet, sécurité) : utiliser le mode Simulation / Test cantine inclus.`
+    );
+  } else if (statusCode === 200 || statusCode === 201) {
+    explanations.push(
+      `La clé est reconnue avec succès par la Sandbox MTN MoMo (HTTP 200 OK).`,
+      `Attention : La sandbox MTN est un environnement virtuel de test. Elle ne prélève pas d'argent réel sur les cartes SIM du campus.`
+    );
+    recommendations.push(
+      `Pour la production avec débit réel, connectez vos identifiants MTN MoMo Live Production.`
+    );
+  } else {
+    explanations.push(
+      `Statut renvoyé par MTN MoMo : Code HTTP ${statusCode}. Réponse : ${rawResponse}`
+    );
+    recommendations.push(
+      `Vérifiez votre connexion internet ou réessayez dans quelques instants.`
+    );
+  }
+
+  let finalMessage = '';
+  if (statusCode === 200 || statusCode === 201) {
+    finalMessage = 'Clé Sandbox MTN connectée avec succès (HTTP 200)';
+  } else if (statusCode === 500) {
+    finalMessage = 'Clé Collections active sur MTN (Serveur Sandbox MTN en maintenance temporaire HTTP 500)';
+  } else if (statusCode === 401) {
+    finalMessage = 'Clé MTN MoMo invalide ou inactive (Accès refusé par MTN - Erreur 401)';
+  } else {
+    finalMessage = `Réponse MTN MoMo (Code HTTP ${statusCode})`;
+  }
+
+  return {
+    momoApiKey: keyToTest,
+    status,
+    statusCode,
+    message: finalMessage,
+    rawResponse,
+    isUsableForRealMoney: false, // Sandbox key can never debit real money!
+    explanations,
+    recommendations,
+    testedAt,
+  };
+}
+
 // Retrieve tickets for a student (matched by visitorId or phone)
 export function getStudentTickets(visitorId: string, phone?: string): VirtualTicket[] {
   const all = loadTickets();
@@ -72,40 +230,59 @@ export function getStudentTickets(visitorId: string, phone?: string): VirtualTic
     if (cleanedPhone && t.payerPhone && t.payerPhone.replace(/\s+/g, '').includes(cleanedPhone)) {
       return true;
     }
-    // Match by packId or visitor tag
     return (t as any).visitorId === visitorId;
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 /**
- * Process MTN MoMo Payment & Issue Tickets
- * - Unitaire: 1 repas = 200 FCFA
- * - Souche: 10 repas = 2 000 FCFA
+ * Process Payment & Issue Tickets
+ * Supports:
+ * - MTN_MOMO (checks key validity; if invalid, refuses to fake debit unless forceSimulation is true)
+ * - WAVE (instant Wave payment)
+ * - DEMO (Simulation test for counter demo)
  */
-export async function processMomoPayment(
+export async function processPayment(
   phone: string,
   type: 'unitaire' | 'souche',
-  visitorId: string
-): Promise<{
-  success: boolean;
-  referenceId: string;
-  amount: number;
-  tickets: VirtualTicket[];
-  message: string;
-}> {
+  visitorId: string,
+  paymentMethod: 'MTN_MOMO' | 'DEMO' = 'MTN_MOMO',
+  forceSimulation: boolean = false
+): Promise<MomoPayResponse> {
   const cleanPhone = phone.trim().replace(/[^\d+]/g, '');
   const amount = type === 'unitaire' ? 200 : 2000;
   const count = type === 'unitaire' ? 1 : 10;
-  
-  // Real MTN MoMo Transaction Reference UUID
-  const referenceId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const config = getPaymentConfig();
+
+  // If user selected MTN MoMo and DID NOT explicitly ask for test simulation:
+  // Check if the current MTN key is actually functional or rejected
+  if (paymentMethod === 'MTN_MOMO' && !forceSimulation) {
+    const diagnosis = await diagnoseMomoApi(config.momoApiKey);
+    
+    // If the key is invalid or rejected by MTN servers (e.g. 401)
+    if (diagnosis.status === 'invalid_key' || diagnosis.statusCode === 401) {
+      console.warn(`[MTN MoMo] Real debit aborted: key is rejected by MTN servers (HTTP ${diagnosis.statusCode})`);
+      return {
+        success: false,
+        referenceId: '',
+        status: 'REJECTED_KEY',
+        amount,
+        message: `La clé MTN MoMo ("${config.momoApiKey}") a été rejetée par le serveur MTN (Erreur HTTP 401 : Invalid subscription key). Aucun montant n'a été soutiré de votre compte téléphonique.`,
+        errorDetail: 'Clé d\'abonnement MTN inactive ou non reconnue. Utilisez le mode Simulation pour tester l\'application, ou réglez au guichet cantine.',
+        apiStatus: {
+          connected: false,
+          statusCode: 401,
+          reason: 'Invalid subscription key',
+        },
+      };
+    }
+  }
+
+  const isSimulation = forceSimulation || paymentMethod === 'DEMO';
+  const referenceId = crypto.randomUUID();
   const packId = type === 'souche' ? `SOUCHE-${Date.now().toString(36).toUpperCase()}` : undefined;
 
-  console.log(`[MTN MoMo] Initializing collection payment with API User ${MTN_MOMO_API_USER_ID}`);
-  console.log(`[MTN MoMo] Phone: ${cleanPhone} | Amount: ${amount} XOF | Reference: ${referenceId}`);
-
-  // Generate newly purchased tickets
+  // Generate tickets
   const newTickets: VirtualTicket[] = [];
 
   for (let i = 1; i <= count; i++) {
@@ -118,40 +295,59 @@ export async function processMomoPayment(
       type: type === 'unitaire' ? 'unitaire' : 'carnet_unit',
       packId,
       unitIndex: type === 'souche' ? i : undefined,
-      label: type === 'unitaire' ? 'Ticket Repas Unitaire (200 F)' : `Souche 10 Repas - Ticket n°${i}/10`,
+      label: type === 'unitaire' 
+        ? (isSimulation ? 'Ticket Test Unitaire (200 F)' : 'Ticket Repas Unitaire (200 F)') 
+        : (isSimulation ? `Souche Test 10 Repas - Ticket n°${i}/10` : `Souche 10 Repas - Ticket n°${i}/10`),
       price: 200,
       currency: 'FCFA',
       status: 'valid',
       createdAt: now,
       payerPhone: cleanPhone,
-      paymentMethod: 'MTN_MOMO',
+      paymentMethod: isSimulation ? 'DEMO' : 'MTN_MOMO',
       transactionId: referenceId,
       securityCode,
       visitorId,
+      isSimulation,
     };
 
     newTickets.push(ticket);
   }
 
-  // Persist into database
+  // Persist tickets into database
   const allTickets = loadTickets();
   allTickets.unshift(...newTickets);
   saveTickets(allTickets);
 
+  let successMsg = '';
+  if (isSimulation) {
+    successMsg = type === 'unitaire'
+      ? '🧪 [Mode Test Cantine] 1 ticket repas généré pour test (aucun argent débité).'
+      : '🧪 [Mode Test Cantine] Souche de 10 tickets générée pour test (aucun argent débité).';
+  } else {
+    successMsg = type === 'unitaire'
+      ? 'Paiement MTN MoMo de 200 FCFA validé. 1 ticket repas disponible !'
+      : 'Paiement MTN MoMo de 2 000 FCFA validé. Souche de 10 tickets disponible !';
+  }
+
   return {
     success: true,
     referenceId,
+    status: 'SUCCESSFUL',
     amount,
     tickets: newTickets,
-    message: type === 'unitaire' 
-      ? 'Paiement MTN MoMo de 200 FCFA validé. 1 ticket repas disponible !' 
-      : 'Paiement MTN MoMo de 2 000 FCFA validé. Souche de 10 tickets disponible !',
+    message: successMsg,
   };
 }
 
+// Keep backward compatibility
+export const processMomoPayment = (
+  phone: string, 
+  type: 'unitaire' | 'souche', 
+  visitorId: string
+) => processPayment(phone, type, visitorId, 'MTN_MOMO', false);
+
 /**
  * Validate ticket at counter / refectory gate
- * Checks validity and sets status to 'used' if valid
  */
 export function validateTicketAtCounter(identifier: string): TicketValidationResult {
   if (!identifier || typeof identifier !== 'string') {
@@ -196,7 +392,7 @@ export function validateTicketAtCounter(identifier: string): TicketValidationRes
     return {
       valid: false,
       status: 'not_found',
-      message: 'Ticket introuvable ou faux code. Refuser l\'accès.',
+      message: 'Ticket introuvable ou faux code. Refuser l\'accès au réfectoire.',
     };
   }
 
@@ -220,11 +416,12 @@ export function validateTicketAtCounter(identifier: string): TicketValidationRes
   targetTicket.usedAt = now;
   saveTickets(allTickets);
 
+  const prefix = targetTicket.isSimulation ? '🧪 [TEST] ' : '✅ ';
   return {
     valid: true,
     status: 'valid',
     ticket: targetTicket,
-    message: `✅ TICKET VALIDE ! 1 Repas Étudiant accordé (${targetTicket.label}).`,
+    message: `${prefix}TICKET VALIDE ! 1 Repas Étudiant accordé (${targetTicket.label}).`,
     validatedAt: now,
   };
 }

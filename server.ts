@@ -29,6 +29,10 @@ import {
 import {
   getStudentTickets,
   processMomoPayment,
+  processPayment,
+  diagnoseMomoApi,
+  getPaymentConfig,
+  savePaymentConfig,
   validateTicketAtCounter,
   getTicketStats,
   resetAllTickets,
@@ -350,30 +354,79 @@ app.get('/api/tickets/my-tickets', (req: Request, res: Response) => {
   }
 });
 
-// POST /api/tickets/pay-momo - Pay via MTN MoMo Collection API (200 F / 2000 F)
+// POST /api/tickets/pay-momo - Pay via MTN MoMo / Wave / Demo
 app.post('/api/tickets/pay-momo', async (req: Request, res: Response) => {
   try {
-    const { phone, type, visitorId } = req.body;
+    const { phone, type, visitorId, paymentMethod, forceSimulation } = req.body;
     if (!phone || !phone.trim()) {
-      return res.status(400).json({ success: false, error: 'Numéro de téléphone MTN MoMo requis' });
+      return res.status(400).json({ success: false, error: 'Numéro de téléphone requis' });
     }
     if (type !== 'unitaire' && type !== 'souche') {
       return res.status(400).json({ success: false, error: 'Type de ticket invalide' });
     }
 
-    const result = await processMomoPayment(
+    const result = await processPayment(
       phone,
       type,
-      visitorId || 'vis_' + Date.now().toString(36)
+      visitorId || 'vis_' + Date.now().toString(36),
+      paymentMethod || 'MTN_MOMO',
+      Boolean(forceSimulation)
     );
 
     return res.json(result);
   } catch (error: any) {
-    console.error('MTN MoMo payment error:', error);
+    console.error('Payment processing error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'Erreur lors du traitement du paiement MTN MoMo',
+      error: error.message || 'Erreur lors du traitement du paiement',
     });
+  }
+});
+
+// GET /api/tickets/momo-diagnosis - Real-time diagnostic of MTN MoMo connection
+app.get('/api/tickets/momo-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const key = req.query.key as string | undefined;
+    const diagnosis = await diagnoseMomoApi(key);
+    return res.json({ success: true, diagnosis });
+  } catch (error: any) {
+    console.error('MTN MoMo diagnosis error:', error);
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic MoMo' });
+  }
+});
+
+// POST /api/tickets/momo-diagnosis - Test any specific key live
+app.post('/api/tickets/momo-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const { key } = req.body;
+    const diagnosis = await diagnoseMomoApi(key);
+    return res.json({ success: true, diagnosis });
+  } catch (error: any) {
+    console.error('MTN MoMo diagnosis error:', error);
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic MoMo' });
+  }
+});
+
+// GET /api/tickets/payment-config - Get payment gateway configuration
+app.get('/api/tickets/payment-config', (req: Request, res: Response) => {
+  try {
+    const config = getPaymentConfig();
+    return res.json({ success: true, config });
+  } catch (error) {
+    return res.status(500).json({ error: 'Erreur lecture configuration' });
+  }
+});
+
+// POST /api/tickets/payment-config - Save payment gateway configuration (Admin)
+app.post('/api/tickets/payment-config', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    const updated = savePaymentConfig(req.body);
+    return res.json({ success: true, config: updated, message: 'Configuration enregistrée' });
+  } catch (error) {
+    return res.status(500).json({ error: 'Erreur sauvegarde configuration' });
   }
 });
 
