@@ -287,7 +287,11 @@ export class MoovMoneyClient {
   /**
    * Performs a Push Transaction (USSD prompt to user phone)
    */
-  public async pushTransaction(params: MoovPushParams, withPending: boolean = true): Promise<MoovApiResponse> {
+  public async pushTransaction(
+    params: MoovPushParams,
+    withPending: boolean = true,
+    allowSimulationFallback: boolean = false
+  ): Promise<MoovApiResponse> {
     const fallbackRefId = `MOOV-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
     const soapXml = this.buildPushSoapXml(params, withPending);
 
@@ -310,19 +314,32 @@ export class MoovMoneyClient {
       return this.parseResponse(response.status, rawText, fallbackRefId);
     } catch (err: any) {
       clearTimeout(timeout);
-      console.warn(`[Moov Money] HTTP call failed: ${err.message}. Providing simulation fallback.`);
-      
-      // Fallback for demo or development environment when external network to telco gateway is blocked
+      console.warn(`[Moov Money] HTTP call failed: ${err.message}.`);
+
+      if (allowSimulationFallback) {
+        return {
+          success: true, // Only if explicitly allowed in simulation mode
+          statusCode: 100,
+          referenceId: fallbackRefId,
+          transId: `SIM-MOOV-${Date.now()}`,
+          description: 'USSD Push simulé (Mode Démonstration)',
+          longDescription: 'Transaction de simulation validée sans débit bancaire réel.',
+          message: 'Demande Moov simulée avec succès',
+          httpStatus: 200,
+          rawResponse: `Simulation fallback: ${err.message}`,
+        };
+      }
+
+      // REAL DEBIT ENFORCEMENT: do not issue tickets if telco did not confirm debit
       return {
-        success: true, // Allow simulation in dev sandbox
-        statusCode: 100, // In pending state / accepted
+        success: false,
+        statusCode: 99,
         referenceId: fallbackRefId,
-        transId: `SIM-MOOV-${Date.now()}`,
-        description: 'USSD Push envoyé au mobile (Simulation active en environnement bac à sable)',
-        longDescription: 'Transaction initialisée avec succès. Prompt USSD envoyé au téléphone de l\'abonné.',
-        message: 'Demande de paiement Moov Money transmise',
-        httpStatus: 200,
-        rawResponse: `Simulation fallback: ${err.message}`,
+        description: `Passerelle Moov Money injoignable : ${err.message}`,
+        longDescription: `Échec du prélèvement réel sur votre compte Moov : la passerelle de paiement Moov Africa est injoignable (${err.message}). Aucun montant n'a été prélevé sur votre solde.`,
+        message: `Échec du débit Moov Money (${err.message})`,
+        httpStatus: 504,
+        rawResponse: String(err.stack || err.message),
       };
     }
   }

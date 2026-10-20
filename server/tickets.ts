@@ -11,6 +11,7 @@ import type {
 } from '../src/types.ts';
 import { MtnMomoClient, type OpenApiFullDiagnostic } from './mtnMomoClient.ts';
 import { MoovMoneyClient, type MoovDiagnosisResult } from './moovMoneyClient.ts';
+import { validateIvorianPhoneNumber } from '../src/utils/phoneValidator.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -298,20 +299,36 @@ export async function processPayment(
   paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' = 'MTN_MOMO',
   forceSimulation: boolean = false
 ): Promise<MomoPayResponse> {
-  const cleanPhone = phone.trim().replace(/[^\d+]/g, '');
+  const isSimulation = forceSimulation || paymentMethod === 'DEMO';
   const amount = type === 'unitaire' ? 200 : 2000;
   const count = type === 'unitaire' ? 1 : 10;
   const now = new Date().toISOString();
   const config = getPaymentConfig();
 
+  // 1. Strict Ivorian Phone Validation (Moov 01..., MTN 05...)
+  const validation = validateIvorianPhoneNumber(phone, isSimulation ? 'DEMO' : paymentMethod);
+  if (!validation.valid && !isSimulation) {
+    console.warn(`[Payment Validation Error] Invalid phone: "${phone}" for method ${paymentMethod}: ${validation.error}`);
+    return {
+      success: false,
+      referenceId: crypto.randomUUID(),
+      status: 'FAILED',
+      amount,
+      message: validation.error || "Numéro de téléphone invalide pour l'opérateur sélectionné.",
+      errorDetail: `Opérateur détecté : ${validation.operator}. Numéro requis : ${paymentMethod === 'MOOV_MONEY' ? 'Moov Africa (préfixe 01)' : 'MTN (préfixe 05)'}.`,
+    };
+  }
+
+  const cleanPhone = validation.cleanPhone || phone.trim().replace(/[^\d+]/g, '');
+
   let paymentReferenceId: string = crypto.randomUUID();
   let providerMessage: string = '';
 
-  // 1. Process MTN MoMo if selected and not simulation
-  if (paymentMethod === 'MTN_MOMO' && !forceSimulation) {
+  // 2. Process MTN MoMo if selected and not simulation
+  if (paymentMethod === 'MTN_MOMO' && !isSimulation) {
     const client = getMomoClient();
 
-    console.log(`[MTN MoMo OpenAPI] Initiating RequestToPay for ${cleanPhone}, amount: ${amount}`);
+    console.log(`[MTN MoMo OpenAPI] Initiating real RequestToPay for ${cleanPhone}, amount: ${amount}`);
     const momoResult = await client.requestToPay({
       amount,
       payerPhone: cleanPhone,
@@ -330,7 +347,7 @@ export async function processPayment(
         referenceId: paymentReferenceId,
         status: 'REJECTED_KEY',
         amount,
-        message: `La clé MTN MoMo ("${config.momoSubscriptionKey || config.momoApiKey}") a été rejetée par le serveur MTN (HTTP 401 Unauthorized : Invalid subscription key). Aucun montant n'a été prélevé sur le numéro ${cleanPhone}.`,
+        message: `La tentative de prélèvement réel MTN MoMo a échoué : la clé API ("${config.momoSubscriptionKey || config.momoApiKey}") a été rejetée (HTTP 401 Unauthorized). Aucun montant n'a été prélevé sur le numéro ${cleanPhone}.`,
         errorDetail: 'Vérifiez la clé de souscription Collections dans l\'administration ou utilisez le mode test.',
         apiStatus: {
           connected: false,
@@ -348,7 +365,7 @@ export async function processPayment(
         referenceId: paymentReferenceId,
         status: 'FAILED',
         amount,
-        message: `Le serveur de test MTN MoMo Sandbox a répondu avec une erreur interne (HTTP 500). Les serveurs de test MTN rencontrent une maintenance temporaire.`,
+        message: `Le serveur de paiement MTN MoMo a répondu avec une erreur interne (HTTP 500). Aucun montant n'a été prélevé sur le numéro ${cleanPhone}.`,
         errorDetail: momoResult.error || momoResult.rawResponse || 'HTTP 500 Internal Server Error',
         apiStatus: {
           connected: true,
@@ -365,7 +382,7 @@ export async function processPayment(
         referenceId: paymentReferenceId,
         status: 'FAILED',
         amount,
-        message: momoResult.message || `Échec du prélèvement MTN MoMo (Code HTTP ${momoResult.httpStatus}).`,
+        message: momoResult.message || `Échec du prélèvement réel MTN MoMo (Code HTTP ${momoResult.httpStatus}). Aucun montant n'a été prélevé sur votre compte.`,
         errorDetail: momoResult.error || momoResult.rawResponse,
         apiStatus: {
           connected: false,
@@ -378,29 +395,31 @@ export async function processPayment(
     providerMessage = momoResult.message;
   }
 
-  // 2. Process Moov Money (Flooz) if selected and not simulation
-  if (paymentMethod === 'MOOV_MONEY' && !forceSimulation) {
+  // 3. Process Moov Money (Flooz) if selected and not simulation
+  if (paymentMethod === 'MOOV_MONEY' && !isSimulation) {
     const moovClient = getMoovClient();
-    console.log(`[Moov Money Flooz] Initiating PushTransaction for ${cleanPhone}, amount: ${amount}`);
+    console.log(`[Moov Money Flooz] Initiating real PushTransaction for ${cleanPhone}, amount: ${amount}`);
 
+    // Call Moov SOAP API with withPending=true and allowSimulationFallback=false
     const moovResult = await moovClient.pushTransaction({
       phone: cleanPhone,
       amount,
-      message: `Paiement Ticket CROU-K (${amount} FCFA)`,
+      message: `Ticket Resto-U CROU-K (${amount} FCFA)`,
       data1: `CROU-${Date.now().toString(36).toUpperCase()}`,
-      data2: 'Resto-U-Korhogo',
-    }, true);
+      data2: 'UPGC-Korhogo',
+    }, true, false);
 
     paymentReferenceId = moovResult.transId || moovResult.referenceId;
 
-    if (!moovResult.success && moovResult.statusCode !== 100 && moovResult.statusCode !== 0) {
-      console.warn(`[Moov Money] Transaction rejected with status ${moovResult.statusCode}`);
+    // If Moov did not confirm transaction initiation, strictly reject!
+    if (!moovResult.success) {
+      console.warn(`[Moov Money] Transaction rejected with status ${moovResult.statusCode}: ${moovResult.description}`);
       return {
         success: false,
         referenceId: paymentReferenceId,
         status: 'FAILED',
         amount,
-        message: `Échec Moov Money (Code ${moovResult.statusCode}) : ${moovResult.longDescription}`,
+        message: moovResult.longDescription || `Échec du prélèvement Moov Money (Code ${moovResult.statusCode}) : ${moovResult.description}. Aucun montant n'a été débité sur le numéro ${cleanPhone}.`,
         errorDetail: moovResult.description || moovResult.rawResponse,
         apiStatus: {
           connected: false,
@@ -411,11 +430,10 @@ export async function processPayment(
     }
 
     providerMessage = moovResult.statusCode === 100
-      ? `Demande de paiement Moov Money envoyée à votre mobile (${cleanPhone}). Validez avec votre code PIN pour finaliser.`
-      : `Paiement Moov Money (${amount} FCFA) confirmé avec succès !`;
+      ? `Demande de prélèvement réel Moov Money envoyée à votre mobile (${cleanPhone}). Tapez votre code PIN sur l'écran pour autoriser les ${amount} FCFA.`
+      : `Paiement réel Moov Money (${amount} FCFA) débité avec succès !`;
   }
 
-  const isSimulation = forceSimulation || paymentMethod === 'DEMO';
   const referenceId = paymentReferenceId;
   const packId = type === 'souche' ? `SOUCHE-${Date.now().toString(36).toUpperCase()}` : undefined;
 

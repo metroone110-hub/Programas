@@ -19,6 +19,11 @@ import {
 } from 'lucide-react';
 import type { VirtualTicket, MomoPayResponse } from '../types';
 import { generateQRCodeSVG } from '../utils/qrcode';
+import { 
+  validateIvorianPhoneNumber, 
+  detectIvorianOperator, 
+  normalizeIvorianPhone 
+} from '../utils/phoneValidator';
 
 interface StudentTicketsModalProps {
   isOpen: boolean;
@@ -144,11 +149,16 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
     setRejectedKeyInfo(null);
     setPaySuccessMsg(null);
 
-    const cleanPhone = phoneNumber.trim().replace(/\s+/g, '');
-    if (!forceSimulation && (!cleanPhone || cleanPhone.length < 8)) {
-      setPayError('Veuillez entrer un numéro de téléphone valide (ex: 05 01 23 45 67)');
-      return;
+    // 1. Strict Ivorian Phone Validation
+    if (!forceSimulation && selectedMethod !== 'DEMO') {
+      const validation = validateIvorianPhoneNumber(phoneNumber, selectedMethod);
+      if (!validation.valid) {
+        setPayError(validation.error || 'Numéro invalide pour cet opérateur.');
+        return;
+      }
     }
+
+    const cleanPhone = normalizeIvorianPhone(phoneNumber);
 
     try {
       setIsProcessingPay(true);
@@ -727,9 +737,15 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 <form onSubmit={(e) => handlePay(e, selectedMethod === 'DEMO')} className="space-y-4">
                   {selectedMethod !== 'DEMO' && (
                     <div>
-                      <label className="block text-xs font-bold text-slate-800 mb-1">
-                        Numéro de téléphone de l'étudiant ({selectedMethod === 'MOOV_MONEY' ? 'Moov' : 'MTN'}) :
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Numéro de téléphone ({selectedMethod === 'MOOV_MONEY' ? 'Moov CI · 01...' : 'MTN CI · 05...'}) :
+                        </label>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          10 chiffres requis
+                        </span>
+                      </div>
+
                       <div className="relative">
                         <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
                           <Smartphone className={`w-4 h-4 ${selectedMethod === 'MOOV_MONEY' ? 'text-blue-500' : 'text-amber-500'}`} />
@@ -749,11 +765,93 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                           required
                         />
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {selectedMethod === 'MOOV_MONEY'
-                          ? 'Votre téléphone recevra le prompt USSD Moov Flooz'
-                          : 'Permet d\'associer votre ticket à votre numéro pour le passage au réfectoire.'}
-                      </p>
+
+                      {/* DÉTECTION & VALIDATION EN TEMPS RÉEL DU NUMÉRO */}
+                      {(() => {
+                        const clean = normalizeIvorianPhone(phoneNumber);
+                        const op = detectIvorianOperator(clean);
+                        if (!clean) {
+                          return (
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {selectedMethod === 'MOOV_MONEY'
+                                ? 'Les numéros Moov CI commencent par 01 (ex: 01 02 03 04 05)'
+                                : 'Les numéros MTN CI commencent par 05 (ex: 05 01 23 45 67)'}
+                            </p>
+                          );
+                        }
+
+                        if (op === 'MOOV') {
+                          if (selectedMethod === 'MOOV_MONEY') {
+                            return (
+                              <div className="flex items-center justify-between mt-1 text-[11px] text-blue-700 font-bold">
+                                <span>🔵 Numéro Moov Africa valide ({clean.length}/10 chiffres)</span>
+                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour débit USSD</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="mt-1.5 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex items-center justify-between">
+                                <span>⚠️ Ce numéro commence par 01 (Moov).</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedMethod('MOOV_MONEY')}
+                                  className="font-black text-blue-700 underline hover:text-blue-900 ml-2"
+                                >
+                                  Basculer sur Moov Money →
+                                </button>
+                              </div>
+                            );
+                          }
+                        }
+
+                        if (op === 'MTN') {
+                          if (selectedMethod === 'MTN_MOMO') {
+                            return (
+                              <div className="flex items-center justify-between mt-1 text-[11px] text-amber-800 font-bold">
+                                <span>🟡 Numéro MTN valide ({clean.length}/10 chiffres)</span>
+                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour débit MoMo</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-950 flex items-center justify-between">
+                                <span>⚠️ Ce numéro commence par 05 (MTN).</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedMethod('MTN_MOMO')}
+                                  className="font-black text-amber-900 underline hover:text-black ml-2"
+                                >
+                                  Basculer sur MTN MoMo →
+                                </button>
+                              </div>
+                            );
+                          }
+                        }
+
+                        if (op === 'ORANGE') {
+                          return (
+                            <div className="mt-1.5 p-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 font-bold">
+                              ⚠️ Numéro Orange (07...) non accepté : insérez un numéro Moov (01...) ou MTN (05...).
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="mt-1 text-[10px] text-slate-500 font-medium">
+                            Numéro en cours de saisie ({clean.length}/10) · Moov débute par 01, MTN par 05.
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* AVERTISSEMENT DE DÉBIT RÉEL */}
+                  {selectedMethod !== 'DEMO' && (
+                    <div className="p-3 bg-blue-50/60 border border-blue-200/80 rounded-2xl text-[11px] text-slate-700 flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>
+                        <strong>Débit direct sur mobile :</strong> La somme de <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sera prélevée sur votre compte <strong>{selectedMethod === 'MOOV_MONEY' ? 'Moov Money (01...)' : 'MTN MoMo (05...)'}</strong> après saisie de votre code secret PIN.
+                      </span>
                     </div>
                   )}
 
