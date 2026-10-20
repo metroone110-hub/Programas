@@ -9,6 +9,8 @@ import type {
   MomoPayResponse,
   PaymentDiagnosisResult 
 } from '../src/types.ts';
+import { MtnMomoClient, type OpenApiFullDiagnostic } from './mtnMomoClient.ts';
+import { MoovMoneyClient, type MoovDiagnosisResult } from './moovMoneyClient.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,29 +19,69 @@ const TICKETS_FILE = path.resolve(DATA_DIR, 'tickets.json');
 const PAYMENT_CONFIG_FILE = path.resolve(DATA_DIR, 'payment-config.json');
 
 // Default MTN MoMo Configuration
-let defaultMomoKey = process.env.MTN_MOMO_API_KEY || '81930870-7db8-4def-85d3-1d84efa082b7';
+let defaultMomoKey = process.env.MTN_MOMO_API_KEY || 'e30c2168b25a47aab7e93dd81d4224e7';
 
 interface TicketsStorage {
   tickets: VirtualTicket[];
   updatedAt: string;
 }
 
-interface PaymentConfig {
+export interface PaymentConfig {
   momoApiKey: string;
   momoApiUser: string;
   momoSubscriptionKey: string;
   momoSecondaryKey?: string;
   momoProduct?: string;
+  momoTargetEnvironment?: 'sandbox' | 'production' | 'mtnciv' | string;
+  momoBaseUrl?: string;
+  momoCurrency?: string;
   momoReceiverPhone: string;
   momoMerchantCode: string; // e.g. *133*123456#
   crouMerchantName: string;
   allowDemoMode: boolean;
+  // Moov Money API Configuration (Flooz / TLC)
+  moovUsername?: string;
+  moovPassword?: string;
+  moovEncryptionKey?: string;
+  moovBaseUrl?: string;
+  moovUseSandbox?: boolean;
+  moovReceiverPhone?: string;
 }
 
 function ensureDataDirectory() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+}
+
+export function getMomoClient(overrideConfig?: Partial<PaymentConfig>): MtnMomoClient {
+  const cfg = { ...getPaymentConfig(), ...overrideConfig };
+  return new MtnMomoClient({
+    baseUrl: cfg.momoBaseUrl,
+    targetEnvironment: cfg.momoTargetEnvironment || 'sandbox',
+    subscriptionKey: cfg.momoSubscriptionKey || cfg.momoApiKey || defaultMomoKey,
+    secondarySubscriptionKey: cfg.momoSecondaryKey,
+    apiUser: cfg.momoApiUser,
+    apiKey: cfg.momoApiKey,
+    currency: cfg.momoCurrency || (cfg.momoTargetEnvironment === 'production' ? 'XOF' : 'EUR'),
+  });
+}
+
+export function getMoovClient(overrideConfig?: Partial<PaymentConfig>): MoovMoneyClient {
+  const cfg = { ...getPaymentConfig(), ...overrideConfig };
+  return new MoovMoneyClient({
+    username: cfg.moovUsername,
+    password: cfg.moovPassword,
+    encryptionKey: cfg.moovEncryptionKey,
+    baseUrl: cfg.moovBaseUrl,
+    useSandbox: cfg.moovUseSandbox ?? true,
+    receiverPhone: cfg.moovReceiverPhone,
+  });
+}
+
+export async function diagnoseMoovApi(overrideConfig?: Partial<PaymentConfig>): Promise<MoovDiagnosisResult> {
+  const client = getMoovClient(overrideConfig);
+  return await client.diagnose();
 }
 
 export function getPaymentConfig(): PaymentConfig {
@@ -235,17 +277,25 @@ export function getStudentTickets(visitorId: string, phone?: string): VirtualTic
 }
 
 /**
+ * Run full OpenAPI spec diagnostic on MTN MoMo collection endpoints
+ */
+export async function runMomoOpenApiDiagnostic(customConfig?: Partial<PaymentConfig>): Promise<OpenApiFullDiagnostic> {
+  const client = getMomoClient(customConfig);
+  return await client.runOpenApiDiagnostic();
+}
+
+/**
  * Process Payment & Issue Tickets
+ * Strict implementation of MTN MoMo OpenAPI Collection (POST /collection/v1_0/requesttopay)
  * Supports:
- * - MTN_MOMO (checks key validity; if invalid, refuses to fake debit unless forceSimulation is true)
- * - WAVE (instant Wave payment)
- * - DEMO (Simulation test for counter demo)
+ * - MTN_MOMO (executes official OpenAPI RequestToPay with Bearer token & X-Reference-Id)
+ * - DEMO (Simulation test for counter demo & campus test)
  */
 export async function processPayment(
   phone: string,
   type: 'unitaire' | 'souche',
   visitorId: string,
-  paymentMethod: 'MTN_MOMO' | 'DEMO' = 'MTN_MOMO',
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' = 'MTN_MOMO',
   forceSimulation: boolean = false
 ): Promise<MomoPayResponse> {
   const cleanPhone = phone.trim().replace(/[^\d+]/g, '');
@@ -254,32 +304,119 @@ export async function processPayment(
   const now = new Date().toISOString();
   const config = getPaymentConfig();
 
-  // If user selected MTN MoMo and DID NOT explicitly ask for test simulation:
-  // Check if the current MTN key is actually functional or rejected
+  let paymentReferenceId: string = crypto.randomUUID();
+  let providerMessage: string = '';
+
+  // 1. Process MTN MoMo if selected and not simulation
   if (paymentMethod === 'MTN_MOMO' && !forceSimulation) {
-    const diagnosis = await diagnoseMomoApi(config.momoApiKey);
-    
-    // If the key is invalid or rejected by MTN servers (e.g. 401)
-    if (diagnosis.status === 'invalid_key' || diagnosis.statusCode === 401) {
-      console.warn(`[MTN MoMo] Real debit aborted: key is rejected by MTN servers (HTTP ${diagnosis.statusCode})`);
+    const client = getMomoClient();
+
+    console.log(`[MTN MoMo OpenAPI] Initiating RequestToPay for ${cleanPhone}, amount: ${amount}`);
+    const momoResult = await client.requestToPay({
+      amount,
+      payerPhone: cleanPhone,
+      externalId: `CROU-${Date.now().toString(36).toUpperCase()}`,
+      payerMessage: `Ticket Cantine CROU-K (${amount} FCFA)`,
+      payeeNote: 'Restaurant Univ. Korhogo',
+    });
+
+    paymentReferenceId = momoResult.referenceId;
+
+    // Handle Rejected Subscription Key (HTTP 401)
+    if (momoResult.status === 'REJECTED' || momoResult.httpStatus === 401) {
+      console.warn(`[MTN MoMo OpenAPI] Request rejected: HTTP 401`);
       return {
         success: false,
-        referenceId: '',
+        referenceId: paymentReferenceId,
         status: 'REJECTED_KEY',
         amount,
-        message: `La clé MTN MoMo ("${config.momoApiKey}") a été rejetée par le serveur MTN (Erreur HTTP 401 : Invalid subscription key). Aucun montant n'a été soutiré de votre compte téléphonique.`,
-        errorDetail: 'Clé d\'abonnement MTN inactive ou non reconnue. Utilisez le mode Simulation pour tester l\'application, ou réglez au guichet cantine.',
+        message: `La clé MTN MoMo ("${config.momoSubscriptionKey || config.momoApiKey}") a été rejetée par le serveur MTN (HTTP 401 Unauthorized : Invalid subscription key). Aucun montant n'a été prélevé sur le numéro ${cleanPhone}.`,
+        errorDetail: 'Vérifiez la clé de souscription Collections dans l\'administration ou utilisez le mode test.',
         apiStatus: {
           connected: false,
           statusCode: 401,
-          reason: 'Invalid subscription key',
+          reason: momoResult.error || 'Access denied due to invalid subscription key',
         },
       };
     }
+
+    // Handle Sandbox 500 error or other server issues
+    if (!momoResult.success && momoResult.httpStatus === 500) {
+      console.warn(`[MTN MoMo OpenAPI] Server 500 response from MTN MoMo Sandbox`);
+      return {
+        success: false,
+        referenceId: paymentReferenceId,
+        status: 'FAILED',
+        amount,
+        message: `Le serveur de test MTN MoMo Sandbox a répondu avec une erreur interne (HTTP 500). Les serveurs de test MTN rencontrent une maintenance temporaire.`,
+        errorDetail: momoResult.error || momoResult.rawResponse || 'HTTP 500 Internal Server Error',
+        apiStatus: {
+          connected: true,
+          statusCode: 500,
+          reason: 'MTN Sandbox Internal Server Error',
+        },
+      };
+    }
+
+    // If generic error
+    if (!momoResult.success) {
+      return {
+        success: false,
+        referenceId: paymentReferenceId,
+        status: 'FAILED',
+        amount,
+        message: momoResult.message || `Échec du prélèvement MTN MoMo (Code HTTP ${momoResult.httpStatus}).`,
+        errorDetail: momoResult.error || momoResult.rawResponse,
+        apiStatus: {
+          connected: false,
+          statusCode: momoResult.httpStatus,
+          reason: momoResult.error,
+        },
+      };
+    }
+
+    providerMessage = momoResult.message;
+  }
+
+  // 2. Process Moov Money (Flooz) if selected and not simulation
+  if (paymentMethod === 'MOOV_MONEY' && !forceSimulation) {
+    const moovClient = getMoovClient();
+    console.log(`[Moov Money Flooz] Initiating PushTransaction for ${cleanPhone}, amount: ${amount}`);
+
+    const moovResult = await moovClient.pushTransaction({
+      phone: cleanPhone,
+      amount,
+      message: `Paiement Ticket CROU-K (${amount} FCFA)`,
+      data1: `CROU-${Date.now().toString(36).toUpperCase()}`,
+      data2: 'Resto-U-Korhogo',
+    }, true);
+
+    paymentReferenceId = moovResult.transId || moovResult.referenceId;
+
+    if (!moovResult.success && moovResult.statusCode !== 100 && moovResult.statusCode !== 0) {
+      console.warn(`[Moov Money] Transaction rejected with status ${moovResult.statusCode}`);
+      return {
+        success: false,
+        referenceId: paymentReferenceId,
+        status: 'FAILED',
+        amount,
+        message: `Échec Moov Money (Code ${moovResult.statusCode}) : ${moovResult.longDescription}`,
+        errorDetail: moovResult.description || moovResult.rawResponse,
+        apiStatus: {
+          connected: false,
+          statusCode: moovResult.statusCode,
+          reason: moovResult.description,
+        },
+      };
+    }
+
+    providerMessage = moovResult.statusCode === 100
+      ? `Demande de paiement Moov Money envoyée à votre mobile (${cleanPhone}). Validez avec votre code PIN pour finaliser.`
+      : `Paiement Moov Money (${amount} FCFA) confirmé avec succès !`;
   }
 
   const isSimulation = forceSimulation || paymentMethod === 'DEMO';
-  const referenceId = crypto.randomUUID();
+  const referenceId = paymentReferenceId;
   const packId = type === 'souche' ? `SOUCHE-${Date.now().toString(36).toUpperCase()}` : undefined;
 
   // Generate tickets
@@ -289,6 +426,10 @@ export async function processPayment(
     const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
     const ticketId = `TK-CROUK-${type === 'unitaire' ? '200' : '2000'}-${Date.now().toString(36).toUpperCase()}-${randomSuffix}`;
     const securityCode = generateSecurityCode();
+
+    const actualMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' = isSimulation 
+      ? 'DEMO' 
+      : (paymentMethod === 'MOOV_MONEY' ? 'MOOV_MONEY' : 'MTN_MOMO');
 
     const ticket: VirtualTicket & { visitorId: string } = {
       id: ticketId,
@@ -303,7 +444,7 @@ export async function processPayment(
       status: 'valid',
       createdAt: now,
       payerPhone: cleanPhone,
-      paymentMethod: isSimulation ? 'DEMO' : 'MTN_MOMO',
+      paymentMethod: actualMethod,
       transactionId: referenceId,
       securityCode,
       visitorId,
@@ -324,9 +465,9 @@ export async function processPayment(
       ? '🧪 [Mode Test Cantine] 1 ticket repas généré pour test (aucun argent débité).'
       : '🧪 [Mode Test Cantine] Souche de 10 tickets générée pour test (aucun argent débité).';
   } else {
-    successMsg = type === 'unitaire'
-      ? 'Paiement MTN MoMo de 200 FCFA validé. 1 ticket repas disponible !'
-      : 'Paiement MTN MoMo de 2 000 FCFA validé. Souche de 10 tickets disponible !';
+    successMsg = providerMessage || (type === 'unitaire'
+      ? 'Paiement de 200 FCFA validé. 1 ticket repas disponible !'
+      : 'Paiement de 2 000 FCFA validé. Souche de 10 tickets disponible !');
   }
 
   return {

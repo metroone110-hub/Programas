@@ -37,7 +37,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   
   // Payment states
   const [selectedPack, setSelectedPack] = useState<'unitaire' | 'souche'>('unitaire');
-  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'DEMO'>('MTN_MOMO');
+  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO'>('MTN_MOMO');
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [isProcessingPay, setIsProcessingPay] = useState<boolean>(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -400,12 +400,17 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 </div>
               </div>
 
-              {/* BARRE D'INFORMATION MTN MOMO EN BAS */}
-              <div className="p-3 bg-white rounded-2xl border border-black/5 flex items-center justify-between text-xs text-slate-600">
-                <span className="font-bold text-slate-800">Moyen de paiement officiel :</span>
-                <span className="px-2.5 py-1 rounded-md bg-[#FFCC00]/30 text-amber-950 font-black text-xs flex items-center gap-1.5">
-                  🟡 MTN Mobile Money (MoMo)
-                </span>
+              {/* BARRE D'INFORMATION MOYENS DE PAIEMENT EN BAS */}
+              <div className="p-3 bg-white rounded-2xl border border-black/5 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
+                <span className="font-bold text-slate-800">Moyens acceptés :</span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-md bg-[#FFCC00]/30 text-amber-950 font-black text-xs flex items-center gap-1">
+                    🟡 MTN MoMo
+                  </span>
+                  <span className="px-2.5 py-1 rounded-md bg-blue-100 text-blue-900 font-black text-xs flex items-center gap-1">
+                    🔵 Moov Money (Flooz)
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -444,29 +449,103 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 </div>
               </div>
 
-              {/* FORMULAIRE MTN MOMO */}
+              {/* FORMULAIRE MULTI-OPÉRATEURS (MTN / MOOV / SIMULATION) */}
               <div className="bg-white p-5 rounded-3xl border border-black/10 shadow-xs space-y-4">
+                {/* SÉLECTEUR D'OPÉRATEUR */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Choisissez votre opérateur de paiement Mobile Money :
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('MTN_MOMO');
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                        selectedMethod === 'MTN_MOMO'
+                          ? 'bg-[#FFCC00] text-slate-950 shadow-xs ring-2 ring-[#FFCC00]/50'
+                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
+                      }`}
+                    >
+                      <span className="text-base">🟡</span>
+                      <span className="leading-tight">MTN MoMo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('MOOV_MONEY');
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                        selectedMethod === 'MOOV_MONEY'
+                          ? 'bg-[#005CA9] text-white shadow-xs ring-2 ring-[#005CA9]/50'
+                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
+                      }`}
+                    >
+                      <span className="text-base">🔵</span>
+                      <span className="leading-tight">Moov Flooz</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('DEMO');
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                        selectedMethod === 'DEMO'
+                          ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-600/50'
+                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
+                      }`}
+                    >
+                      <span className="text-base">🧪</span>
+                      <span className="leading-tight">Simulation</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* EN-TÊTE OPÉRATEUR SÉLECTIONNÉ */}
                 <div className="flex items-center gap-2 pb-2 border-b border-black/5">
-                  <div className="w-7 h-7 rounded-lg bg-[#FFCC00] text-slate-950 flex items-center justify-center font-black text-xs">
-                    🟡
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm ${
+                    selectedMethod === 'MTN_MOMO' 
+                      ? 'bg-[#FFCC00] text-slate-950' 
+                      : selectedMethod === 'MOOV_MONEY'
+                      ? 'bg-[#005CA9] text-white'
+                      : 'bg-emerald-600 text-white'
+                  }`}>
+                    {selectedMethod === 'MTN_MOMO' ? '🟡' : selectedMethod === 'MOOV_MONEY' ? '🔵' : '🧪'}
                   </div>
                   <div>
                     <h5 className="font-black text-slate-900 text-xs sm:text-sm">
-                      Paiement Sécurisé MTN Mobile Money
+                      {selectedMethod === 'MTN_MOMO' 
+                        ? 'Paiement Sécurisé MTN Mobile Money' 
+                        : selectedMethod === 'MOOV_MONEY'
+                        ? 'Paiement Sécurisé Moov Money (Flooz)'
+                        : 'Mode Simulation / Test Cantine'}
                     </h5>
                     <p className="text-[10px] text-slate-400">
-                      Régie CROU-K · Campus Peleforo Gon Coulibaly
+                      {selectedMethod === 'MOOV_MONEY'
+                        ? 'Protocole USSD Push direct · Code PIN sur mobile'
+                        : selectedMethod === 'MTN_MOMO'
+                        ? 'Régie CROU-K · Campus Peleforo Gon Coulibaly'
+                        : 'Aucun compte débité · Essai immédiat guichet'}
                     </p>
                   </div>
                 </div>
 
-                {/* INSTRUCTIONS DE TRANSFERT DIRECT VERS LE NUMÉRO DE LA CAISSE */}
-                {receiverPhone && (
+                {/* INSTRUCTIONS DE TRANSFERT DIRECT OU COMPTE RÉCEPTEUR */}
+                {selectedMethod === 'MTN_MOMO' && receiverPhone && (
                   <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-3.5 space-y-2 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-amber-950 flex items-center gap-1.5">
                         <span>📲</span>
-                        <span>Compte Récepteur Caisse CROU-K :</span>
+                        <span>Compte Caisse MTN CROU-K :</span>
                       </span>
                       <span className="font-mono font-black text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-lg text-xs">
                         {receiverPhone}
@@ -474,7 +553,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     </div>
 
                     <p className="text-[11px] text-amber-800 leading-relaxed">
-                      Effectuez le transfert de <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sur ce numéro MTN ou via code MoMo Pay {merchantCode ? `(${merchantCode})` : '(*133#)'}.
+                      Effectuez le paiement de <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sur ce numéro MTN ou via code MoMo Pay {merchantCode ? `(${merchantCode})` : '(*133#)'}.
                     </p>
 
                     <div className="pt-1">
@@ -489,30 +568,68 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   </div>
                 )}
 
-                <form onSubmit={(e) => handlePay(e, false)} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-800 mb-1">
-                      Numéro de téléphone de l'étudiant (acheteur) :
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                        <Smartphone className="w-4 h-4 text-amber-500" />
-                        <span>🇨🇮 +225</span>
-                      </div>
-                      <input
-                        type="tel"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        placeholder="05 01 23 45 67"
-                        className="w-full pl-24 pr-4 py-3 bg-slate-50 rounded-2xl border border-black/10 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                        autoFocus
-                        required
-                      />
+                {selectedMethod === 'MOOV_MONEY' && (
+                  <div className="bg-blue-50/90 border border-blue-200 rounded-2xl p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                        <span>📲</span>
+                        <span>Passerelle Moov Money (Flooz) :</span>
+                      </span>
+                      <span className="font-mono font-black text-blue-900 bg-blue-200/80 px-2 py-0.5 rounded-lg text-xs">
+                        *155#
+                      </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Permet d'associer votre ticket à votre numéro pour le passage au réfectoire.
+
+                    <p className="text-[11px] text-blue-800 leading-relaxed">
+                      Saisissez votre numéro Moov CI (01...). Un pop-up USSD <strong>Push Moov Money</strong> apparaîtra directement sur l'écran de votre téléphone pour taper votre code secret et autoriser les <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong>.
                     </p>
                   </div>
+                )}
+
+                {selectedMethod === 'DEMO' && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-1 text-xs text-emerald-900">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span>🧪</span>
+                      <span>Mode Démonstration Actif</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 leading-relaxed">
+                      Cette option permet de tester instantanément l'émission de vrais tickets CROU-K (avec QR code et code secret) et de tester le scanner guichetier sans débiter de compte bancaire.
+                    </p>
+                  </div>
+                )}
+
+                <form onSubmit={(e) => handlePay(e, selectedMethod === 'DEMO')} className="space-y-4">
+                  {selectedMethod !== 'DEMO' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 mb-1">
+                        Numéro de téléphone de l'étudiant ({selectedMethod === 'MOOV_MONEY' ? 'Moov' : 'MTN'}) :
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                          <Smartphone className={`w-4 h-4 ${selectedMethod === 'MOOV_MONEY' ? 'text-blue-500' : 'text-amber-500'}`} />
+                          <span>🇨🇮 +225</span>
+                        </div>
+                        <input
+                          type="tel"
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(e.target.value)}
+                          placeholder={selectedMethod === 'MOOV_MONEY' ? '01 02 03 04 05' : '05 01 23 45 67'}
+                          className={`w-full pl-24 pr-4 py-3 bg-slate-50 rounded-2xl border text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 ${
+                            selectedMethod === 'MOOV_MONEY'
+                              ? 'border-blue-200 focus:ring-blue-400'
+                              : 'border-amber-200 focus:ring-amber-400'
+                          }`}
+                          autoFocus
+                          required
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {selectedMethod === 'MOOV_MONEY'
+                          ? 'Votre téléphone recevra le prompt USSD Moov Flooz'
+                          : 'Permet d\'associer votre ticket à votre numéro pour le passage au réfectoire.'}
+                      </p>
+                    </div>
+                  )}
 
                   {/* ALERTE SI ERREUR OU BESOIN DE DÉMO */}
                   {rejectedKeyInfo && (
@@ -521,7 +638,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                         <div>
                           <div className="font-black text-xs text-rose-950">
-                            INFORMATION PAIEMENT MTN
+                            INFORMATION PAIEMENT
                           </div>
                           <p className="text-[11px] text-rose-800 mt-0.5 leading-relaxed">
                             {rejectedKeyInfo.message}
@@ -546,16 +663,34 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     <button
                       type="submit"
                       disabled={isProcessingPay}
-                      className="w-full py-3.5 rounded-2xl font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50 bg-[#FFCC00] hover:bg-[#f0c000] text-slate-950"
+                      className={`w-full py-3.5 rounded-2xl font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50 ${
+                        selectedMethod === 'MOOV_MONEY'
+                          ? 'bg-[#005CA9] hover:bg-[#004d8c] text-white'
+                          : selectedMethod === 'DEMO'
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          : 'bg-[#FFCC00] hover:bg-[#f0c000] text-slate-950'
+                      }`}
                     >
                       {isProcessingPay ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Vérification MTN MoMo en cours...</span>
+                          <span>
+                            {selectedMethod === 'MOOV_MONEY'
+                              ? 'Envoi Push Moov Flooz en cours...'
+                              : selectedMethod === 'DEMO'
+                              ? 'Génération ticket test...'
+                              : 'Vérification MTN MoMo en cours...'}
+                          </span>
                         </>
                       ) : (
                         <>
-                          <span>Valider le paiement MTN MoMo ({selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'})</span>
+                          <span>
+                            {selectedMethod === 'MOOV_MONEY'
+                              ? `Payer par Moov Money (${selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'})`
+                              : selectedMethod === 'DEMO'
+                              ? `Générer immédiatement (${selectedPack === 'unitaire' ? '1 ticket test' : '10 tickets test'})`
+                              : `Valider le paiement MTN MoMo (${selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'})`}
+                          </span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}
@@ -563,16 +698,21 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   )}
 
                   {/* OPTION DE TEST CROU SANS ARGENT */}
-                  <div className="text-center pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handlePay(undefined, true)}
-                      disabled={isProcessingPay}
-                      className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline transition-colors"
-                    >
-                      Ou tester gratuitement en mode Simulation CROU (essai guichet)
-                    </button>
-                  </div>
+                  {selectedMethod !== 'DEMO' && (
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMethod('DEMO');
+                          handlePay(undefined, true);
+                        }}
+                        disabled={isProcessingPay}
+                        className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline transition-colors"
+                      >
+                        Ou tester gratuitement en mode Simulation CROU (essai guichet)
+                      </button>
+                    </div>
+                  )}
                 </form>
               </div>
             </div>

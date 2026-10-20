@@ -31,6 +31,10 @@ import {
   processMomoPayment,
   processPayment,
   diagnoseMomoApi,
+  runMomoOpenApiDiagnostic,
+  getMomoClient,
+  diagnoseMoovApi,
+  getMoovClient,
   getPaymentConfig,
   savePaymentConfig,
   validateTicketAtCounter,
@@ -407,6 +411,104 @@ app.post('/api/tickets/momo-diagnosis', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/tickets/momo-openapi-diagnostic - Run comprehensive OpenAPI diagnostic pipeline
+app.get('/api/tickets/momo-openapi-diagnostic', async (req: Request, res: Response) => {
+  try {
+    const diagnostic = await runMomoOpenApiDiagnostic(req.query as any);
+    return res.json({ success: true, diagnostic });
+  } catch (error: any) {
+    console.error('MTN OpenAPI diagnostic error:', error);
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic OpenAPI MTN' });
+  }
+});
+
+// POST /api/tickets/momo-openapi-diagnostic - Run diagnostic with custom parameters
+app.post('/api/tickets/momo-openapi-diagnostic', async (req: Request, res: Response) => {
+  try {
+    const diagnostic = await runMomoOpenApiDiagnostic(req.body);
+    return res.json({ success: true, diagnostic });
+  } catch (error: any) {
+    console.error('MTN OpenAPI diagnostic error:', error);
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic OpenAPI MTN' });
+  }
+});
+
+// GET /api/tickets/momo-status/:referenceId - OpenAPI: GET /collection/v1_0/requesttopay/{referenceId}
+app.get('/api/tickets/momo-status/:referenceId', async (req: Request, res: Response) => {
+  try {
+    const { referenceId } = req.params;
+    const client = getMomoClient();
+    const result = await client.getRequestToPayStatus(referenceId);
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/tickets/momo-balance - OpenAPI: GET /collection/v1_0/account/balance
+app.get('/api/tickets/momo-balance', async (req: Request, res: Response) => {
+  try {
+    const client = getMomoClient();
+    const result = await client.getAccountBalance();
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/tickets/moov-diagnosis - Live diagnostic for Moov Money (Flooz)
+app.get('/api/tickets/moov-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const result = await diagnoseMoovApi();
+    return res.json({ success: true, diagnosis: result });
+  } catch (error: any) {
+    console.error('Moov Money diagnosis error:', error);
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic Moov' });
+  }
+});
+
+// POST /api/tickets/moov-diagnosis - Test Moov with custom parameters
+app.post('/api/tickets/moov-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const result = await diagnoseMoovApi(req.body);
+    return res.json({ success: true, diagnosis: result });
+  } catch (error: any) {
+    console.error('Moov Money diagnosis error:', error);
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic Moov' });
+  }
+});
+
+// POST /api/tickets/moov-push - Test direct USSD Push to a test phone number
+app.post('/api/tickets/moov-push', async (req: Request, res: Response) => {
+  try {
+    const { phone, amount, message, config } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'Numéro de téléphone requis' });
+    }
+    const client = getMoovClient(config);
+    const result = await client.pushTransaction({
+      phone,
+      amount: Number(amount) || 200,
+      message: message || 'Test USSD Moov Money CROU Korhogo',
+    });
+    return res.json({ success: true, result });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/tickets/moov-status/:referenceId - Query Moov transaction status
+app.get('/api/tickets/moov-status/:referenceId', async (req: Request, res: Response) => {
+  try {
+    const { referenceId } = req.params;
+    const client = getMoovClient();
+    const result = await client.getTransactionStatus(referenceId);
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // GET /api/tickets/payment-config - Get payment gateway configuration
 app.get('/api/tickets/payment-config', (req: Request, res: Response) => {
   try {
@@ -470,6 +572,22 @@ app.post('/api/tickets/reset', (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Erreur lors de la réinitialisation' });
   }
 });
+
+// GET /download/contrat-mtn-momo.pdf & /contrat-mtn-momo.pdf - Direct download and view of completed MTN MoMo contract PDF
+const servePdfContract = (req: Request, res: Response) => {
+  const filePath = path.resolve(__dirname, 'public', 'CONTRAT_PARTENARIAT_MTN_MOMO_REMPLI.pdf');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/pdf');
+    const disposition = req.query.view === '1' ? 'inline' : 'attachment';
+    res.setHeader('Content-Disposition', `${disposition}; filename="CONTRAT_PARTENARIAT_MTN_MOMO_REMPLI.pdf"`);
+    return res.sendFile(filePath);
+  }
+  return res.status(404).send('Fichier PDF introuvable');
+};
+
+app.get('/download/contrat-mtn-momo.pdf', servePdfContract);
+app.get('/download/CONTRAT_PARTENARIAT_MTN_MOMO_REMPLI.pdf', servePdfContract);
+app.get('/contrat-mtn-momo.pdf', servePdfContract);
 
 // ------------------- VITE / STATIC SERVING -------------------
 async function startServer() {

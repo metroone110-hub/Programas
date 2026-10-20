@@ -104,7 +104,7 @@ export interface VirtualTicket {
   createdAt: string;
   usedAt?: string;
   payerPhone?: string;
-  paymentMethod: 'MTN_MOMO' | 'DEMO' | 'CASH';
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' | 'CASH';
   transactionId?: string;
   securityCode: string; // 6-digit code for cashier verification
   isSimulation?: boolean;
@@ -114,7 +114,7 @@ export interface MomoPayRequest {
   phone: string;
   type: 'unitaire' | 'souche';
   visitorId: string;
-  paymentMethod?: 'MTN_MOMO' | 'DEMO';
+  paymentMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO';
   forceSimulation?: boolean;
 }
 
@@ -144,6 +144,67 @@ export interface PaymentDiagnosisResult {
   explanations: string[];
   recommendations: string[];
   testedAt: string;
+}
+
+export interface MoovDiagnosisResult {
+  testedAt: string;
+  environment: 'sandbox' | 'production';
+  baseUrl: string;
+  username: string;
+  tokenGenerated: boolean;
+  tokenPreview: string;
+  connected: boolean;
+  httpStatus: number;
+  statusCode?: number;
+  statusMessage: string;
+  explanations: string[];
+  recommendations: string[];
+  rawResponse?: string;
+}
+
+export interface OpenApiStepResult {
+  step: string;
+  name: string;
+  endpoint: string;
+  method: string;
+  httpStatus: number;
+  success: boolean;
+  details: string;
+  rawResponse?: string;
+}
+
+export interface OpenApiFullDiagnostic {
+  testedAt: string;
+  environment: string;
+  baseUrl: string;
+  subscriptionKeyPreview: string;
+  apiUser: string;
+  allSuccess: boolean;
+  steps: OpenApiStepResult[];
+  summary: string;
+  recommendations: string[];
+}
+
+export interface PaymentConfigData {
+  momoApiKey: string;
+  momoApiUser: string;
+  momoSubscriptionKey: string;
+  momoSecondaryKey?: string;
+  momoProduct?: string;
+  momoTargetEnvironment?: 'sandbox' | 'production' | 'mtnciv' | string;
+  momoBaseUrl?: string;
+  momoCurrency?: string;
+  momoReceiverPhone: string;
+  momoMerchantCode: string;
+  crouMerchantName: string;
+  allowDemoMode: boolean;
+  // Moov Money fields
+  moovUsername?: string;
+  moovPassword?: string;
+  moovEncryptionKey?: string;
+  moovBaseUrl?: string;
+  moovUseSandbox?: boolean;
+  moovReceiverPhone?: string;
 }
 
 export interface TicketValidationResult {

@@ -17,10 +17,19 @@ import {
   Key,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  FileCode,
+  Server,
+  ShieldAlert
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
-import type { TicketValidationResult, TicketStats, PaymentDiagnosisResult } from '../types';
+import type { 
+  TicketValidationResult, 
+  TicketStats, 
+  PaymentDiagnosisResult,
+  MoovDiagnosisResult,
+  OpenApiFullDiagnostic 
+} from '../types';
 import { playScanSound } from '../utils/qrcode';
 
 interface AdminTicketScannerProps {
@@ -89,9 +98,96 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
+  const [gatewayTab, setGatewayTab] = useState<'mtn' | 'moov'>('mtn');
+
+  // Moov Money State
+  const [moovUsername, setMoovUsername] = useState<string>('crou_korhogo');
+  const [moovPassword, setMoovPassword] = useState<string>('');
+  const [moovEncryptionKey, setMoovEncryptionKey] = useState<string>('tlc12345tlc12345tlc12345tlc12345');
+  const [moovBaseUrl, setMoovBaseUrl] = useState<string>('https://testapimarchand2.moov-africa.bj:2010/com.tlc.merchant.api/UssdPush?wsdl');
+  const [moovUseSandbox, setMoovUseSandbox] = useState<boolean>(true);
+  const [moovReceiverPhone, setMoovReceiverPhone] = useState<string>('0102030405');
+  const [moovDiagnosis, setMoovDiagnosis] = useState<MoovDiagnosisResult | null>(null);
+  const [testingMoov, setTestingMoov] = useState<boolean>(false);
+  const [testPushPhone, setTestPushPhone] = useState<string>('0102030405');
+  const [testingPush, setTestingPush] = useState<boolean>(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
+
+  // Run live diagnosis on Moov Money
+  const runMoovDiagnosis = async () => {
+    try {
+      setTestingMoov(true);
+      const res = await fetch('/api/tickets/moov-diagnosis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          moovUsername,
+          moovPassword,
+          moovEncryptionKey,
+          moovBaseUrl,
+          moovUseSandbox,
+          moovReceiverPhone,
+        }),
+      });
+      const data = await res.json();
+      if (data.diagnosis) {
+        setMoovDiagnosis(data.diagnosis);
+      }
+    } catch (err) {
+      console.error('Failed to run Moov diagnosis:', err);
+    } finally {
+      setTestingMoov(false);
+    }
+  };
+
+  // Test Moov USSD Push
+  const handleTestMoovPush = async () => {
+    if (!testPushPhone) return;
+    try {
+      setTestingPush(true);
+      setPushResult(null);
+      const res = await fetch('/api/tickets/moov-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: testPushPhone,
+          amount: 200,
+          config: {
+            moovUsername,
+            moovPassword,
+            moovEncryptionKey,
+            moovBaseUrl,
+            moovUseSandbox,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.result) {
+        setPushResult(`✅ USSD Push envoyé : Code ${data.result.statusCode} (${data.result.longDescription || data.result.description}) - Réf: ${data.result.referenceId}`);
+      } else {
+        setPushResult(`❌ Échec : ${data.error || 'Erreur technique'}`);
+      }
+    } catch (e: any) {
+      setPushResult(`❌ Erreur réseau : ${e.message}`);
+    } finally {
+      setTestingPush(false);
+    }
+  };
+
   // Receiver phone and merchant code settings
   const [receiverPhone, setReceiverPhone] = useState<string>('');
   const [merchantCode, setMerchantCode] = useState<string>('');
+  const [momoSubscriptionKey, setMomoSubscriptionKey] = useState<string>('');
+  const [momoSecondaryKey, setMomoSecondaryKey] = useState<string>('');
+  const [momoApiUser, setMomoApiUser] = useState<string>('');
+  const [momoApiKey, setMomoApiKey] = useState<string>('');
+  const [momoTargetEnvironment, setMomoTargetEnvironment] = useState<string>('sandbox');
+  const [momoCurrency, setMomoCurrency] = useState<string>('XOF');
+  
+  // OpenAPI Diagnostic
+  const [openApiDiagnostic, setOpenApiDiagnostic] = useState<OpenApiFullDiagnostic | null>(null);
+  const [isRunningOpenApi, setIsRunningOpenApi] = useState<boolean>(false);
+  const [isOpenApiExpanded, setIsOpenApiExpanded] = useState<boolean>(true);
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
@@ -104,8 +200,23 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
         if (json.config) {
           setReceiverPhone(json.config.momoReceiverPhone || '');
           setMerchantCode(json.config.momoMerchantCode || '');
-          if (json.config.momoApiKey) {
-            setCustomKeyInput(json.config.momoApiKey);
+          setMomoSubscriptionKey(json.config.momoSubscriptionKey || json.config.momoApiKey || '');
+          setMomoSecondaryKey(json.config.momoSecondaryKey || '');
+          setMomoApiUser(json.config.momoApiUser || '');
+          setMomoApiKey(json.config.momoApiKey || '');
+          setMomoTargetEnvironment(json.config.momoTargetEnvironment || 'sandbox');
+          setMomoCurrency(json.config.momoCurrency || 'XOF');
+          if (json.config.moovUsername) setMoovUsername(json.config.moovUsername);
+          if (json.config.moovPassword) setMoovPassword(json.config.moovPassword);
+          if (json.config.moovEncryptionKey) setMoovEncryptionKey(json.config.moovEncryptionKey);
+          if (json.config.moovBaseUrl) setMoovBaseUrl(json.config.moovBaseUrl);
+          if (typeof json.config.moovUseSandbox === 'boolean') setMoovUseSandbox(json.config.moovUseSandbox);
+          if (json.config.moovReceiverPhone) {
+            setMoovReceiverPhone(json.config.moovReceiverPhone);
+            setTestPushPhone(json.config.moovReceiverPhone);
+          }
+          if (json.config.momoSubscriptionKey || json.config.momoApiKey) {
+            setCustomKeyInput(json.config.momoSubscriptionKey || json.config.momoApiKey);
           }
         }
       }
@@ -114,8 +225,8 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveConfig = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     try {
       setSavingConfig(true);
       setSaveSuccess(false);
@@ -128,17 +239,59 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
         body: JSON.stringify({
           momoReceiverPhone: receiverPhone,
           momoMerchantCode: merchantCode,
-          momoApiKey: customKeyInput,
+          momoSubscriptionKey: momoSubscriptionKey || customKeyInput,
+          momoSecondaryKey,
+          momoApiUser,
+          momoApiKey,
+          momoTargetEnvironment,
+          momoCurrency,
+          moovUsername,
+          moovPassword,
+          moovEncryptionKey,
+          moovBaseUrl,
+          moovUseSandbox,
+          moovReceiverPhone,
         }),
       });
       if (res.ok) {
         setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        setTimeout(() => setSaveSuccess(false), 3500);
       }
     } catch (err) {
       console.error('Failed to save config:', err);
     } finally {
       setSavingConfig(false);
+    }
+  };
+
+  const runOpenApiTest = async () => {
+    try {
+      setIsRunningOpenApi(true);
+      const res = await fetch('/api/tickets/momo-openapi-diagnostic', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
+        body: JSON.stringify({
+          subscriptionKey: momoSubscriptionKey || customKeyInput,
+          secondarySubscriptionKey: momoSecondaryKey,
+          apiUser: momoApiUser,
+          apiKey: momoApiKey,
+          targetEnvironment: momoTargetEnvironment,
+          currency: momoCurrency,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.diagnostic) {
+          setOpenApiDiagnostic(json.diagnostic);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to run OpenAPI diagnostic:', err);
+    } finally {
+      setIsRunningOpenApi(false);
     }
   };
 
@@ -310,179 +463,597 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
         </button>
       </div>
 
-      {/* DIAGNOSTIC API EN DIRECT DE LA CLÉ FOURNIE (MTN MOMO / WAVE) */}
-      <div className="bg-white rounded-3xl border border-black/10 shadow-sm p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black shadow-xs ${
-              diagnosis?.statusCode === 200 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-            }`}>
-              <Activity className="w-4 h-4" />
+      {/* MODULE PASSERELLES DE PAIEMENT : MTN MOMO & MOOV MONEY */}
+      <div className="bg-white rounded-3xl border border-black/10 shadow-sm p-5 sm:p-6 space-y-5">
+        {/* ONGLET DE SÉLECTION DE LA PASSERELLE */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/10 pb-4">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Passerelles Mobile Money de Côte d'Ivoire
+            </span>
+            <h4 className="font-black text-slate-950 text-base sm:text-lg">
+              Configuration & Diagnostic des Opérateurs
+            </h4>
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setGatewayTab('mtn')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                gatewayTab === 'mtn'
+                  ? 'bg-[#FFCC00] text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-950'
+              }`}
+            >
+              <span>🟡</span>
+              <span>MTN MoMo</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGatewayTab('moov')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                gatewayTab === 'moov'
+                  ? 'bg-[#005CA9] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-950'
+              }`}
+            >
+              <span>🔵</span>
+              <span>Moov Flooz (SDK)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* CONTENU ONGLET 1 : MTN MOMO OPENAPI */}
+        {gatewayTab === 'mtn' && (
+          <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-xs">
+                  <FileCode className="w-5 h-5 text-slate-950" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-black text-slate-950 text-base sm:text-lg">
+                      Spécification OpenAPI MTN MoMo (<code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-amber-900">collection.yaml</code>)
+                    </h4>
+                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                      openApiDiagnostic?.allSuccess
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : openApiDiagnostic?.steps.some(s => s.httpStatus === 500)
+                        ? 'bg-amber-100 text-amber-900'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {momoTargetEnvironment === 'production' ? '🔴 Live Production' : '🧪 Sandbox MoMo'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Implémentation stricte des endpoints OpenAPI MTN MoMo : Tokens Bearer, RequestToPay & Soldes.
+                  </p>
+                </div>
+              </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={runOpenApiTest}
+              disabled={isRunningOpenApi}
+              className="px-4 py-2 bg-[#18181B] hover:bg-black text-white text-xs font-black rounded-xl shadow-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isRunningOpenApi ? 'animate-spin' : ''}`} />
+              <span>{isRunningOpenApi ? 'Test en cours...' : 'Exécuter le cycle OpenAPI'}</span>
+            </button>
+            <button
+              onClick={() => setIsOpenApiExpanded(!isOpenApiExpanded)}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+              title="Afficher/Masquer le détail"
+            >
+              {isOpenApiExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {isOpenApiExpanded && (
+          <div className="space-y-4 pt-2">
+            {/* RÉSULTAT DU CYCLE OPENAPI SI EXÉCUTÉ */}
+            {openApiDiagnostic ? (
+              <div className="space-y-3">
+                <div className={`p-4 rounded-2xl border ${
+                  openApiDiagnostic.allSuccess
+                    ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                    : openApiDiagnostic.steps.some(s => s.httpStatus === 500)
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                    : 'bg-rose-50/90 border-rose-300 text-rose-950'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <Activity className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+                    <div className="space-y-1">
+                      <div className="font-black text-sm">
+                        {openApiDiagnostic.summary}
+                      </div>
+                      <div className="text-[11px] text-slate-600">
+                        Serveur cible : <code className="font-mono font-bold">{openApiDiagnostic.baseUrl}</code> • Environnement : <span className="font-bold uppercase">{openApiDiagnostic.environment}</span> • Clé testée : <code className="font-mono">{openApiDiagnostic.subscriptionKeyPreview}</code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* LES 4 ÉTAPES OPENAPI */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {openApiDiagnostic.steps.map((st, idx) => (
+                    <div 
+                      key={idx}
+                      className="bg-slate-50 p-3.5 rounded-2xl border border-black/5 flex flex-col justify-between space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-900">{st.step}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          st.success
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : st.httpStatus === 500
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          HTTP {st.httpStatus || '0'}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-mono text-[10px] text-slate-500 font-bold mb-1">
+                          {st.method} {st.endpoint}
+                        </div>
+                        <p className="text-xs text-slate-700 leading-snug">
+                          {st.details}
+                        </p>
+                      </div>
+                      {st.rawResponse && (
+                        <div className="text-[10px] font-mono text-slate-500 bg-white p-2 rounded-xl border border-black/5 truncate">
+                          {st.rawResponse}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* RECOMMANDATIONS ET CONSEILS DE DÉPLOIEMENT */}
+                {openApiDiagnostic.recommendations.length > 0 && (
+                  <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 text-xs space-y-1.5">
+                    <div className="font-black text-slate-900 flex items-center gap-1.5">
+                      <span>💡</span>
+                      <span>Analyse technique du déploiement MTN MoMo :</span>
+                    </div>
+                    <ul className="space-y-1 list-disc list-inside text-slate-700 text-[11px] leading-relaxed">
+                      {openApiDiagnostic.recommendations.map((rec, i) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
+                <p className="text-xs text-slate-600 font-medium">
+                  Le cycle OpenAPI exécute les 4 requêtes du fichier <code className="font-mono font-bold">collection.yaml</code> : vérification de la clé d'abonnement, enregistrement de l'API User, création du jeton Bearer OAuth 2.0 et interrogation du solde marchand.
+                </p>
+                <button
+                  type="button"
+                  onClick={runOpenApiTest}
+                  disabled={isRunningOpenApi}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-colors"
+                >
+                  🚀 Démarrer la vérification OpenAPI MTN
+                </button>
+              </div>
+            )}
+
+            {/* FORMULAIRE DE CONFIGURATION COMPLET DES CLÉS OPENAPI */}
+            <form onSubmit={handleSaveConfig} className="bg-slate-50 p-5 rounded-2xl border border-black/5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-3">
+                <div>
+                  <h5 className="font-black text-sm text-slate-900">
+                    Paramètres des Clés de l'API MTN MoMo
+                  </h5>
+                  <p className="text-[11px] text-slate-500">
+                    Renseignez vos identifiants obtenus sur le portail développeur ou le contrat MTN CI
+                  </p>
+                </div>
+                {saveSuccess && (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300">
+                    ✅ Configuration enregistrée avec succès !
+                  </span>
+                )}
+              </div>
+
+              {/* ENVIRONNEMENT & DEVISE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Environnement Cible (Target Environment) :
+                  </label>
+                  <select
+                    value={momoTargetEnvironment}
+                    onChange={(e) => setMomoTargetEnvironment(e.target.value)}
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="sandbox">Sandbox Test (sandbox.momodeveloper.mtn.com)</option>
+                    <option value="production">Production Directe (proxy.momoapi.mtn.com)</option>
+                    <option value="mtnciv">MTN Côte d'Ivoire (mtnciv)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Devise (Currency) :
+                  </label>
+                  <select
+                    value={momoCurrency}
+                    onChange={(e) => setMomoCurrency(e.target.value)}
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="XOF">XOF - Franc CFA (Côte d'Ivoire en Production)</option>
+                    <option value="EUR">EUR - Euro (Obligatoire sur la Sandbox MTN)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* CLÉS D'ABONNEMENT */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Clé Primaire (Primary Subscription Key) :
+                  </label>
+                  <input
+                    type="text"
+                    value={momoSubscriptionKey}
+                    onChange={(e) => {
+                      setMomoSubscriptionKey(e.target.value);
+                      setCustomKeyInput(e.target.value);
+                    }}
+                    placeholder="Ex: e30c2168b25a47aab7e93dd81d4224e7"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Clé Secondaire (Secondary Subscription Key) :
+                  </label>
+                  <input
+                    type="text"
+                    value={momoSecondaryKey}
+                    onChange={(e) => setMomoSecondaryKey(e.target.value)}
+                    placeholder="Ex: 4cbfbb5dffd44f06a045bd7893274c62"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+
+              {/* API USER & API KEY */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    API User (UUID v4) :
+                  </label>
+                  <input
+                    type="text"
+                    value={momoApiUser}
+                    onChange={(e) => setMomoApiUser(e.target.value)}
+                    placeholder="Ex: 81930870-7db8-4def-85d3-1d84efa082b7"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    API Key (Clé API secrète) :
+                  </label>
+                  <input
+                    type="text"
+                    value={momoApiKey}
+                    onChange={(e) => setMomoApiKey(e.target.value)}
+                    placeholder="Clé secrète générée pour l'API User"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+
+              {/* NUMÉRO DE RÉCEPTION ET CODE MARCHAND */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-black/5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Numéro Téléphone de Réception (Caisse CROU) :
+                  </label>
+                  <input
+                    type="text"
+                    value={receiverPhone}
+                    onChange={(e) => setReceiverPhone(e.target.value)}
+                    placeholder="Ex: 05 00 11 22 33"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Code Marchand USSD MoMo Pay (Optionnel) :
+                  </label>
+                  <input
+                    type="text"
+                    value={merchantCode}
+                    onChange={(e) => setMerchantCode(e.target.value)}
+                    placeholder="Ex: *133*554433*200#"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={savingConfig}
+                  className="px-5 py-2.5 bg-[#18181B] hover:bg-black text-white text-xs font-black rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+                >
+                  {savingConfig ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                      <span>Enregistrement en cours...</span>
+                    </>
+                  ) : (
+                    <span>Enregistrer la configuration OpenAPI</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* CONTENU ONGLET 2 : MOOV MONEY (FLOOZ / SDK V1P3R75) */}
+    {gatewayTab === 'moov' && (
+      <div className="space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#005CA9] text-white flex items-center justify-center font-black shadow-xs">
+              <Server className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-black text-slate-950 text-sm sm:text-base">
-                  Diagnostic en Direct de l'API MTN MoMo
-                </h4>
-                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  diagnosis?.statusCode === 200
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-rose-100 text-rose-800'
+                <h5 className="font-black text-slate-950 text-base">
+                  Passerelle Moov Money (Flooz / TLC Gateway)
+                </h5>
+                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900">
+                  SDK v1p3r75 intégré
+                </span>
+                <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                  moovUseSandbox ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
                 }`}>
-                  {diagnosis?.statusCode === 200 ? '🟢 Connecté' : '🔴 HTTP ' + (diagnosis?.statusCode || '401')}
+                  {moovUseSandbox ? '🧪 Sandbox Moov' : '🔴 Production Live'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                Vérification réelle auprès des serveurs de paiement MTN MoMo
+                Protocole SOAP/XML avec chiffrement symétrique AES-256-CBC des tokens de sécurité.
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => runMomoDiagnosis(customKeyInput)}
-            disabled={testingKey}
-            className="px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${testingKey ? 'animate-spin' : ''}`} />
-            <span>Tester la connexion</span>
-          </button>
-        </div>
-
-        {/* INPUT DE TEST DE CLÉ */}
-        <div className="bg-slate-50 p-3.5 rounded-2xl border border-black/5 flex flex-col sm:flex-row gap-2 items-center">
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-600 shrink-0">
-            <Key className="w-3.5 h-3.5 text-amber-500" />
-            <span className="font-bold">Clé testée :</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={runMoovDiagnosis}
+              disabled={testingMoov}
+              className="px-4 py-2 bg-[#005CA9] hover:bg-[#004d8c] text-white text-xs font-black rounded-xl shadow-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testingMoov ? 'animate-spin' : ''}`} />
+              <span>{testingMoov ? 'Vérification Moov...' : 'Diagnostiquer Moov'}</span>
+            </button>
           </div>
-          <input
-            type="text"
-            value={customKeyInput}
-            onChange={(e) => setCustomKeyInput(e.target.value)}
-            placeholder="Entrez une clé MTN MoMo..."
-            className="flex-1 w-full bg-white px-3 py-1.5 rounded-xl border border-black/10 font-mono text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-          />
-          <button
-            onClick={() => runMomoDiagnosis(customKeyInput)}
-            disabled={testingKey}
-            className="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl transition-colors shrink-0"
-          >
-            Vérifier cette clé
-          </button>
         </div>
 
-        {/* RÉSULTAT DU TEST EN DIRECT */}
-        {diagnosis && (
-          <div className="space-y-3">
-            <div className={`p-4 rounded-2xl border ${
-              diagnosis.statusCode === 200
-                ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
-                : 'bg-rose-50/80 border-rose-300 text-rose-950'
-            }`}>
-              <div className="flex items-start gap-3">
-                <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${
-                  diagnosis.statusCode === 200 ? 'text-emerald-600' : 'text-rose-600'
-                }`} />
-                <div className="space-y-1">
-                  <div className="font-black text-xs sm:text-sm">
-                    {diagnosis.message}
-                  </div>
-                  <div className="text-[11px] text-slate-700 font-mono bg-white/70 p-2 rounded-xl border border-black/5">
-                    Réponse brute du serveur MTN : <code>{diagnosis.rawResponse || 'HTTP 401 Unauthorized'}</code>
-                  </div>
-                </div>
+        {/* RÉSULTAT DU DIAGNOSTIC MOOV */}
+        {moovDiagnosis && (
+          <div className="p-4 bg-slate-50 rounded-2xl border border-black/5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${moovDiagnosis.connected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span className="font-bold text-slate-900">
+                  {moovDiagnosis.connected ? 'Passerelle connectée (HTTP 200)' : 'Passerelle distante protégée par liste blanche IP'}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-mono">
+                Token AES: {moovDiagnosis.tokenPreview}
+              </span>
+            </div>
+
+            <div className="p-3 bg-white rounded-xl border border-black/5 text-xs space-y-1">
+              <div className="font-bold text-slate-800">
+                Statut Moov : {moovDiagnosis.statusMessage}
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                URL WSDL : {moovDiagnosis.baseUrl}
               </div>
             </div>
 
-            {/* EXPLICATIONS DÉTAILLÉES */}
-            <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 text-xs space-y-2">
-              <div className="font-black text-slate-900 flex items-center gap-1.5">
-                <span>📋</span>
-                <span>Rapport d'analyse pour le gestionnaire CROU :</span>
-              </div>
+            {moovDiagnosis.explanations?.length > 0 && (
               <ul className="space-y-1 list-disc list-inside text-slate-700 text-[11px] leading-relaxed">
-                {diagnosis.explanations.map((exp, idx) => (
-                  <li key={idx}>{exp}</li>
+                {moovDiagnosis.explanations.map((exp, i) => (
+                  <li key={i}>{exp}</li>
                 ))}
               </ul>
-
-              <div className="pt-2 border-t border-amber-200/60">
-                <div className="font-black text-slate-900 mb-1">💡 Solutions recommandées pour le campus :</div>
-                <ul className="space-y-1 list-disc list-inside text-slate-700 text-[11px] leading-relaxed">
-                  {diagnosis.recommendations.map((rec, idx) => (
-                    <li key={idx} className="font-medium">{rec}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* CONFIGURATION DU NUMÉRO RÉCEPTEUR DE LA CAISSE CROU-K */}
-        <div className="pt-4 border-t border-black/5">
-          <form onSubmit={handleSaveConfig} className="bg-slate-50 p-4 rounded-2xl border border-black/5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h5 className="font-black text-xs text-slate-900">
-                  Numéro Marchand / Récepteur de la Caisse CROU-K
-                </h5>
-                <p className="text-[11px] text-slate-500">
-                  Le numéro ou code USSD où les fonds des tickets doivent être versés
-                </p>
-              </div>
-              {saveSuccess && (
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                  ✅ Enregistré avec succès !
-                </span>
-              )}
-            </div>
+        {/* TEST DIRECT USSD PUSH MOOV SUR MOBILE */}
+        <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
+          <div>
+            <h6 className="font-black text-xs text-blue-950 flex items-center gap-1.5">
+              <span>📲</span>
+              <span>Test Direct USSD Push Moov Money (Simulation sur mobile)</span>
+            </h6>
+            <p className="text-[11px] text-blue-800 mt-0.5">
+              Déclenche une requête SOAP &lt;api:PushWithPending&gt; vers la passerelle TLC Moov.
+            </p>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Numéro MTN MoMo de Réception (Caisse CROU-K) :
-                </label>
-                <input
-                  type="text"
-                  value={receiverPhone}
-                  onChange={(e) => setReceiverPhone(e.target.value)}
-                  placeholder="Ex: 05 00 11 22 33"
-                  className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Code Marchand USSD MoMo Pay (Optionnel) :
-                </label>
-                <input
-                  type="text"
-                  value={merchantCode}
-                  onChange={(e) => setMerchantCode(e.target.value)}
-                  placeholder="Ex: *133*554433*200#"
-                  className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
-              </div>
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            <div className="relative flex-1 w-full">
+              <input
+                type="tel"
+                value={testPushPhone}
+                onChange={(e) => setTestPushPhone(e.target.value)}
+                placeholder="Numéro Moov (ex: 0102030405)"
+                className="w-full px-3 py-2 bg-white rounded-xl border border-blue-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
             </div>
+            <button
+              type="button"
+              onClick={handleTestMoovPush}
+              disabled={testingPush || !testPushPhone}
+              className="w-full sm:w-auto px-4 py-2 bg-[#005CA9] hover:bg-[#004d8c] text-white text-xs font-black rounded-xl shadow-xs transition-colors shrink-0 disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              {testingPush ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+              <span>Envoyer Push Test (200 F)</span>
+            </button>
+          </div>
 
-            <div className="flex justify-end pt-1">
-              <button
-                type="submit"
-                disabled={savingConfig}
-                className="px-4 py-2 bg-[#18181B] hover:bg-black text-white text-xs font-black rounded-xl transition-all shadow-xs flex items-center gap-1.5"
-              >
-                {savingConfig ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                    <span>Enregistrement...</span>
-                  </>
-                ) : (
-                  <span>Enregistrer les coordonnées de caisse</span>
-                )}
-              </button>
+          {pushResult && (
+            <div className="p-2.5 bg-white rounded-xl border border-blue-200 text-xs font-bold text-slate-800">
+              {pushResult}
             </div>
-          </form>
+          )}
         </div>
+
+        {/* FORMULAIRE DE CONFIGURATION MOOV MONEY */}
+        <form onSubmit={handleSaveConfig} className="bg-slate-50 p-5 rounded-2xl border border-black/5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-3">
+            <div>
+              <h5 className="font-black text-sm text-slate-900">
+                Paramètres de Connexion Moov Money (Flooz)
+              </h5>
+              <p className="text-[11px] text-slate-500">
+                Identifiants fournis par Moov Africa pour la passerelle SOAP / USSD Push
+              </p>
+            </div>
+            {saveSuccess && (
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300">
+                ✅ Configuration enregistrée avec succès !
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Nom d'utilisateur Marchand (Username) :
+              </label>
+              <input
+                type="text"
+                value={moovUsername}
+                onChange={(e) => setMoovUsername(e.target.value)}
+                placeholder="Ex: crou_korhogo"
+                className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Mot de Passe Marchand (Password) :
+              </label>
+              <input
+                type="password"
+                value={moovPassword}
+                onChange={(e) => setMoovPassword(e.target.value)}
+                placeholder="Mot de passe API Moov"
+                className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Clé de Chiffrement AES-256 (32 caractères) :
+              </label>
+              <input
+                type="text"
+                value={moovEncryptionKey}
+                onChange={(e) => setMoovEncryptionKey(e.target.value)}
+                placeholder="tlc12345tlc12345tlc12345tlc12345"
+                className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <span className="text-[10px] text-slate-400">
+                Clé officielle par défaut : <code>tlc12345tlc12345tlc12345tlc12345</code>
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Environnement Moov :
+              </label>
+              <select
+                value={moovUseSandbox ? 'sandbox' : 'production'}
+                onChange={(e) => {
+                  const isSand = e.target.value === 'sandbox';
+                  setMoovUseSandbox(isSand);
+                  setMoovBaseUrl(isSand 
+                    ? 'https://testapimarchand2.moov-africa.bj:2010/com.tlc.merchant.api/UssdPush?wsdl'
+                    : 'https://apimarchand.moov-africa.bj/com.tlc.merchant.api/UssdPush?wsdl');
+                }}
+                className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                <option value="sandbox">Sandbox Test (testapimarchand2.moov-africa.bj:2010)</option>
+                <option value="production">Production Directe (apimarchand.moov-africa.bj)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                URL du service SOAP WSDL :
+              </label>
+              <input
+                type="text"
+                value={moovBaseUrl}
+                onChange={(e) => setMoovBaseUrl(e.target.value)}
+                placeholder="https://apimarchand.moov-africa.bj/..."
+                className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Numéro Téléphone Récepteur Moov (Caisse CROU) :
+              </label>
+              <input
+                type="text"
+                value={moovReceiverPhone}
+                onChange={(e) => setMoovReceiverPhone(e.target.value)}
+                placeholder="Ex: 01 02 03 04 05"
+                className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="submit"
+              disabled={savingConfig}
+              className="px-5 py-2.5 bg-[#005CA9] hover:bg-[#004d8c] text-white text-xs font-black rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+            >
+              {savingConfig ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Enregistrement en cours...</span>
+                </>
+              ) : (
+                <span>Enregistrer la configuration Moov Money</span>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
+    )}
+  </div>
 
       {/* STATS OVERVIEW CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
