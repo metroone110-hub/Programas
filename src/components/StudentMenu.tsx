@@ -161,8 +161,30 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
   const [showHoursModal, setShowHoursModal] = useState<boolean>(false);
   const [showNotificationModal, setShowNotificationModal] = useState<boolean>(false);
   const [showTicketsModal, setShowTicketsModal] = useState<boolean>(false);
+  const [ticketModalMethod, setTicketModalMethod] = useState<'MOOV_MONEY' | 'MTN_MOMO' | 'DEMO'>('MOOV_MONEY');
+  const [ticketModalPack, setTicketModalPack] = useState<'unitaire' | 'souche'>('unitaire');
+  const [ticketModalAutoOpen, setTicketModalAutoOpen] = useState<boolean>(false);
   const [activeTicketsCount, setActiveTicketsCount] = useState<number>(0);
   const visitorId = useMemo(() => getOrGenerateVisitorId(), []);
+
+  const openMoovPayment = (pack: 'unitaire' | 'souche' = 'unitaire') => {
+    setTicketModalMethod('MOOV_MONEY');
+    setTicketModalPack(pack);
+    setTicketModalAutoOpen(true);
+    setShowTicketsModal(true);
+  };
+
+  const openMtnPayment = (pack: 'unitaire' | 'souche' = 'unitaire') => {
+    setTicketModalMethod('MTN_MOMO');
+    setTicketModalPack(pack);
+    setTicketModalAutoOpen(true);
+    setShowTicketsModal(true);
+  };
+
+  const openTicketsModal = () => {
+    setTicketModalAutoOpen(false);
+    setShowTicketsModal(true);
+  };
 
   const fetchTicketsCount = async () => {
     try {
@@ -649,17 +671,21 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
                 <span className="truncate">Menu du Jour</span>
               </button>
 
-              {/* Tickets MoMo (200 F / Souche 2 000 F) */}
+              {/* Tickets Moov Money & MTN MoMo */}
               <button
-                onClick={() => setShowTicketsModal(true)}
-                className="flex-1 py-2.5 px-1.5 sm:px-2 rounded-[22px] transition-all flex items-center justify-center gap-1 text-xs font-black bg-amber-50 text-amber-950 border border-amber-300 hover:bg-[#FFCC00] hover:text-slate-950 active:scale-95"
-                title="Acheter ou présenter mes tickets repas (MTN MoMo)"
+                onClick={openTicketsModal}
+                className="flex-1 py-2.5 px-1.5 sm:px-2 rounded-[22px] transition-all flex items-center justify-center gap-1.5 text-xs font-black bg-slate-900 text-white border border-slate-800 hover:bg-black active:scale-95 shadow-xs"
+                title="Acheter ou présenter mes tickets repas (Moov Money & MTN MoMo)"
               >
                 <span>🎟️</span>
-                <span className="truncate">Tickets (200 F)</span>
-                {activeTicketsCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[9px] font-black shrink-0">
+                <span className="truncate">Tickets (Moov / MTN)</span>
+                {activeTicketsCount > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-500 text-white text-[9px] font-black shrink-0">
                     {activeTicketsCount}
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.2 rounded-full bg-[#005CA9] text-white text-[9px] font-bold shrink-0">
+                    200F
                   </span>
                 )}
               </button>
@@ -1067,41 +1093,107 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
               </p>
             </section>
 
-            {/* MTN MOMO VIRTUAL TICKETS INTERACTIVE BENTO CARD */}
+            {/* BILLETTERIE MOBILE MONEY : MOOV MONEY & MTN MOMO */}
             <div 
-              onClick={() => setShowTicketsModal(true)}
-              className="p-3.5 sm:p-4 rounded-3xl bg-amber-50/90 border-2 border-[#FFCC00] shadow-xs cursor-pointer hover:shadow-md transition-all flex items-center justify-between gap-3 active:scale-[0.99]"
+              className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-blue-50/90 via-amber-50/70 to-emerald-50/60 border-2 border-slate-900 shadow-sm transition-all space-y-3.5"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#FFCC00] text-slate-950 font-black flex items-center justify-center shrink-0 shadow-xs">
-                  <Ticket className="w-5 h-5 text-slate-950" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FFCC00] text-slate-950">
-                      MTN MoMo
-                    </span>
-                    <span className="text-xs font-black text-slate-900">
-                      Tickets CROU-K (200 F · Souche 2 000 F)
-                    </span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-[#18181B] text-[#FFCC00] font-black flex items-center justify-center shrink-0 shadow-md">
+                    <Ticket className="w-6 h-6 text-[#FFCC00]" />
                   </div>
-                  <p className="text-[11px] text-slate-600 font-medium mt-0.5">
-                    {activeTicketsCount > 0 
-                      ? `🎟️ Vous avez ${activeTicketsCount} ticket${activeTicketsCount > 1 ? 's' : ''} disponible${activeTicketsCount > 1 ? 's' : ''} · Tapez pour présenter au guichet` 
-                      : 'Achetez votre ticket 1 repas (200 F) ou carnet 10 repas (2 000 F)'}
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#005CA9] text-white flex items-center gap-1">
+                        <span>🔵</span>
+                        <span>Moov Money</span>
+                      </span>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FFCC00] text-slate-950 flex items-center gap-1">
+                        <span>🟡</span>
+                        <span>MTN MoMo</span>
+                      </span>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900">
+                        Officiel UPGC
+                      </span>
+                    </div>
+                    <h4 className="text-sm sm:text-base font-black text-slate-950 mt-1">
+                      Tickets Resto U (200 F · Carnet 2 000 F)
+                    </h4>
+                  </div>
                 </div>
+
+                {activeTicketsCount > 0 && (
+                  <button
+                    onClick={openTicketsModal}
+                    className="px-2.5 py-1 bg-emerald-600 text-white rounded-full text-xs font-black flex items-center gap-1 shadow-xs hover:bg-emerald-700 transition-all shrink-0"
+                  >
+                    <span>🎟️ {activeTicketsCount} actif{activeTicketsCount > 1 ? 's' : ''}</span>
+                  </button>
+                )}
               </div>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowTicketsModal(true);
-                }}
-                className="px-3.5 py-2 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-black shrink-0 flex items-center gap-1 transition-transform active:scale-95"
-              >
-                <span>{activeTicketsCount > 0 ? 'Mes Tickets' : 'Acheter'}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-[#FFCC00]" />
-              </button>
+
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                Achetez vos tickets restaurant en toute sécurité par <strong>Moov Flooz</strong> (01...) ou <strong>MTN MoMo</strong> (05...). Le ticket virtuel avec QR code sécurisé est généré immédiatement sur votre mobile.
+              </p>
+
+              {/* BOUTONS D'ACHAT DIRECTS MOOV ET MTN */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                {/* BOUTON MOOV MONEY */}
+                <button
+                  type="button"
+                  onClick={() => openMoovPayment('unitaire')}
+                  className="px-4 py-3 bg-[#005CA9] hover:bg-[#004d8c] text-white rounded-2xl font-black text-xs sm:text-sm shadow-sm flex items-center justify-between gap-2 transition-all active:scale-98 group"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-xs">
+                      🔵
+                    </span>
+                    <div className="text-left leading-tight">
+                      <div className="font-black">Payer avec Moov Money</div>
+                      <div className="text-[10px] text-white/80 font-normal">Push USSD · 200 FCFA</div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />
+                </button>
+
+                {/* BOUTON MTN MOMO */}
+                <button
+                  type="button"
+                  onClick={() => openMtnPayment('unitaire')}
+                  className="px-4 py-3 bg-[#FFCC00] hover:bg-[#f0c000] text-slate-950 rounded-2xl font-black text-xs sm:text-sm shadow-sm flex items-center justify-between gap-2 transition-all active:scale-98 group"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-black/10 flex items-center justify-center text-xs">
+                      🟡
+                    </span>
+                    <div className="text-left leading-tight">
+                      <div className="font-black">Payer avec MTN MoMo</div>
+                      <div className="text-[10px] text-slate-700 font-normal">Code MoMo · 200 FCFA</div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-950 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </div>
+
+              {/* PIED DE CARTE AVEC OPTIONS SOUCHE ET MES TICKETS */}
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60 text-[11px] text-slate-600 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => openMoovPayment('souche')}
+                  className="font-bold text-[#005CA9] hover:underline flex items-center gap-1"
+                >
+                  <span>🎟️ Carnet 10 repas Moov (2 000 F)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openTicketsModal}
+                  className="font-bold text-slate-800 hover:text-black underline flex items-center gap-1"
+                >
+                  <span>Voir tous les tickets & tarifs</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
             </div>
 
             {/* SERVICE TOGGLE BENTO CARDS (MIDI / SOIR) */}
@@ -1616,11 +1708,11 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             <Utensils className="w-5 h-5" />
           </button>
 
-          {/* Tickets MoMo */}
+          {/* Tickets Moov & MTN */}
           <button
-            onClick={() => setShowTicketsModal(true)}
-            className="p-1.5 transition-colors text-white/70 hover:text-[#FFCC00] relative"
-            title="Espace Tickets CROU-K (MTN MoMo)"
+            onClick={openTicketsModal}
+            className="p-1.5 transition-colors text-white/70 hover:text-white relative"
+            title="Espace Billetterie Resto U (Moov Money & MTN MoMo)"
           >
             <Ticket className="w-5 h-5" />
             {activeTicketsCount > 0 && (
@@ -1706,7 +1798,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
           }}
         />
 
-        {/* STUDENT TICKETS MODAL (MTN MOMO & CROU-K) */}
+        {/* STUDENT TICKETS MODAL (MOOV MONEY & MTN MOMO) */}
         <StudentTicketsModal
           isOpen={showTicketsModal}
           onClose={() => {
@@ -1714,6 +1806,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({ data, onOpenAdmin, onO
             fetchTicketsCount();
           }}
           visitorId={visitorId}
+          initialMethod={ticketModalMethod}
+          initialPack={ticketModalPack}
+          autoOpenPayForm={ticketModalAutoOpen}
         />
 
         {/* ALLERGENS MODAL */}

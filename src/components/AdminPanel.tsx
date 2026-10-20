@@ -729,11 +729,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onClick={() => setActiveTab('tickets')}
             className={`py-2.5 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'tickets'
-                ? 'border-[#FFCC00] text-[#FFCC00]'
+                ? 'border-[#005CA9] text-white font-bold'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            <span>🎟️ Guichet & Scanner Tickets (MTN MoMo)</span>
+            <span>🎟️ Guichet & Scanner (Moov & MTN)</span>
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
@@ -1248,7 +1248,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 flex flex-col justify-center">
                   <span className="font-bold text-slate-900 mb-1">ℹ️ Règle de tarification UPGC</span>
-                  <span>Conformément aux instructions, le ticket repas est facturé à 200 FCFA de manière uniforme. Les moyens de paiement acceptés incluent les tickets CROU-K physiques et les portefeuilles Wave, Orange Money et MTN MoMo.</span>
+                  <span>Conformément aux instructions, le ticket repas est facturé à 200 FCFA de manière uniforme. Les moyens de paiement acceptés incluent la billetterie mobile Moov Money (Flooz) et MTN MoMo, ainsi que les tickets de cantine CROU-K.</span>
                 </div>
               </div>
             </div>

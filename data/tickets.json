@@ -1,6 +1,21 @@
 {
   "tickets": [
     {
+      "id": "TK-CROUK-200-MVGCNI7K-F5E9C5",
+      "type": "unitaire",
+      "label": "Ticket Test Unitaire (200 F)",
+      "price": 200,
+      "currency": "FCFA",
+      "status": "valid",
+      "createdAt": "2026-10-20T07:16:13.423Z",
+      "payerPhone": "0102030405",
+      "paymentMethod": "DEMO",
+      "transactionId": "45431111-9669-4936-9251-875eeab49144",
+      "securityCode": "043992",
+      "visitorId": "test-vis-1",
+      "isSimulation": true
+    },
+    {
       "id": "TK-CROUK-200-MVFX5I6D-668F1E",
       "type": "unitaire",
       "label": "Ticket Repas Unitaire (200 F)",
@@ -191,5 +206,5 @@
       "usedAt": "2026-10-18T20:53:12.596Z"
     }
   ],
-  "updatedAt": "2026-10-20T00:02:19.333Z"
+  "updatedAt": "2026-10-20T07:16:13.424Z"
 }

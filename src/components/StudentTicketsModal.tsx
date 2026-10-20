@@ -24,20 +24,26 @@ interface StudentTicketsModalProps {
   isOpen: boolean;
   onClose: () => void;
   visitorId: string;
+  initialMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO';
+  initialPack?: 'unitaire' | 'souche';
+  autoOpenPayForm?: boolean;
 }
 
 export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   isOpen,
   onClose,
   visitorId,
+  initialMethod = 'MOOV_MONEY',
+  initialPack = 'unitaire',
+  autoOpenPayForm = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'buy' | 'tickets'>('buy');
   const [tickets, setTickets] = useState<VirtualTicket[]>([]);
   const [loadingTickets, setLoadingTickets] = useState<boolean>(false);
   
   // Payment states
-  const [selectedPack, setSelectedPack] = useState<'unitaire' | 'souche'>('unitaire');
-  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO'>('MTN_MOMO');
+  const [selectedPack, setSelectedPack] = useState<'unitaire' | 'souche'>(initialPack);
+  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO'>(initialMethod);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [isProcessingPay, setIsProcessingPay] = useState<boolean>(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -46,7 +52,17 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
     detail: string;
   } | null>(null);
   const [paySuccessMsg, setPaySuccessMsg] = useState<string | null>(null);
-  const [showPayForm, setShowPayForm] = useState<boolean>(false);
+  const [showPayForm, setShowPayForm] = useState<boolean>(autoOpenPayForm);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialMethod) setSelectedMethod(initialMethod);
+      if (initialPack) setSelectedPack(initialPack);
+      setShowPayForm(Boolean(autoOpenPayForm));
+      setPayError(null);
+      setRejectedKeyInfo(null);
+    }
+  }, [isOpen, initialMethod, initialPack, autoOpenPayForm]);
 
   // QR presentation modal for the canteen counter
   const [selectedTicketForQR, setSelectedTicketForQR] = useState<VirtualTicket | null>(null);
@@ -188,20 +204,23 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
         {/* HEADER */}
         <div className="bg-[#18181B] text-white p-4 sm:p-5 flex items-center justify-between relative shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#FFCC00] text-slate-950 flex items-center justify-center font-black shadow-md">
-              <Ticket className="w-5 h-5 text-slate-950" />
+            <div className="w-10 h-10 rounded-2xl bg-[#005CA9] text-white flex items-center justify-center font-black shadow-md">
+              <Ticket className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <h3 className="font-black text-base sm:text-lg text-white tracking-tight">
-                  Espace Tickets CROU-K
+                  Billetterie CROU-K
                 </h3>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#005CA9] text-white">
+                  🔵 Moov Money
+                </span>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FFCC00] text-slate-950">
-                  Campus Korhogo
+                  🟡 MTN MoMo
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
-                Paiement direct • Resto U Peleforo Gon Coulibaly
+                Paiement direct USSD • Resto U Peleforo Gon Coulibaly
               </p>
             </div>
           </div>
@@ -270,8 +289,61 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   Sélectionnez votre formule de ticket repas
                 </h4>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Tarifs officiels subventionnés de la Direction du CROU-K
+                  Tarifs officiels subventionnés du CROU Korhogo (UPGC)
                 </p>
+              </div>
+
+              {/* SÉLECTEUR RAPIDE D'OPÉRATEUR EN HAUT DE PAGE */}
+              <div className="bg-white p-3.5 rounded-3xl border border-black/10 shadow-xs space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>📲</span>
+                    <span>Opérateur Mobile Money par défaut :</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    Cliquer pour pré-sélectionner
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('MOOV_MONEY')}
+                    className={`py-2 px-2 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
+                      selectedMethod === 'MOOV_MONEY'
+                        ? 'bg-[#005CA9] text-white border-[#005CA9] shadow-xs ring-2 ring-blue-300'
+                        : 'bg-slate-50 text-slate-700 border-black/5 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🔵</span>
+                    <span>Moov Flooz</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('MTN_MOMO')}
+                    className={`py-2 px-2 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
+                      selectedMethod === 'MTN_MOMO'
+                        ? 'bg-[#FFCC00] text-slate-950 border-[#FFCC00] shadow-xs ring-2 ring-amber-300'
+                        : 'bg-slate-50 text-slate-700 border-black/5 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🟡</span>
+                    <span>MTN MoMo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('DEMO')}
+                    className={`py-2 px-2 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
+                      selectedMethod === 'DEMO'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-300'
+                        : 'bg-slate-50 text-slate-700 border-black/5 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🧪</span>
+                    <span>Test Cantine</span>
+                  </button>
+                </div>
               </div>
 
               {/* TABLEAU COLORÉ 1 : TICKET UNITAIRE 200 FCFA (AMBER / JAUNE CROU) */}
@@ -311,29 +383,49 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   </div>
                 </div>
 
-                {/* BAS DU TABLEAU : PRIX EN BAS ET BOUTON DE SÉLECTION */}
-                <div className="mt-4 pt-3 border-t border-amber-300/80 flex items-center justify-between gap-2">
+                {/* BAS DU TABLEAU : PRIX EN BAS ET BOUTONS DE SÉLECTION DIRECTS */}
+                <div className="mt-4 pt-3 border-t border-amber-300/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Prix en bas
+                      Prix du ticket
                     </span>
                     <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-none">
                       200 <span className="text-xs font-bold text-slate-600">FCFA</span>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedPack('unitaire');
-                      setShowPayForm(true);
-                      setPayError(null);
-                      setRejectedKeyInfo(null);
-                    }}
-                    className="px-4 py-2.5 bg-[#FFCC00] hover:bg-[#f0c000] text-slate-950 rounded-2xl font-black text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
-                  >
-                    <span>Choisir 200 FCFA</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {/* BOUTONS DIRECTS PAR OPÉRATEUR */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        setSelectedPack('unitaire');
+                        setSelectedMethod('MOOV_MONEY');
+                        setShowPayForm(true);
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#005CA9] hover:bg-[#004d8c] text-white rounded-2xl font-black text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                      title="Payer 200 FCFA avec Moov Money"
+                    >
+                      <span>🔵 Payer Moov (200 F)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSelectedPack('unitaire');
+                        setSelectedMethod('MTN_MOMO');
+                        setShowPayForm(true);
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#FFCC00] hover:bg-[#f0c000] text-slate-950 rounded-2xl font-black text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                      title="Payer 200 FCFA avec MTN MoMo"
+                    >
+                      <span>🟡 Payer MTN (200 F)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -374,42 +466,73 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   </div>
                 </div>
 
-                {/* BAS DU TABLEAU : PRIX EN BAS ET BOUTON DE SÉLECTION */}
-                <div className="mt-4 pt-3 border-t border-emerald-300/80 flex items-center justify-between gap-2">
+                {/* BAS DU TABLEAU : PRIX EN BAS ET BOUTONS DE SÉLECTION DIRECTS */}
+                <div className="mt-4 pt-3 border-t border-emerald-300/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Prix en bas
+                      Prix de la souche
                     </span>
                     <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-none">
                       2 000 <span className="text-xs font-bold text-slate-600">FCFA</span>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedPack('souche');
-                      setShowPayForm(true);
-                      setPayError(null);
-                      setRejectedKeyInfo(null);
-                    }}
-                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
-                  >
-                    <span>Choisir 2 000 FCFA</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {/* BOUTONS DIRECTS PAR OPÉRATEUR */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        setSelectedPack('souche');
+                        setSelectedMethod('MOOV_MONEY');
+                        setShowPayForm(true);
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#005CA9] hover:bg-[#004d8c] text-white rounded-2xl font-black text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                      title="Payer 2 000 FCFA avec Moov Money"
+                    >
+                      <span>🔵 Payer Moov (2 000 F)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSelectedPack('souche');
+                        setSelectedMethod('MTN_MOMO');
+                        setShowPayForm(true);
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#FFCC00] hover:bg-[#f0c000] text-slate-950 rounded-2xl font-black text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                      title="Payer 2 000 FCFA avec MTN MoMo"
+                    >
+                      <span>🟡 Payer MTN (2 000 F)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* BARRE D'INFORMATION MOYENS DE PAIEMENT EN BAS */}
               <div className="p-3 bg-white rounded-2xl border border-black/5 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
-                <span className="font-bold text-slate-800">Moyens acceptés :</span>
+                <span className="font-bold text-slate-800">Passerelles certifiées :</span>
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-md bg-[#FFCC00]/30 text-amber-950 font-black text-xs flex items-center gap-1">
-                    🟡 MTN MoMo
-                  </span>
                   <span className="px-2.5 py-1 rounded-md bg-blue-100 text-blue-900 font-black text-xs flex items-center gap-1">
                     🔵 Moov Money (Flooz)
                   </span>
+                  <span className="px-2.5 py-1 rounded-md bg-[#FFCC00]/30 text-amber-950 font-black text-xs flex items-center gap-1">
+                    🟡 MTN MoMo
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPack('unitaire');
+                      setSelectedMethod('DEMO');
+                      setShowPayForm(true);
+                    }}
+                    className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-900 font-black text-xs flex items-center gap-1 hover:bg-emerald-200"
+                  >
+                    🧪 Mode Test
+                  </button>
                 </div>
               </div>
             </div>
@@ -460,23 +583,6 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedMethod('MTN_MOMO');
-                        setPayError(null);
-                        setRejectedKeyInfo(null);
-                      }}
-                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
-                        selectedMethod === 'MTN_MOMO'
-                          ? 'bg-[#FFCC00] text-slate-950 shadow-xs ring-2 ring-[#FFCC00]/50'
-                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
-                      }`}
-                    >
-                      <span className="text-base">🟡</span>
-                      <span className="leading-tight">MTN MoMo</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
                         setSelectedMethod('MOOV_MONEY');
                         setPayError(null);
                         setRejectedKeyInfo(null);
@@ -489,6 +595,25 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     >
                       <span className="text-base">🔵</span>
                       <span className="leading-tight">Moov Flooz</span>
+                      <span className="text-[9px] opacity-80 font-normal">01... (*155#)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('MTN_MOMO');
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                        selectedMethod === 'MTN_MOMO'
+                          ? 'bg-[#FFCC00] text-slate-950 shadow-xs ring-2 ring-[#FFCC00]/50'
+                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
+                      }`}
+                    >
+                      <span className="text-base">🟡</span>
+                      <span className="leading-tight">MTN MoMo</span>
+                      <span className="text-[9px] opacity-80 font-normal">05... (*133#)</span>
                     </button>
 
                     <button
@@ -506,6 +631,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     >
                       <span className="text-base">🧪</span>
                       <span className="leading-tight">Simulation</span>
+                      <span className="text-[9px] opacity-80 font-normal">Essai gratuit</span>
                     </button>
                   </div>
                 </div>
