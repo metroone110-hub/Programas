@@ -29,7 +29,7 @@ interface StudentTicketsModalProps {
   isOpen: boolean;
   onClose: () => void;
   visitorId: string;
-  initialMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO';
+  initialMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
   initialPack?: 'unitaire' | 'souche';
   autoOpenPayForm?: boolean;
 }
@@ -38,7 +38,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   isOpen,
   onClose,
   visitorId,
-  initialMethod = 'MOOV_MONEY',
+  initialMethod = 'CINETPAY',
   initialPack = 'unitaire',
   autoOpenPayForm = false,
 }) => {
@@ -48,7 +48,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   
   // Payment states
   const [selectedPack, setSelectedPack] = useState<'unitaire' | 'souche'>(initialPack);
-  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO'>(initialMethod);
+  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO'>(initialMethod);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [isProcessingPay, setIsProcessingPay] = useState<boolean>(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -59,6 +59,15 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   const [paySuccessMsg, setPaySuccessMsg] = useState<string | null>(null);
   const [showPayForm, setShowPayForm] = useState<boolean>(autoOpenPayForm);
 
+  // CinetPay Active Session & Polling State
+  const [cinetpaySession, setCinetpaySession] = useState<{
+    transactionId: string;
+    paymentUrl?: string;
+    amount: number;
+    mode: string;
+  } | null>(null);
+  const [cinetpayChecking, setCinetpayChecking] = useState<boolean>(false);
+
   useEffect(() => {
     if (isOpen) {
       if (initialMethod) setSelectedMethod(initialMethod);
@@ -66,6 +75,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
       setShowPayForm(Boolean(autoOpenPayForm));
       setPayError(null);
       setRejectedKeyInfo(null);
+      setCinetpaySession(null);
     }
   }, [isOpen, initialMethod, initialPack, autoOpenPayForm]);
 
@@ -142,12 +152,106 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
     }
   }, [selectedTicketForQR]);
 
+  // Check CinetPay transaction status
+  const checkCinetPayStatus = async (transactionId: string) => {
+    try {
+      setCinetpayChecking(true);
+      setPayError(null);
+      const res = await fetch(`/api/tickets/cinetpay-status/${encodeURIComponent(transactionId)}`);
+      const data = await res.json();
+      if (data.status === 'ACCEPTED' && data.tickets?.length > 0) {
+        setCinetpaySession(null);
+        setPaySuccessMsg(data.message || 'Paiement CinetPay validé avec succès !');
+        await fetchMyTickets();
+        setShowPayForm(false);
+        setActiveTab('tickets');
+      } else {
+        setPayError(data.message || 'Paiement en attente de confirmation sur votre mobile. Tapez votre code PIN et réessayez.');
+      }
+    } catch (err: any) {
+      setPayError(err.message || 'Erreur lors de la vérification.');
+    } finally {
+      setCinetpayChecking(false);
+    }
+  };
+
+  // Immediate simulation of CinetPay validation (Sandbox / Test mode)
+  const simulateCinetPayValidation = async (transactionId: string) => {
+    try {
+      setCinetpayChecking(true);
+      setPayError(null);
+      const res = await fetch('/api/tickets/cinetpay-simulate-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId,
+          type: selectedPack,
+          phone: phoneNumber || '0102030405',
+          visitorId,
+          operator: 'CinetPay Sandbox',
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.tickets?.length > 0) {
+        setCinetpaySession(null);
+        setPaySuccessMsg(data.message || 'Paiement validé avec succès !');
+        await fetchMyTickets();
+        setShowPayForm(false);
+        setActiveTab('tickets');
+      }
+    } catch (err: any) {
+      setPayError(err.message || 'Erreur lors de la simulation');
+    } finally {
+      setCinetpayChecking(false);
+    }
+  };
+
   // Handle Payment submission
   const handlePay = async (e?: React.FormEvent, forceSimulation: boolean = false) => {
     if (e) e.preventDefault();
     setPayError(null);
     setRejectedKeyInfo(null);
     setPaySuccessMsg(null);
+
+    // If CinetPay selected, initiate multi-operator session
+    if (selectedMethod === 'CINETPAY') {
+      try {
+        setIsProcessingPay(true);
+        const clean = normalizeIvorianPhone(phoneNumber);
+        if (clean) localStorage.setItem('crouk_student_momo_phone', clean);
+
+        const res = await fetch('/api/tickets/cinetpay-init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: selectedPack,
+            phone: clean || '0102030405',
+            visitorId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || data.error || 'Erreur initialisation CinetPay');
+        }
+
+        setCinetpaySession({
+          transactionId: data.transactionId,
+          paymentUrl: data.paymentUrl,
+          amount: data.amount,
+          mode: data.mode,
+        });
+
+        // If direct external checkout URL available, open in new tab
+        if (data.paymentUrl && data.paymentUrl.startsWith('http')) {
+          window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
+        }
+      } catch (err: any) {
+        setPayError(err.message || 'Erreur lors de l\'initialisation CinetPay');
+      } finally {
+        setIsProcessingPay(false);
+      }
+      return;
+    }
 
     // 1. Strict Ivorian Phone Validation
     if (!forceSimulation && selectedMethod !== 'DEMO') {
@@ -222,11 +326,14 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 <h3 className="font-black text-base sm:text-lg text-white tracking-tight">
                   Billetterie CROU-K
                 </h3>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+                  🟠 CinetPay (Wave/OM/MTN/Moov)
+                </span>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#005CA9] text-white">
-                  🔵 Moov Money
+                  🔵 Moov
                 </span>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#FFCC00] text-slate-950">
-                  🟡 MTN MoMo
+                  🟡 MTN
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
@@ -587,9 +694,27 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 {/* SÉLECTEUR D'OPÉRATEUR */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Choisissez votre opérateur de paiement Mobile Money :
+                    Choisissez votre moyen de paiement Mobile Money :
                   </label>
-                  <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('CINETPAY');
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                        selectedMethod === 'CINETPAY'
+                          ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs ring-2 ring-orange-400/50'
+                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
+                      }`}
+                    >
+                      <span className="text-base">🟠</span>
+                      <span className="leading-tight">CinetPay</span>
+                      <span className="text-[9px] opacity-80 font-normal">Wave / OM / MoMo</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -649,24 +774,30 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 {/* EN-TÊTE OPÉRATEUR SÉLECTIONNÉ */}
                 <div className="flex items-center gap-2 pb-2 border-b border-black/5">
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm ${
-                    selectedMethod === 'MTN_MOMO' 
+                    selectedMethod === 'CINETPAY'
+                      ? 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white'
+                      : selectedMethod === 'MTN_MOMO' 
                       ? 'bg-[#FFCC00] text-slate-950' 
                       : selectedMethod === 'MOOV_MONEY'
                       ? 'bg-[#005CA9] text-white'
                       : 'bg-emerald-600 text-white'
                   }`}>
-                    {selectedMethod === 'MTN_MOMO' ? '🟡' : selectedMethod === 'MOOV_MONEY' ? '🔵' : '🧪'}
+                    {selectedMethod === 'CINETPAY' ? '🟠' : selectedMethod === 'MTN_MOMO' ? '🟡' : selectedMethod === 'MOOV_MONEY' ? '🔵' : '🧪'}
                   </div>
                   <div>
                     <h5 className="font-black text-slate-900 text-xs sm:text-sm">
-                      {selectedMethod === 'MTN_MOMO' 
+                      {selectedMethod === 'CINETPAY'
+                        ? 'Guichet Multi-Opérateurs CinetPay'
+                        : selectedMethod === 'MTN_MOMO' 
                         ? 'Paiement Sécurisé MTN Mobile Money' 
                         : selectedMethod === 'MOOV_MONEY'
                         ? 'Paiement Sécurisé Moov Money (Flooz)'
                         : 'Mode Simulation / Test Cantine'}
                     </h5>
                     <p className="text-[10px] text-slate-400">
-                      {selectedMethod === 'MOOV_MONEY'
+                      {selectedMethod === 'CINETPAY'
+                        ? 'Wave · Orange Money · MTN MoMo · Moov Flooz'
+                        : selectedMethod === 'MOOV_MONEY'
                         ? 'Protocole USSD Push direct · Code PIN sur mobile'
                         : selectedMethod === 'MTN_MOMO'
                         ? 'Régie CROU-K · Campus Peleforo Gon Coulibaly'
@@ -674,6 +805,27 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* INSTRUCTIONS CINETPAY */}
+                {selectedMethod === 'CINETPAY' && (
+                  <div className="bg-orange-50/90 border border-orange-200 rounded-2xl p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold text-orange-950 flex items-center gap-1.5">
+                        <span>📲</span>
+                        <span>Réseaux Mobile Money acceptés :</span>
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-sky-100 text-sky-900">🌊 Wave</span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-orange-100 text-orange-900">🍊 Orange</span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-100 text-amber-900">🟡 MTN</span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-blue-100 text-blue-900">🔵 Moov</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-orange-900 leading-relaxed">
+                      Accédez au guichet sécurisé pour payer vos <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> avec l'opérateur de votre choix. Votre ticket repas QR code sera validé en temps réel dès la confirmation de votre transaction.
+                    </p>
+                  </div>
+                )}
 
                 {/* INSTRUCTIONS DE TRANSFERT DIRECT OU COMPTE RÉCEPTEUR */}
                 {selectedMethod === 'MTN_MOMO' && receiverPhone && (
@@ -734,12 +886,81 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   </div>
                 )}
 
+                {/* AFFICHAGE DU GUICHET DE PAIEMENT CINETPAY EN COURS */}
+                {cinetpaySession && (
+                  <div className="p-5 bg-gradient-to-br from-orange-50 via-amber-50 to-white rounded-3xl border-2 border-orange-300 shadow-sm space-y-3.5 text-center animate-in zoom-in-95 duration-200">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-500 text-white flex items-center justify-center mx-auto shadow-xs">
+                      <Smartphone className="w-6 h-6 animate-pulse" />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-orange-100 text-orange-950">
+                          Guichet CinetPay
+                        </span>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950">
+                          {cinetpaySession.amount} FCFA
+                        </span>
+                      </div>
+                      <h5 className="font-black text-slate-950 text-base mt-1">
+                        Paiement Mobile Money en cours
+                      </h5>
+                      <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto leading-relaxed">
+                        Tapez votre code secret sur votre téléphone ou cliquez ci-dessous pour accéder au guichet sécurisé (Wave, Orange, MTN, Moov).
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 pt-1 max-w-sm mx-auto">
+                      {cinetpaySession.paymentUrl && (
+                        <a
+                          href={cinetpaySession.paymentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full py-3 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-2xl text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
+                        >
+                          <span>Ouvrir le guichet de paiement en direct</span>
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={cinetpayChecking}
+                        onClick={() => checkCinetPayStatus(cinetpaySession.transactionId)}
+                        className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${cinetpayChecking ? 'animate-spin' : ''}`} />
+                        <span>{cinetpayChecking ? 'Vérification...' : 'Vérifier la validation du paiement'}</span>
+                      </button>
+
+                      {/* Mode Sandbox instant validation for easy test */}
+                      <button
+                        type="button"
+                        disabled={cinetpayChecking}
+                        onClick={() => simulateCinetPayValidation(cinetpaySession.transactionId)}
+                        className="w-full py-2.5 px-3 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 rounded-2xl text-xs font-black transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <span>🧪 Valider immédiatement (Simulation Test)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCinetpaySession(null)}
+                        className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline pt-1 block mx-auto"
+                      >
+                        ← Annuler et choisir un autre moyen
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!cinetpaySession && (
                 <form onSubmit={(e) => handlePay(e, selectedMethod === 'DEMO')} className="space-y-4">
                   {selectedMethod !== 'DEMO' && (
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-xs font-bold text-slate-800">
-                          Numéro de téléphone ({selectedMethod === 'MOOV_MONEY' ? 'Moov CI · 01...' : 'MTN CI · 05...'}) :
+                          Numéro de téléphone ({selectedMethod === 'CINETPAY' ? 'Tous réseaux · Wave, OM, MTN, Moov' : selectedMethod === 'MOOV_MONEY' ? 'Moov CI · 01...' : 'MTN CI · 05...'}) :
                         </label>
                         <span className="text-[10px] font-mono text-slate-400">
                           10 chiffres requis
@@ -748,21 +969,35 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
 
                       <div className="relative">
                         <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-slate-500">
-                          <Smartphone className={`w-4 h-4 ${selectedMethod === 'MOOV_MONEY' ? 'text-blue-500' : 'text-amber-500'}`} />
+                          <Smartphone className={`w-4 h-4 ${
+                            selectedMethod === 'CINETPAY' 
+                              ? 'text-orange-500' 
+                              : selectedMethod === 'MOOV_MONEY' 
+                              ? 'text-blue-500' 
+                              : 'text-amber-500'
+                          }`} />
                           <span>🇨🇮 +225</span>
                         </div>
                         <input
                           type="tel"
                           value={phoneNumber}
                           onChange={(e) => setPhoneNumber(e.target.value)}
-                          placeholder={selectedMethod === 'MOOV_MONEY' ? '01 02 03 04 05' : '05 01 23 45 67'}
+                          placeholder={
+                            selectedMethod === 'CINETPAY'
+                              ? '01, 05 ou 07... (Wave, Orange, MTN, Moov)'
+                              : selectedMethod === 'MOOV_MONEY'
+                              ? '01 02 03 04 05'
+                              : '05 01 23 45 67'
+                          }
                           className={`w-full pl-24 pr-4 py-3 bg-slate-50 rounded-2xl border text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 ${
-                            selectedMethod === 'MOOV_MONEY'
+                            selectedMethod === 'CINETPAY'
+                              ? 'border-orange-200 focus:ring-orange-400'
+                              : selectedMethod === 'MOOV_MONEY'
                               ? 'border-blue-200 focus:ring-blue-400'
                               : 'border-amber-200 focus:ring-amber-400'
                           }`}
                           autoFocus
-                          required
+                          required={selectedMethod !== 'CINETPAY'}
                         />
                       </div>
 
@@ -773,7 +1008,9 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         if (!clean) {
                           return (
                             <p className="text-[10px] text-slate-400 mt-1">
-                              {selectedMethod === 'MOOV_MONEY'
+                              {selectedMethod === 'CINETPAY'
+                                ? 'CinetPay accepte Wave, Orange Money (07), MTN (05) et Moov (01)'
+                                : selectedMethod === 'MOOV_MONEY'
                                 ? 'Les numéros Moov CI commencent par 01 (ex: 01 02 03 04 05)'
                                 : 'Les numéros MTN CI commencent par 05 (ex: 05 01 23 45 67)'}
                             </p>
@@ -781,11 +1018,11 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         }
 
                         if (op === 'MOOV') {
-                          if (selectedMethod === 'MOOV_MONEY') {
+                          if (selectedMethod === 'MOOV_MONEY' || selectedMethod === 'CINETPAY') {
                             return (
                               <div className="flex items-center justify-between mt-1 text-[11px] text-blue-700 font-bold">
                                 <span>🔵 Numéro Moov Africa valide ({clean.length}/10 chiffres)</span>
-                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour débit USSD</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
+                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour paiement</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
                               </div>
                             );
                           } else {
@@ -805,11 +1042,11 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         }
 
                         if (op === 'MTN') {
-                          if (selectedMethod === 'MTN_MOMO') {
+                          if (selectedMethod === 'MTN_MOMO' || selectedMethod === 'CINETPAY') {
                             return (
                               <div className="flex items-center justify-between mt-1 text-[11px] text-amber-800 font-bold">
                                 <span>🟡 Numéro MTN valide ({clean.length}/10 chiffres)</span>
-                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour débit MoMo</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
+                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour paiement</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
                               </div>
                             );
                           } else {
@@ -829,16 +1066,32 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         }
 
                         if (op === 'ORANGE') {
-                          return (
-                            <div className="mt-1.5 p-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 font-bold">
-                              ⚠️ Numéro Orange (07...) non accepté : insérez un numéro Moov (01...) ou MTN (05...).
-                            </div>
-                          );
+                          if (selectedMethod === 'CINETPAY') {
+                            return (
+                              <div className="flex items-center justify-between mt-1 text-[11px] text-orange-800 font-bold">
+                                <span>🍊 Numéro Orange Money valide ({clean.length}/10 chiffres)</span>
+                                {clean.length === 10 ? <span className="text-emerald-600">✓ Prêt pour guichet CinetPay</span> : <span className="text-slate-400">{10 - clean.length} restant(s)</span>}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="mt-1.5 p-2 bg-orange-50 border border-orange-200 rounded-xl text-[11px] text-orange-950 flex items-center justify-between">
+                                <span>💡 Orange Money (07...) est disponible via CinetPay !</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedMethod('CINETPAY')}
+                                  className="font-black text-orange-800 underline hover:text-black ml-2"
+                                >
+                                  Basculer sur CinetPay →
+                                </button>
+                              </div>
+                            );
+                          }
                         }
 
                         return (
                           <div className="mt-1 text-[10px] text-slate-500 font-medium">
-                            Numéro en cours de saisie ({clean.length}/10) · Moov débute par 01, MTN par 05.
+                            Numéro en cours de saisie ({clean.length}/10) · Moov débute par 01, MTN par 05, Orange par 07.
                           </div>
                         );
                       })()}
@@ -850,7 +1103,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     <div className="p-3 bg-blue-50/60 border border-blue-200/80 rounded-2xl text-[11px] text-slate-700 flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
                       <span>
-                        <strong>Débit direct sur mobile :</strong> La somme de <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sera prélevée sur votre compte <strong>{selectedMethod === 'MOOV_MONEY' ? 'Moov Money (01...)' : 'MTN MoMo (05...)'}</strong> après saisie de votre code secret PIN.
+                        <strong>Débit direct sur mobile :</strong> La somme de <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sera prélevée {selectedMethod === 'CINETPAY' ? 'via le guichet CinetPay (Wave, Orange, MTN ou Moov)' : `sur votre compte ${selectedMethod === 'MOOV_MONEY' ? 'Moov Money (01...)' : 'MTN MoMo (05...)'}`} après saisie de votre code secret PIN.
                       </span>
                     </div>
                   )}
@@ -888,7 +1141,9 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                       type="submit"
                       disabled={isProcessingPay}
                       className={`w-full py-3.5 rounded-2xl font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50 ${
-                        selectedMethod === 'MOOV_MONEY'
+                        selectedMethod === 'CINETPAY'
+                          ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white'
+                          : selectedMethod === 'MOOV_MONEY'
                           ? 'bg-[#005CA9] hover:bg-[#004d8c] text-white'
                           : selectedMethod === 'DEMO'
                           ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
@@ -899,7 +1154,9 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
                           <span>
-                            {selectedMethod === 'MOOV_MONEY'
+                            {selectedMethod === 'CINETPAY'
+                              ? 'Initialisation CinetPay en cours...'
+                              : selectedMethod === 'MOOV_MONEY'
                               ? 'Envoi Push Moov Flooz en cours...'
                               : selectedMethod === 'DEMO'
                               ? 'Génération ticket test...'
@@ -909,7 +1166,9 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                       ) : (
                         <>
                           <span>
-                            {selectedMethod === 'MOOV_MONEY'
+                            {selectedMethod === 'CINETPAY'
+                              ? `Accéder au guichet CinetPay (${selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'})`
+                              : selectedMethod === 'MOOV_MONEY'
                               ? `Payer par Moov Money (${selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'})`
                               : selectedMethod === 'DEMO'
                               ? `Générer immédiatement (${selectedPack === 'unitaire' ? '1 ticket test' : '10 tickets test'})`
@@ -938,6 +1197,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     </div>
                   )}
                 </form>
+                )}
               </div>
             </div>
           )}

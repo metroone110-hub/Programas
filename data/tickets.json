@@ -1,6 +1,22 @@
 {
   "tickets": [
     {
+      "id": "TK-CROUK-200-MVI2KFLE-21646F",
+      "type": "unitaire",
+      "label": "Ticket Test Unitaire (200 F)",
+      "price": 200,
+      "currency": "FCFA",
+      "status": "used",
+      "createdAt": "2026-10-21T12:09:26.257Z",
+      "payerPhone": "0701020304",
+      "paymentMethod": "DEMO",
+      "transactionId": "CP-CROUK-MVI2KCNC-9034C3",
+      "securityCode": "515786",
+      "visitorId": "test-vis-cp",
+      "isSimulation": true,
+      "usedAt": "2026-10-21T12:09:33.077Z"
+    },
+    {
       "id": "TK-CROUK-200-MVGD6HDT-7724F9",
       "type": "unitaire",
       "label": "Ticket Test Unitaire (200 F)",
@@ -221,5 +237,5 @@
       "usedAt": "2026-10-18T20:53:12.596Z"
     }
   ],
-  "updatedAt": "2026-10-20T07:30:58.818Z"
+  "updatedAt": "2026-10-21T12:09:33.077Z"
 }

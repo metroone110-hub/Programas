@@ -7,10 +7,13 @@ import type {
   TicketValidationResult, 
   TicketStats, 
   MomoPayResponse,
-  PaymentDiagnosisResult 
+  PaymentDiagnosisResult,
+  CinetPayDiagnosisResult,
+  CinetPayInitResponse
 } from '../src/types.ts';
 import { MtnMomoClient, type OpenApiFullDiagnostic } from './mtnMomoClient.ts';
 import { MoovMoneyClient, type MoovDiagnosisResult } from './moovMoneyClient.ts';
+import { CinetPayClient, type CinetPayConfig } from './cinetPayClient.ts';
 import { validateIvorianPhoneNumber } from '../src/utils/phoneValidator.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,6 +50,13 @@ export interface PaymentConfig {
   moovBaseUrl?: string;
   moovUseSandbox?: boolean;
   moovReceiverPhone?: string;
+  // CinetPay API Configuration (Wave, Orange, MTN, Moov)
+  cinetpayApiKey?: string;
+  cinetpaySiteId?: string;
+  cinetpaySecretKey?: string;
+  cinetpayMode?: 'sandbox' | 'production';
+  cinetpayNotifyUrl?: string;
+  cinetpayReturnUrl?: string;
 }
 
 function ensureDataDirectory() {
@@ -85,6 +95,23 @@ export async function diagnoseMoovApi(overrideConfig?: Partial<PaymentConfig>): 
   return await client.diagnose();
 }
 
+export function getCinetPayClient(overrideConfig?: Partial<PaymentConfig>): CinetPayClient {
+  const cfg = { ...getPaymentConfig(), ...overrideConfig };
+  return new CinetPayClient({
+    apiKey: cfg.cinetpayApiKey,
+    siteId: cfg.cinetpaySiteId,
+    secretKey: cfg.cinetpaySecretKey,
+    mode: cfg.cinetpayMode || 'sandbox',
+    notifyUrl: cfg.cinetpayNotifyUrl,
+    returnUrl: cfg.cinetpayReturnUrl,
+  });
+}
+
+export async function diagnoseCinetPayApi(overrideConfig?: Partial<PaymentConfig>): Promise<CinetPayDiagnosisResult> {
+  const client = getCinetPayClient(overrideConfig);
+  return await client.diagnose();
+}
+
 export function getPaymentConfig(): PaymentConfig {
   ensureDataDirectory();
   try {
@@ -114,7 +141,7 @@ export function savePaymentConfig(config: Partial<PaymentConfig>): PaymentConfig
   return updated;
 }
 
-function loadTickets(): VirtualTicket[] {
+export function loadTickets(): VirtualTicket[] {
   try {
     ensureDataDirectory();
     if (fs.existsSync(TICKETS_FILE)) {
@@ -128,17 +155,72 @@ function loadTickets(): VirtualTicket[] {
   return [];
 }
 
-function saveTickets(tickets: VirtualTicket[]) {
-  try {
-    ensureDataDirectory();
-    const payload: TicketsStorage = {
-      tickets,
-      updatedAt: new Date().toISOString(),
-    };
-    fs.writeFileSync(TICKETS_FILE, JSON.stringify(payload, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Tickets DB] Error writing tickets.json:', err);
+export function saveTickets(tickets: VirtualTicket[]) {
+  ensureDataDirectory();
+  const storage: TicketsStorage = {
+    tickets,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(TICKETS_FILE, JSON.stringify(storage, null, 2), 'utf-8');
+}
+
+/**
+ * Helper to generate and persist tickets for an order (CinetPay, MoMo, Moov)
+ */
+export function createAndSaveTickets(params: {
+  type: 'unitaire' | 'souche';
+  phone: string;
+  visitorId: string;
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
+  referenceId: string;
+  isSimulation?: boolean;
+}): VirtualTicket[] {
+  const { type, phone, visitorId, paymentMethod, referenceId, isSimulation } = params;
+  const count = type === 'unitaire' ? 1 : 10;
+  const now = new Date().toISOString();
+  const packId = type === 'souche' ? `SOUCHE-${Date.now().toString(36).toUpperCase()}` : undefined;
+  const newTickets: VirtualTicket[] = [];
+
+  const allTickets = loadTickets();
+  // Check if tickets for this transaction already exist
+  const existing = allTickets.filter((t) => t.transactionId === referenceId);
+  if (existing.length > 0) {
+    return existing;
   }
+
+  for (let i = 1; i <= count; i++) {
+    const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const ticketId = `TK-CROUK-${type === 'unitaire' ? '200' : '2000'}-${Date.now().toString(36).toUpperCase()}-${randomSuffix}`;
+    const securityCode = generateSecurityCode();
+
+    const actualMethod = isSimulation ? 'DEMO' : paymentMethod;
+
+    const ticket: VirtualTicket & { visitorId: string } = {
+      id: ticketId,
+      type: type === 'unitaire' ? 'unitaire' : 'carnet_unit',
+      packId,
+      unitIndex: type === 'souche' ? i : undefined,
+      label: type === 'unitaire' 
+        ? (isSimulation ? 'Ticket Test Unitaire (200 F)' : 'Ticket Repas Unitaire (200 F)') 
+        : (isSimulation ? `Souche Test 10 Repas - Ticket n°${i}/10` : `Souche 10 Repas - Ticket n°${i}/10`),
+      price: 200,
+      currency: 'FCFA',
+      status: 'valid',
+      createdAt: now,
+      payerPhone: phone,
+      paymentMethod: actualMethod,
+      transactionId: referenceId,
+      securityCode,
+      visitorId,
+      isSimulation: Boolean(isSimulation),
+    };
+
+    newTickets.push(ticket);
+  }
+
+  allTickets.unshift(...newTickets);
+  saveTickets(allTickets);
+  return newTickets;
 }
 
 // Generate human-friendly 6-digit security code for fast manual verification at counter
@@ -296,7 +378,7 @@ export async function processPayment(
   phone: string,
   type: 'unitaire' | 'souche',
   visitorId: string,
-  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' = 'MTN_MOMO',
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' = 'MTN_MOMO',
   forceSimulation: boolean = false
 ): Promise<MomoPayResponse> {
   const isSimulation = forceSimulation || paymentMethod === 'DEMO';
@@ -445,9 +527,9 @@ export async function processPayment(
     const ticketId = `TK-CROUK-${type === 'unitaire' ? '200' : '2000'}-${Date.now().toString(36).toUpperCase()}-${randomSuffix}`;
     const securityCode = generateSecurityCode();
 
-    const actualMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' = isSimulation 
+    const actualMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' = isSimulation 
       ? 'DEMO' 
-      : (paymentMethod === 'MOOV_MONEY' ? 'MOOV_MONEY' : 'MTN_MOMO');
+      : (paymentMethod === 'MOOV_MONEY' ? 'MOOV_MONEY' : paymentMethod === 'CINETPAY' ? 'CINETPAY' : 'MTN_MOMO');
 
     const ticket: VirtualTicket & { visitorId: string } = {
       id: ticketId,

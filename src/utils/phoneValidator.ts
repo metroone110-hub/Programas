@@ -59,11 +59,11 @@ export function detectIvorianOperator(digits: string): IvorianOperator {
 }
 
 /**
- * Validates an Ivorian mobile number against expected payment method (MOOV_MONEY or MTN_MOMO)
+ * Validates an Ivorian mobile number against expected payment method (MOOV_MONEY, MTN_MOMO, or CINETPAY)
  */
 export function validateIvorianPhoneNumber(
   rawPhone: string,
-  expectedMethod?: 'MOOV_MONEY' | 'MTN_MOMO' | 'DEMO'
+  expectedMethod?: 'MOOV_MONEY' | 'MTN_MOMO' | 'CINETPAY' | 'DEMO'
 ): PhoneValidationResult {
   const digits = normalizeIvorianPhone(rawPhone);
   const operator = detectIvorianOperator(digits);
@@ -90,6 +90,38 @@ export function validateIvorianPhoneNumber(
       formattedPhone: formatted,
     };
   }
+
+  // Validate for CinetPay (all 3 operators accepted: Moov 01, MTN 05, Orange 07)
+  if (expectedMethod === 'CINETPAY') {
+    if (digits && digits.length > 0 && digits.length !== 10) {
+      return {
+        valid: false,
+        operator,
+        cleanPhone: digits,
+        internationalPhone: international,
+        formattedPhone: formatted,
+        error: `En Côte d'Ivoire, les numéros comportent exactement 10 chiffres (saisi : ${digits.length}).`,
+      };
+    }
+    if (digits.length === 10 && operator === 'UNKNOWN') {
+      return {
+        valid: false,
+        operator,
+        cleanPhone: digits,
+        internationalPhone: international,
+        formattedPhone: formatted,
+        error: "Préfixe non reconnu. CinetPay accepte Moov (01...), MTN (05...) et Orange (07...).",
+      };
+    }
+    return {
+      valid: true,
+      operator,
+      cleanPhone: digits,
+      internationalPhone: international,
+      formattedPhone: formatted,
+    };
+  }
+
 
   // Check 10-digit requirement
   if (digits.length !== 10) {

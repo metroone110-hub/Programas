@@ -28,6 +28,7 @@ import type {
   TicketStats, 
   PaymentDiagnosisResult,
   MoovDiagnosisResult,
+  CinetPayDiagnosisResult,
   OpenApiFullDiagnostic 
 } from '../types';
 import { playScanSound } from '../utils/qrcode';
@@ -98,7 +99,69 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
-  const [gatewayTab, setGatewayTab] = useState<'mtn' | 'moov'>('mtn');
+  const [gatewayTab, setGatewayTab] = useState<'cinetpay' | 'moov' | 'mtn'>('cinetpay');
+
+  // CinetPay State (Wave, Orange Money, MTN MoMo, Moov Flooz)
+  const [cinetpayApiKey, setCinetpayApiKey] = useState<string>('');
+  const [cinetpaySiteId, setCinetpaySiteId] = useState<string>('');
+  const [cinetpaySecretKey, setCinetpaySecretKey] = useState<string>('');
+  const [cinetpayMode, setCinetpayMode] = useState<'sandbox' | 'production'>('sandbox');
+  const [cinetpayDiagnosis, setCinetpayDiagnosis] = useState<CinetPayDiagnosisResult | null>(null);
+  const [testingCinetPay, setTestingCinetPay] = useState<boolean>(false);
+  const [simulatingCinetPay, setSimulatingCinetPay] = useState<boolean>(false);
+  const [cinetpaySimResult, setCinetpaySimResult] = useState<string | null>(null);
+
+  // Run live diagnosis on CinetPay
+  const runCinetPayDiagnosis = async () => {
+    try {
+      setTestingCinetPay(true);
+      const res = await fetch('/api/tickets/cinetpay-diagnosis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cinetpayApiKey,
+          cinetpaySiteId,
+          cinetpaySecretKey,
+          cinetpayMode,
+        }),
+      });
+      const data = await res.json();
+      if (data.diagnosis) {
+        setCinetpayDiagnosis(data.diagnosis);
+      }
+    } catch (err) {
+      console.error('Failed to run CinetPay diagnosis:', err);
+    } finally {
+      setTestingCinetPay(false);
+    }
+  };
+
+  // Test simulation for CinetPay
+  const handleSimulateCinetPay = async (operator: string) => {
+    try {
+      setSimulatingCinetPay(true);
+      const res = await fetch('/api/tickets/cinetpay-simulate-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'unitaire',
+          phone: '0102030405',
+          visitorId: 'vis_admin_test',
+          operator,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCinetpaySimResult(`✅ Simulation ${operator} réussie : 1 ticket repas généré dans la base.`);
+        fetchStats();
+        setTimeout(() => setCinetpaySimResult(null), 4000);
+      }
+    } catch (err: any) {
+      setCinetpaySimResult(`❌ Erreur: ${err.message}`);
+    } finally {
+      setSimulatingCinetPay(false);
+    }
+  };
 
   // Moov Money State
   const [moovUsername, setMoovUsername] = useState<string>('crou_korhogo');
@@ -215,6 +278,10 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
             setMoovReceiverPhone(json.config.moovReceiverPhone);
             setTestPushPhone(json.config.moovReceiverPhone);
           }
+          if (json.config.cinetpayApiKey) setCinetpayApiKey(json.config.cinetpayApiKey);
+          if (json.config.cinetpaySiteId) setCinetpaySiteId(json.config.cinetpaySiteId);
+          if (json.config.cinetpaySecretKey) setCinetpaySecretKey(json.config.cinetpaySecretKey);
+          if (json.config.cinetpayMode) setCinetpayMode(json.config.cinetpayMode);
           if (json.config.momoSubscriptionKey || json.config.momoApiKey) {
             setCustomKeyInput(json.config.momoSubscriptionKey || json.config.momoApiKey);
           }
@@ -251,6 +318,10 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
           moovBaseUrl,
           moovUseSandbox,
           moovReceiverPhone,
+          cinetpayApiKey,
+          cinetpaySiteId,
+          cinetpaySecretKey,
+          cinetpayMode,
         }),
       });
       if (res.ok) {
@@ -476,34 +547,297 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
             </h4>
           </div>
 
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0 overflow-x-auto max-w-full">
             <button
               type="button"
-              onClick={() => setGatewayTab('mtn')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                gatewayTab === 'mtn'
-                  ? 'bg-[#FFCC00] text-slate-950 shadow-xs'
+              onClick={() => setGatewayTab('cinetpay')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                gatewayTab === 'cinetpay'
+                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-950'
               }`}
             >
-              <span>🟡</span>
-              <span>MTN MoMo</span>
+              <span>🟠</span>
+              <span>CinetPay (Tous Réseaux)</span>
             </button>
 
             <button
               type="button"
               onClick={() => setGatewayTab('moov')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 gatewayTab === 'moov'
                   ? 'bg-[#005CA9] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-950'
               }`}
             >
               <span>🔵</span>
-              <span>Moov Flooz (SDK)</span>
+              <span>Moov Flooz (Direct)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGatewayTab('mtn')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                gatewayTab === 'mtn'
+                  ? 'bg-[#FFCC00] text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-950'
+              }`}
+            >
+              <span>🟡</span>
+              <span>MTN MoMo (Direct)</span>
             </button>
           </div>
         </div>
+
+        {/* CONTENU ONGLET 0 : CINETPAY MULTI-OPÉRATEURS (WAVE, ORANGE, MTN, MOOV) */}
+        {gatewayTab === 'cinetpay' && (
+          <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-500 text-white flex items-center justify-center font-black shadow-xs">
+                  <Server className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h5 className="font-black text-slate-950 text-base">
+                      Passerelle Agrégateur CinetPay (Multi-Opérateurs)
+                    </h5>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-900">
+                      Wave · Orange · MTN · Moov
+                    </span>
+                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                      cinetpayMode === 'production' ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'
+                    }`}>
+                      {cinetpayMode === 'production' ? '🔴 Débit Réel (Production)' : '🧪 Sandbox / Test'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Un seul compte marchand pour encaisser les 4 réseaux ivoiriens sans multiplier les contrats opérateurs.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={runCinetPayDiagnosis}
+                  disabled={testingCinetPay}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black rounded-xl shadow-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${testingCinetPay ? 'animate-spin' : ''}`} />
+                  <span>{testingCinetPay ? 'Vérification CinetPay...' : 'Tester la connexion CinetPay'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* RÉSULTAT DU DIAGNOSTIC CINETPAY */}
+            {cinetpayDiagnosis && (
+              <div className="p-4 bg-slate-50 rounded-2xl border border-black/5 space-y-3 animate-in fade-in duration-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${cinetpayDiagnosis.connected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                    <span className="font-bold text-slate-900">
+                      {cinetpayDiagnosis.message}
+                    </span>
+                    <span className="font-mono text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700">
+                      Code: {cinetpayDiagnosis.code}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    Testé le {new Date(cinetpayDiagnosis.testedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600">
+                  {cinetpayDiagnosis.description}
+                </p>
+
+                {cinetpayDiagnosis.explanations.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                      Analyse de configuration
+                    </span>
+                    <ul className="text-xs text-slate-600 space-y-1 pl-4 list-disc">
+                      {cinetpayDiagnosis.explanations.map((exp, i) => (
+                        <li key={i}>{exp}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {cinetpayDiagnosis.recommendations.length > 0 && (
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
+                    <span className="font-bold block">💡 Conseils d'activation :</span>
+                    <ul className="space-y-1 pl-4 list-disc">
+                      {cinetpayDiagnosis.recommendations.map((rec, i) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SIMULATEUR DE PAIEMENT INSTANTANÉ POUR VALIDER LE FLUX */}
+            <div className="p-4 bg-orange-50/70 rounded-2xl border border-orange-200/80 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h6 className="text-xs font-black text-orange-950 flex items-center gap-1.5">
+                    <span>🧪</span>
+                    <span>Tester une simulation instantanée de paiement (Mode Test CROU)</span>
+                  </h6>
+                  <p className="text-[11px] text-orange-800 font-medium">
+                    Cliquez sur un opérateur pour simuler un achat étudiant réussi et vérifier la génération du ticket sécurisé.
+                  </p>
+                </div>
+                {cinetpaySimResult && (
+                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-xl">
+                    {cinetpaySimResult}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={simulatingCinetPay}
+                  onClick={() => handleSimulateCinetPay('Wave CI')}
+                  className="py-2.5 px-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                >
+                  <span>🌊</span>
+                  <span>Wave CI</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={simulatingCinetPay}
+                  onClick={() => handleSimulateCinetPay('Orange Money CI')}
+                  className="py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                >
+                  <span>🍊</span>
+                  <span>Orange Money</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={simulatingCinetPay}
+                  onClick={() => handleSimulateCinetPay('MTN MoMo CI')}
+                  className="py-2.5 px-3 bg-[#FFCC00] hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                >
+                  <span>🟡</span>
+                  <span>MTN MoMo</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={simulatingCinetPay}
+                  onClick={() => handleSimulateCinetPay('Moov Flooz CI')}
+                  className="py-2.5 px-3 bg-[#005CA9] hover:bg-[#004d8c] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                >
+                  <span>🔵</span>
+                  <span>Moov Flooz</span>
+                </button>
+              </div>
+            </div>
+
+            {/* FORMULAIRE DE PARAMÉTRAGE CINETPAY */}
+            <form onSubmit={handleSaveConfig} className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Clé API CinetPay (API Key) :
+                  </label>
+                  <input
+                    type="text"
+                    value={cinetpayApiKey}
+                    onChange={(e) => setCinetpayApiKey(e.target.value)}
+                    placeholder="Ex: 204987654362d8e4..."
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                  <span className="text-[10px] text-slate-400">
+                    Disponible sur votre dashboard <a href="https://cinetpay.com" target="_blank" rel="noreferrer" className="underline text-orange-600">cinetpay.com</a> &gt; Paramètres &gt; API
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Identifiant du Site (Site ID) :
+                  </label>
+                  <input
+                    type="text"
+                    value={cinetpaySiteId}
+                    onChange={(e) => setCinetpaySiteId(e.target.value)}
+                    placeholder="Ex: 123456"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                  <span className="text-[10px] text-slate-400">
+                    Numéro de site fourni par CinetPay lors de la création de votre guichet
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Mode d'opération :
+                  </label>
+                  <select
+                    value={cinetpayMode}
+                    onChange={(e) => setCinetpayMode(e.target.value as 'sandbox' | 'production')}
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  >
+                    <option value="sandbox">🧪 Mode Sandbox / Test (Transactions de test sans frais)</option>
+                    <option value="production">🔴 Mode Production Réel (Prélèvements effectifs Wave, OM, MTN, Moov)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Clé Secrète / Signature Webhook (Optionnel) :
+                  </label>
+                  <input
+                    type="password"
+                    value={cinetpaySecretKey}
+                    onChange={(e) => setCinetpaySecretKey(e.target.value)}
+                    placeholder="Clé secrète de validation IPN"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-black/5 text-[11px] text-slate-500 font-medium">
+                <span>URL de notification Webhook IPN de votre application : </span>
+                <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-800">
+                  /api/tickets/cinetpay-notify
+                </code>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                {saveSuccess ? (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Configuration CinetPay enregistrée avec succès !</span>
+                  </span>
+                ) : <span />}
+
+                <button
+                  type="submit"
+                  disabled={savingConfig}
+                  className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black rounded-xl transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {savingConfig ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enregistrement en cours...</span>
+                    </>
+                  ) : (
+                    <span>Enregistrer la configuration CinetPay</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* CONTENU ONGLET 1 : MTN MOMO OPENAPI */}
         {gatewayTab === 'mtn' && (

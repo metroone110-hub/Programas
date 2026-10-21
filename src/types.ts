@@ -104,7 +104,7 @@ export interface VirtualTicket {
   createdAt: string;
   usedAt?: string;
   payerPhone?: string;
-  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO' | 'CASH';
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' | 'CASH';
   transactionId?: string;
   securityCode: string; // 6-digit code for cashier verification
   isSimulation?: boolean;
@@ -114,7 +114,7 @@ export interface MomoPayRequest {
   phone: string;
   type: 'unitaire' | 'souche';
   visitorId: string;
-  paymentMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'DEMO';
+  paymentMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
   forceSimulation?: boolean;
 }
 
@@ -132,6 +132,35 @@ export interface MomoPayResponse {
     statusCode?: number;
     reason?: string;
   };
+}
+
+export interface CinetPayDiagnosisResult {
+  testedAt: string;
+  apiKeyPreview: string;
+  siteId: string;
+  mode: 'sandbox' | 'production';
+  connected: boolean;
+  httpStatus: number;
+  code: string;
+  message: string;
+  description: string;
+  supportedChannels: string[];
+  isUsableForRealMoney: boolean;
+  explanations: string[];
+  recommendations: string[];
+  rawResponse?: string;
+}
+
+export interface CinetPayInitResponse {
+  success: boolean;
+  transactionId: string;
+  amount: number;
+  currency: string;
+  paymentUrl?: string;
+  paymentToken?: string;
+  mode: 'sandbox' | 'production' | 'simulation';
+  message: string;
+  error?: string;
 }
 
 export interface PaymentDiagnosisResult {
@@ -205,6 +234,12 @@ export interface PaymentConfigData {
   moovBaseUrl?: string;
   moovUseSandbox?: boolean;
   moovReceiverPhone?: string;
+  // CinetPay fields
+  cinetpayApiKey?: string;
+  cinetpaySiteId?: string;
+  cinetpaySecretKey?: string;
+  cinetpayMode?: 'sandbox' | 'production';
+  cinetpayNotifyUrl?: string;
 }
 
 export interface TicketValidationResult {

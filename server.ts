@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import {
   getRestaurantData,
@@ -35,6 +36,10 @@ import {
   getMomoClient,
   diagnoseMoovApi,
   getMoovClient,
+  diagnoseCinetPayApi,
+  getCinetPayClient,
+  createAndSaveTickets,
+  loadTickets,
   getPaymentConfig,
   savePaymentConfig,
   validateTicketAtCounter,
@@ -506,6 +511,151 @@ app.get('/api/tickets/moov-status/:referenceId', async (req: Request, res: Respo
     return res.json(result);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== CINETPAY MULTI-OPERATOR API (Wave, Orange, MTN, Moov) ====================
+
+// POST /api/tickets/cinetpay-init - Initialize multi-network payment
+app.post('/api/tickets/cinetpay-init', async (req: Request, res: Response) => {
+  try {
+    const { type, phone, visitorId, customerName } = req.body;
+    const cleanPhone = (phone || '').replace(/\D/g, '').replace(/^225/, '') || '0102030405';
+    const amount = type === 'souche' ? 2000 : 200;
+    const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const transactionId = `CP-CROUK-${Date.now().toString(36).toUpperCase()}-${randomSuffix}`;
+
+    const client = getCinetPayClient();
+    const result = await client.initiatePayment({
+      transactionId,
+      amount,
+      description: `Ticket Resto-U CROU-K (${amount} FCFA)`,
+      customerPhone: cleanPhone,
+      customerName: customerName || 'Étudiant UPGC',
+      visitorId: visitorId || 'vis_' + Date.now().toString(36),
+    });
+
+    return res.json(result);
+  } catch (error: any) {
+    console.error('[CinetPay Init Error]:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Erreur initialisation CinetPay' });
+  }
+});
+
+// GET /api/tickets/cinetpay-status/:transactionId - Check transaction status and retrieve tickets
+app.get('/api/tickets/cinetpay-status/:transactionId', async (req: Request, res: Response) => {
+  try {
+    const { transactionId } = req.params;
+    const allTickets = loadTickets();
+    const matched = allTickets.filter((t) => t.transactionId === transactionId);
+    if (matched.length > 0) {
+      return res.json({
+        success: true,
+        status: 'ACCEPTED',
+        tickets: matched,
+        message: 'Paiement CinetPay confirmé et ticket repas généré !',
+      });
+    }
+
+    const client = getCinetPayClient();
+    const check = await client.checkTransaction(transactionId);
+    if (check.status === 'ACCEPTED') {
+      const tickets = createAndSaveTickets({
+        type: (check.amount && check.amount >= 2000) ? 'souche' : 'unitaire',
+        phone: '0102030405',
+        visitorId: 'vis_cinetpay',
+        paymentMethod: 'CINETPAY',
+        referenceId: transactionId,
+        isSimulation: false,
+      });
+      return res.json({
+        success: true,
+        status: 'ACCEPTED',
+        tickets,
+        message: 'Paiement CinetPay validé avec succès !',
+      });
+    }
+
+    return res.json({
+      success: check.success,
+      status: check.status,
+      message: check.message,
+    });
+  } catch (error: any) {
+    console.error('[CinetPay Check Error]:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/tickets/cinetpay-notify - Webhook IPN called directly by CinetPay servers
+app.post('/api/tickets/cinetpay-notify', async (req: Request, res: Response) => {
+  try {
+    console.log('[CinetPay Webhook Received]:', req.body);
+    const transactionId = req.body?.cpm_trans_id || req.body?.transaction_id;
+    if (!transactionId) {
+      return res.status(400).send('Transaction ID manquant');
+    }
+
+    const client = getCinetPayClient();
+    const check = await client.checkTransaction(transactionId);
+    if (check.status === 'ACCEPTED') {
+      createAndSaveTickets({
+        type: (check.amount && check.amount >= 2000) ? 'souche' : 'unitaire',
+        phone: req.body?.cel_phone_num || '0102030405',
+        visitorId: req.body?.cpm_custom || 'vis_cinetpay',
+        paymentMethod: 'CINETPAY',
+        referenceId: transactionId,
+        isSimulation: false,
+      });
+      console.log(`[CinetPay Webhook] Ticket validé avec succès pour ${transactionId}`);
+    }
+    return res.status(200).send('OK');
+  } catch (error) {
+    console.error('[CinetPay Webhook Error]:', error);
+    return res.status(500).send('Erreur webhook CinetPay');
+  }
+});
+
+// POST /api/tickets/cinetpay-simulate-success - Immediate test simulation for testing the CinetPay student UX
+app.post('/api/tickets/cinetpay-simulate-success', (req: Request, res: Response) => {
+  try {
+    const { transactionId, type, phone, visitorId, operator } = req.body;
+    const tickets = createAndSaveTickets({
+      type: type === 'souche' ? 'souche' : 'unitaire',
+      phone: phone || '0102030405',
+      visitorId: visitorId || 'vis_sim',
+      paymentMethod: 'CINETPAY',
+      referenceId: transactionId || `CP-SIM-${Date.now().toString(36).toUpperCase()}`,
+      isSimulation: true,
+    });
+    return res.json({
+      success: true,
+      status: 'ACCEPTED',
+      tickets,
+      message: `Paiement CinetPay test (${operator || 'Multi-opérateur'}) validé ! Votre ticket repas est prêt.`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/tickets/cinetpay-diagnosis - Real-time diagnosis of CinetPay credentials
+app.get('/api/tickets/cinetpay-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const result = await diagnoseCinetPayApi();
+    return res.json({ success: true, diagnosis: result });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic CinetPay' });
+  }
+});
+
+// POST /api/tickets/cinetpay-diagnosis - Test CinetPay with custom parameters
+app.post('/api/tickets/cinetpay-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const result = await diagnoseCinetPayApi(req.body);
+    return res.json({ success: true, diagnosis: result });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic CinetPay' });
   }
 });
 

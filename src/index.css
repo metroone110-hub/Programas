@@ -19,7 +19,8 @@ html, body {
 }
 
 body {
-  background-color: #F5F0E8;
+  background-color: #F8F9FA;
+  color: #111827;
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
@@ -31,14 +32,14 @@ input, textarea {
   -webkit-user-select: text;
 }
 
-/* Empêcher le glisser-déposer parasite des images (effet d'image qui flotte ou s'étire) */
+/* Empêcher le glisser-déposer parasite des images */
 img, svg {
   -webkit-user-drag: none;
   user-drag: none;
   pointer-events: auto;
 }
 
-/* Conteneurs avec défilement interne figé et propre */
+/* Conteneurs avec défilement interne propre */
 .overscroll-contain {
   overscroll-behavior: contain;
   -webkit-overscroll-behavior: contain;
@@ -52,3 +53,51 @@ img, svg {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Micro-animations pour transition d'écran et retour tactile */
+@keyframes slideDownToast {
+  0% { transform: translate(-50%, -100%); opacity: 0; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
+@keyframes slideInRight {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes slideUpSheet {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes heartPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.animate-toast {
+  animation: slideDownToast 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-right {
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUpSheet 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-heart-pop {
+  animation: heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Classe tactile réactive : rétrécit au toucher, revient en place au relâchement */
+.touch-press {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, filter 0.15s ease;
+}
+.touch-press:active {
+  transform: scale(0.95);
+  filter: brightness(0.96);
+}
+
