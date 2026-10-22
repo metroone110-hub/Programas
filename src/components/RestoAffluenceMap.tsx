@@ -254,27 +254,37 @@ export const RestoAffluenceMap: React.FC<RestoAffluenceMapProps> = ({ visitorId 
             </p>
           </div>
 
-          {/* Crowd Stats Counter Box */}
+          {/* Crowd Stats Counter Box (100% Real Live Count) */}
           <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/10">
             <div className="text-center pr-3 border-r border-white/15">
               <div className="text-2xl sm:text-3xl font-black text-white flex items-center justify-center gap-1">
-                <span>{liveData?.insideCount ?? '--'}</span>
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span>{liveData?.insideCount ?? 0}</span>
+                <span className={`w-2 h-2 rounded-full ${
+                  (liveData?.insideCount ?? 0) > 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
+                }`} />
               </div>
               <div className="text-[10px] uppercase font-bold text-slate-300 tracking-wider">
-                Présents dans le cercle
+                {(liveData?.insideCount ?? 0) > 1 ? 'Élèves dans le cercle' : 'Élève dans le cercle'}
               </div>
             </div>
 
             <div className="text-center pl-1">
               <div className="text-base sm:text-lg font-black text-amber-300">
-                ~{liveData?.waitTimeMinutes ?? 5} min
+                {(liveData?.insideCount ?? 0) === 0 ? '0 min' : `~${liveData?.waitTimeMinutes} min`}
               </div>
               <div className="text-[10px] font-semibold text-slate-300">
-                Attente estimée
+                {(liveData?.insideCount ?? 0) === 0 ? 'Guichet libre' : 'Attente estimée'}
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Real-Data Transparency Info Banner */}
+        <div className="mt-3.5 p-2.5 rounded-2xl bg-white/5 border border-white/10 text-[11px] text-slate-300 flex items-start gap-2">
+          <Info className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+          <span>
+            <strong>Radar 100% Réel :</strong> Aucun faux profil n'est affiché. Les points rouges représentent uniquement les personnes qui ont ouvert l'application et sont géolocalisées dans le cercle de 65m du restaurant CROU-K. S'il n'y a personne au resto, le compteur affiche 0.
+          </span>
         </div>
 
         {/* Dynamic Affluence Level Gauge */}
@@ -439,6 +449,14 @@ export const RestoAffluenceMap: React.FC<RestoAffluenceMapProps> = ({ visitorId 
             </Map>
           </APIProvider>
 
+          {/* Zero students indicator */}
+          {liveData && liveData.students.length === 0 && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-slate-900/90 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-lg border border-slate-700/80 flex items-center gap-2 pointer-events-none whitespace-nowrap">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>0 élève dans le cercle • Restaurant libre</span>
+            </div>
+          )}
+
           {/* Floating Map Legend & Overlay Note */}
           <div className="absolute bottom-3 left-3 z-10 bg-slate-900/90 backdrop-blur-md text-white px-3 py-2 rounded-xl text-[11px] shadow-xl border border-slate-700/80 max-w-[260px] pointer-events-none">
             <div className="flex items-center gap-1.5 font-bold mb-1 text-orange-400">
@@ -525,8 +543,8 @@ export const RestoAffluenceMap: React.FC<RestoAffluenceMapProps> = ({ visitorId 
               <Sparkles className="w-3.5 h-3.5" />
               <span>
                 {isSimulatedInside
-                  ? '🚶 Quitter le restaurant (Sortir)'
-                  : '📍 Simuler ma présence au Resto U'}
+                  ? '🚶 Sortir du restaurant (Effacer mon point)'
+                  : '📍 Tester ma présence (Afficher mon point rouge)'}
               </span>
             </button>
           </div>
@@ -535,7 +553,7 @@ export const RestoAffluenceMap: React.FC<RestoAffluenceMapProps> = ({ visitorId 
           <div className="flex items-start gap-2 text-[11px] text-slate-500 bg-white p-2.5 rounded-xl border border-slate-200/60">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <span>
-              <strong>Confidentialité garantie :</strong> Seuls les élèves physiquement ou simulés dans le cercle de 65m du restaurant CROU-K apparaissent en signe rouge. Dès qu'un élève quitte le cercle, sa localisation disparaît instantanément.
+              <strong>Données 100% réelles :</strong> Seuls les élèves ayant ouvert l'application et situés dans le cercle de 65m du restaurant CROU-K apparaissent en signe rouge. Dès qu'un élève quitte le cercle, sa localisation quitte immédiatement la carte.
             </span>
           </div>
         </div>

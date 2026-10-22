@@ -119,7 +119,7 @@ const SAMPLE_MENUS = [
         '• Yaourt Dêguê au couscous de mil',
         '• Tranches d’ananas sucré',
         '',
-        'TARIFS: Boursier 100 FCFA | Non-boursier 200 FCFA | Personnel 500 FCFA'
+        'TARIFS: Ticket Unique Étudiant 200 FCFA | Personnel 500 FCFA'
       ])
   },
   {
@@ -146,7 +146,7 @@ const SAMPLE_MENUS = [
         '• Salade de papaye & fruits de saison',
         '• Yaourt sucré vanillé local',
         '',
-        'TARIFS: Étudiant 100 FCFA | Personnel 500 FCFA'
+        'TARIFS: Ticket Unique Étudiant 200 FCFA | Personnel 500 FCFA'
       ])
   }
 ];

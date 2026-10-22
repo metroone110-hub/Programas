@@ -48,7 +48,7 @@ Règles de classification :
 Détecte si possible :
 - Les tags alimentaires ("local", "fait_maison", "halal", "sans_porc", "veggie", "bio").
 - Les allergènes majeurs (Arachides, Poisson, Crustacés, etc.).
-- Les tarifs en FCFA s'ils sont affichés (ex: 100 FCFA, 200 FCFA, 500 FCFA).
+- Les tarifs en FCFA s'ils sont affichés (ex: 200 FCFA subventionné, 500 FCFA). Minimum étudiant: 200 FCFA.
 - Le service ("dejeuner" pour midi, "diner" pour le soir).
 - Toute remarque (menu du jour, rupture de stock).`;
 

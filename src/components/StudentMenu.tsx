@@ -34,6 +34,7 @@ import { StudentTicketsModal } from './StudentTicketsModal';
 import { NotificationModal } from './NotificationModal';
 import { TikeramaPaymentModal } from './TikeramaPaymentModal';
 import { RestoAffluenceMap } from './RestoAffluenceMap';
+import { AboutRestoCrou } from './AboutRestoCrou';
 import { TicketVisual } from './TicketVisual';
 import { FastFoodImage } from './FastFoodImage';
 import { getOrGenerateVisitorId } from '../utils/analytics';
@@ -226,7 +227,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         title: item.title,
         category: 'plats' as const,
         categoryLabel: item.badgeLabel || (item.category === 'dessert' ? 'Dessert & Fraîcheur' : 'Plat Chaud'),
-        price: item.price ?? 100, // 100 FCFA subventionné CROU
+        price: item.price ?? 200, // 200 FCFA prix unique subventionné CROU
         originalPrice: item.originalPrice ?? 500, // 500 FCFA barré
         rating: item.rating ?? (4.8 + (idx % 2 === 0 ? 0.1 : 0)),
         reviewCount: item.reviewCount ?? (350 + idx * 45),
@@ -577,7 +578,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                 ☀️ Déjeuner : <strong className="text-amber-300">11h30 - 14h30</strong> • 🌙 Dîner : <strong className="text-amber-300">18h30 - 21h30</strong>
               </p>
               <p className="text-[11px] text-zinc-400 mb-3">
-                Plats subventionnés à <strong className="text-white">100 F / 200 F</strong> • Billetterie Programas
+                Plats subventionnés à <strong className="text-white">200 FCFA</strong> • Billetterie Programas
               </p>
               
               <div className="flex flex-wrap items-center gap-2">
@@ -611,7 +612,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                 className="w-full h-full object-cover"
               />
               <span className="absolute bottom-1 right-1 bg-black/75 backdrop-blur-xs text-[9px] font-black px-1.5 py-0.5 rounded-md text-amber-300">
-                100 FCFA
+                200 FCFA
               </span>
             </div>
           </div>
@@ -827,6 +828,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
             <span>Mes tickets ({validTicketsCount})</span>
           </button>
         </section>
+
+        {/* Section À Propos du Restaurant CROU-K & Galerie Photos Défilante */}
+        <AboutRestoCrou />
         </>
         )}
       </div>

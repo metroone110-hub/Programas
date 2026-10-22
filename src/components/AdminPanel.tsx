@@ -420,7 +420,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         description: 'Assortiment frais de mangues de Korhogo, ananas mûrs et papayes de saison du verger régional.',
         category: 'dessert',
         badgeLabel: 'Dessert & Fraîcheur',
-        price: 100,
+        price: 200,
         originalPrice: 300,
         image: '/images/salade_fruits.jpg',
         service: 'dejeuner',
@@ -482,7 +482,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         description: 'Mangues fraîches, papayes sucrées et ananas Victoria pour clore le repas du soir.',
         category: 'dessert',
         badgeLabel: 'Dessert & Fraîcheur',
-        price: 100,
+        price: 200,
         originalPrice: 300,
         image: '/images/salade_fruits.jpg',
         service: 'diner',
@@ -1029,7 +1029,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="mt-3 p-3.5 rounded-2xl bg-gradient-to-r from-orange-50 via-amber-50 to-orange-100 border border-orange-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
                   <div>
                     <span className="text-[10px] font-black uppercase text-orange-800 tracking-wider block">
-                      ⚡ Programmation Rapide CROU-K (Plats & Prix Subventionnés 100 F / 200 F)
+                      ⚡ Programmation Rapide CROU-K (Plats à 200 FCFA)
                     </span>
                     <p className="text-xs text-slate-700 font-semibold">
                       Préparez et chargez automatiquement les plats officiels du Resto U UPGC en un clic.
@@ -1653,9 +1653,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </label>
                   <input
                     type="number"
-                    value={editingItem.price ?? 100}
-                    onChange={(e) => setEditingItem({ ...editingItem, price: parseInt(e.target.value, 10) || 100 })}
-                    placeholder="100"
+                    value={editingItem.price ?? 200}
+                    onChange={(e) => setEditingItem({ ...editingItem, price: parseInt(e.target.value, 10) || 200 })}
+                    placeholder="200"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
                   />
                 </div>
