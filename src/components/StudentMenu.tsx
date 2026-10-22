@@ -24,13 +24,18 @@ import {
   Calendar,
   Clock,
   ExternalLink,
-  Ticket as TicketIcon
+  Ticket as TicketIcon,
+  ChefHat,
+  Settings,
+  MapPin
 } from 'lucide-react';
-import type { RestaurantData, VirtualTicket } from '../types';
+import type { RestaurantData, VirtualTicket, MenuItem } from '../types';
 import { StudentTicketsModal } from './StudentTicketsModal';
 import { NotificationModal } from './NotificationModal';
 import { TikeramaPaymentModal } from './TikeramaPaymentModal';
+import { RestoAffluenceMap } from './RestoAffluenceMap';
 import { TicketVisual } from './TicketVisual';
+import { FastFoodImage } from './FastFoodImage';
 import { getOrGenerateVisitorId } from '../utils/analytics';
 import { 
   getNotificationSettings, 
@@ -47,7 +52,7 @@ interface StudentMenuProps {
 export interface ProductItem {
   id: string;
   title: string;
-  category: 'tickets' | 'souches' | 'packs';
+  category: 'plats' | 'tickets' | 'souches' | 'packs';
   categoryLabel: string;
   price: number;
   originalPrice: number;
@@ -58,6 +63,10 @@ export interface ProductItem {
   service: 'dejeuner' | 'diner' | 'tous';
   serviceOptions?: string[];
   accompaniments?: string[];
+  image?: string;
+  isFood?: boolean;
+  serviceHours?: string;
+  tags?: string[];
 }
 
 export interface CartItem {
@@ -69,10 +78,12 @@ export interface CartItem {
 }
 
 const CATEGORIES = [
-  { id: 'all', label: 'Tous les tickets' },
-  { id: 'tickets', label: 'Tickets Unitaires (200 F)' },
-  { id: 'souches', label: 'Souches 10 Repas (2 000 F)' },
-  { id: 'packs', label: 'Packs Hebdo & Mensuel' }
+  { id: 'all', label: 'Tous' },
+  { id: 'plats', label: '🍛 Plats Chauds CROU' },
+  { id: 'dejeuner', label: '☀️ Déjeuner (11h30 - 14h30)' },
+  { id: 'diner', label: '🌙 Dîner (18h30 - 21h30)' },
+  { id: 'tickets', label: '🎟️ Tickets (200 F)' },
+  { id: 'souches', label: '📑 Souches 10 Repas (2 000 F)' }
 ];
 
 export const StudentMenu: React.FC<StudentMenuProps> = ({
@@ -82,8 +93,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
 }) => {
   const visitorId = useMemo(() => getOrGenerateVisitorId(), []);
 
-  // Navigation tab state: 'home' | 'search' | 'cart' | 'profile'
-  const [activeTab, setActiveTab] = useState<'home' | 'search' | 'cart' | 'profile'>('home');
+  // Navigation tab state: 'home' | 'affluence' | 'search' | 'cart' | 'profile'
+  const [activeTab, setActiveTab] = useState<'home' | 'affluence' | 'search' | 'cart' | 'profile'>('home');
 
   // Search & category filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,9 +104,9 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('programas_favs');
-      return saved ? JSON.parse(saved) : ['souche-10-mixte', 'ticket-universel'];
+      return saved ? JSON.parse(saved) : ['crou-plat-1', 'ticket-repas-etudiant'];
     } catch {
-      return ['souche-10-mixte'];
+      return ['crou-plat-1'];
     }
   });
 
@@ -112,7 +123,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
   // Selected product for Detail View (Screen 2)
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
   const [detailQuantity, setDetailQuantity] = useState<number>(1);
-  const [detailService, setDetailService] = useState<string>('Déjeuner Midi (11h30 - 14h00)');
+  const [detailService, setDetailService] = useState<string>('Déjeuner Midi (11h30 - 14h30)');
   const [detailAccompaniment, setDetailAccompaniment] = useState<string>('Formule Complète CROU');
 
   // Cart drawer state (Screen 3)
@@ -124,7 +135,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(2000);
   const [paymentPack, setPaymentPack] = useState<'unitaire' | 'souche'>('souche');
-  const [paymentItemTitle, setPaymentItemTitle] = useState<string>('Souche 10 Repas');
+  const [paymentItemTitle, setPaymentItemTitle] = useState<string>('Souche 10 Repas CROU-K');
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getNotificationSettings());
 
   // Active tickets counter from backend
@@ -187,143 +198,126 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
     fetchTicketsCount();
   }, [visitorId]);
 
-  // Core catalog products: TICKETS & SOUCHES ONLY (No daily food meals as menu changes daily)
-  // 1 Ticket = 200 FCFA | 10 Tickets (Souche) = 2 000 FCFA
-  const products: ProductItem[] = useMemo(() => {
+  // Helper to map image for dish based on title
+  const resolveDishImage = (title: string, customImage?: string) => {
+    if (customImage && customImage.trim() !== '') return customImage;
+    const lower = title.toLowerCase();
+    if (lower.includes('tchiep') || lower.includes('riz')) return '/images/tchiep_poulet.jpg';
+    if (lower.includes('graine') || lower.includes('foutou')) return '/images/sauce_graine.jpg';
+    if (lower.includes('alloco') || lower.includes('poisson') || lower.includes('brais')) return '/images/alloco_poisson.jpg';
+    if (lower.includes('fruit') || lower.includes('salade') || lower.includes('dessert')) return '/images/salade_fruits.jpg';
+    return '/images/tchiep_poulet.jpg';
+  };
+
+  // 1. DISHES PROGRAMMED BY CROU ADMINISTRATION
+  const programmedDishes: ProductItem[] = useMemo(() => {
+    const items = data?.currentMenu?.items;
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return [];
+    }
+
+    return items.map((item: MenuItem, idx: number) => {
+      const isLunch = item.service === 'dejeuner' || (!item.service && idx % 2 === 0);
+      const serviceHours = isLunch ? '11h30 - 14h30' : '18h30 - 21h30';
+      const imageSrc = resolveDishImage(item.title, item.image);
+
+      return {
+        id: item.id || `crou-plat-${idx + 1}`,
+        title: item.title,
+        category: 'plats' as const,
+        categoryLabel: item.badgeLabel || (item.category === 'dessert' ? 'Dessert & Fraîcheur' : 'Plat Chaud'),
+        price: item.price ?? 100, // 100 FCFA subventionné CROU
+        originalPrice: item.originalPrice ?? 500, // 500 FCFA barré
+        rating: item.rating ?? (4.8 + (idx % 2 === 0 ? 0.1 : 0)),
+        reviewCount: item.reviewCount ?? (350 + idx * 45),
+        description: item.description || `Plat officiel préparé par les cuisiniers du Restaurant Universitaire UPGC Korhogo. Subventionné par le CROU-K.`,
+        isAvailable: item.isAvailable !== false,
+        service: item.service || (isLunch ? 'dejeuner' : 'diner'),
+        serviceOptions: [
+          isLunch ? 'Déjeuner Midi (11h30 - 14h30)' : 'Dîner Soir (18h30 - 21h30)',
+          'Consommer sur place (Plateau)',
+          'À emporter (+50 FCFA)'
+        ],
+        accompaniments: ['Riz étuvé', 'Attiéké de Korhogo', 'Foutou banane pilé', 'Alloco'],
+        image: imageSrc,
+        isFood: true,
+        serviceHours,
+        tags: item.tags
+      };
+    });
+  }, [data?.currentMenu?.items]);
+
+  // 2. TICKETS & SOUCHES PROGRAMAS (200 FCFA & 2 000 FCFA)
+  const ticketProducts: ProductItem[] = useMemo(() => {
     return [
       {
-        id: 'ticket-dejeuner',
-        title: 'Ticket Déjeuner Unitaire',
+        id: 'ticket-repas-etudiant',
+        title: 'Ticket Repas Étudiant',
         category: 'tickets',
         categoryLabel: 'Ticket Numérique',
-        price: 200,
-        originalPrice: 500,
-        rating: 5.0,
-        reviewCount: 2450,
-        description: 'Ticket repas officiel subventionné par l’État pour 1 déjeuner complet au Restaurant Universitaire UPGC Korhogo. Valable immédiatement avec QR code dynamique infalsifiable.',
-        isAvailable: true,
-        service: 'dejeuner',
-        serviceOptions: ['Déjeuner Midi (11h30 - 14h00)'],
-        accompaniments: ['Formule Repas Complet CROU']
-      },
-      {
-        id: 'ticket-diner',
-        title: 'Ticket Dîner Unitaire',
-        category: 'tickets',
-        categoryLabel: 'Ticket Numérique',
-        price: 200,
-        originalPrice: 500,
-        rating: 4.9,
-        reviewCount: 1980,
-        description: 'Ticket repas officiel subventionné pour 1 dîner complet au Resto U UPGC. Valable immédiatement pour le service du soir.',
-        isAvailable: true,
-        service: 'diner',
-        serviceOptions: ['Dîner Soir (18h30 - 21h00)'],
-        accompaniments: ['Formule Repas Complet CROU']
-      },
-      {
-        id: 'ticket-universel',
-        title: 'Ticket Repas Universel (Midi / Soir)',
-        category: 'tickets',
-        categoryLabel: 'Ticket Polyvalent',
         price: 200,
         originalPrice: 500,
         rating: 5.0,
         reviewCount: 3120,
-        description: 'Ticket repas universel CROU-K valable à votre convenance soit pour le déjeuner du midi, soit pour le dîner du soir. Idéal pour une flexibilité maximale.',
+        description: 'Ticket repas officiel subventionné par l’État pour 1 déjeuner (11h30 - 14h30) ou dîner (18h30 - 21h30) au Restaurant Universitaire UPGC Korhogo. Émis instantanément par Programas.',
         isAvailable: true,
         service: 'tous',
-        serviceOptions: ['Midi ou Soir (Au choix)'],
-        accompaniments: ['Formule Étudiante Complète']
+        serviceOptions: ['Midi (11h30 - 14h30)', 'Soir (18h30 - 21h30)'],
+        accompaniments: ['Formule Repas Complet CROU-K'],
+        image: '/images/ticket_card.jpg',
+        isFood: false,
+        serviceHours: '11h30-14h30 & 18h30-21h30'
       },
       {
-        id: 'souche-10-mixte',
-        title: 'Souche Mixte 10 Repas CROU',
+        id: 'carnet-10-tickets',
+        title: 'Carnet 10 Tickets CROU',
         category: 'souches',
-        categoryLabel: 'Souche 10 Repas',
+        categoryLabel: 'Pack 10 Repas',
         price: 2000,
         originalPrice: 5000,
-        rating: 5.0,
+        rating: 4.9,
         reviewCount: 2890,
-        description: 'La formule préférée des étudiants de l’UPGC Korhogo : 10 tickets de repas complets utilisables au choix pour le midi ou le soir. Évitez les files au guichet !',
+        description: 'La souche de 10 tickets repas officiels. Valable pour tous les repas de la semaine au Resto U UPGC Korhogo. Fini les longues files d’attente au guichet !',
         isAvailable: true,
         service: 'tous',
-        serviceOptions: ['10 Repas au Choix (Midi / Soir)'],
-        accompaniments: ['10 Repas Complets CROU']
-      },
-      {
-        id: 'souche-10-dejeuner',
-        title: 'Souche 10 Tickets Déjeuner',
-        category: 'souches',
-        categoryLabel: 'Souche 10 Repas',
-        price: 2000,
-        originalPrice: 5000,
-        rating: 4.9,
-        reviewCount: 1640,
-        description: 'Pack économique de 10 déjeuners pour couvrir deux semaines complètes de cours à l’UPGC. QR code instantané généré sur votre mobile.',
-        isAvailable: true,
-        service: 'dejeuner',
-        serviceOptions: ['10 Déjeuners Midi'],
-        accompaniments: ['Formule Complète Déjeuner x10']
-      },
-      {
-        id: 'souche-10-diner',
-        title: 'Souche 10 Tickets Dîner',
-        category: 'souches',
-        categoryLabel: 'Souche 10 Repas',
-        price: 2000,
-        originalPrice: 5000,
-        rating: 4.8,
-        reviewCount: 1210,
-        description: 'Pack de 10 tickets de dîner complets pour sécuriser vos repas du soir après les séances de révision et travaux dirigés.',
-        isAvailable: true,
-        service: 'diner',
-        serviceOptions: ['10 Dîners Soir'],
-        accompaniments: ['Formule Complète Dîner x10']
-      },
-      {
-        id: 'pass-quinzaine-20',
-        title: 'Double Souche (20 Repas - Pass Quinzaine)',
-        category: 'packs',
-        categoryLabel: 'Pass 20 Repas',
-        price: 4000,
-        originalPrice: 10000,
-        rating: 4.9,
-        reviewCount: 890,
-        description: 'Pack de 2 souches (20 repas complets) pour assurer la quinzaine académique. Vos 20 tickets sont immédiatement chargés dans votre wallet.',
-        isAvailable: true,
-        service: 'tous',
-        serviceOptions: ['20 Repas Déjeuner & Dîner'],
-        accompaniments: ['Pack 2 Souches Officielles']
-      },
-      {
-        id: 'carnet-mensuel-30',
-        title: 'Carnet Mensuel 30 Repas (3 Souches)',
-        category: 'packs',
-        categoryLabel: 'Abonnement Mensuel',
-        price: 6000,
-        originalPrice: 15000,
-        rating: 5.0,
-        reviewCount: 1120,
-        description: 'Sérénité absolue pour tout le mois universitaire : 30 tickets de repas complets subventionnés. Présentez simplement votre smartphone au comptoir.',
-        isAvailable: true,
-        service: 'tous',
-        serviceOptions: ['30 Repas Mois Complet'],
-        accompaniments: ['Pack 3 Souches CROU']
+        serviceOptions: ['10 Repas (Déjeuner & Dîner)'],
+        accompaniments: ['Pack 10 Repas Complets CROU-K'],
+        image: '/images/ticket_card.jpg',
+        isFood: false,
+        serviceHours: 'Valable Déjeuner & Dîner'
       }
     ];
   }, []);
 
-  // Filtered products for Screen 1
+  // Combined product catalog: Programmed dishes appear first, followed by tickets (matching IMG_0876)
+  const allProducts: ProductItem[] = useMemo(() => {
+    return [...programmedDishes, ...ticketProducts];
+  }, [programmedDishes, ticketProducts]);
+
+  // Filtered products based on selected tab and search query
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const matchCat = selectedCategory === 'all' || p.category === selectedCategory;
+    return allProducts.filter(p => {
+      let matchCat = true;
+      if (selectedCategory === 'plats') {
+        matchCat = p.category === 'plats';
+      } else if (selectedCategory === 'dejeuner') {
+        matchCat = p.service === 'dejeuner' || p.service === 'tous';
+      } else if (selectedCategory === 'diner') {
+        matchCat = p.service === 'diner' || p.service === 'tous';
+      } else if (selectedCategory === 'tickets') {
+        matchCat = p.category === 'tickets';
+      } else if (selectedCategory === 'souches') {
+        matchCat = p.category === 'souches';
+      }
+
       const matchSearch = searchQuery.trim() === '' || 
         p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description.toLowerCase().includes(searchQuery.toLowerCase());
+        p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.categoryLabel.toLowerCase().includes(searchQuery.toLowerCase());
+
       return matchCat && matchSearch;
     });
-  }, [products, selectedCategory, searchQuery]);
+  }, [allProducts, selectedCategory, searchQuery]);
 
   // Cart totals
   const totalCartItemsCount = useMemo(() => {
@@ -395,7 +389,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
   const openProductDetail = (product: ProductItem) => {
     setSelectedProduct(product);
     setDetailQuantity(1);
-    setDetailService(product.serviceOptions?.[0] || 'Service Standard');
+    setDetailService(product.serviceOptions?.[0] || 'Déjeuner Midi (11h30 - 14h30)');
     setDetailAccompaniment(product.accompaniments?.[0] || 'Formule Complète CROU');
   };
 
@@ -404,7 +398,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
     const isSouche = product.category === 'souches' || product.price >= 2000;
     setPaymentPack(isSouche ? 'souche' : 'unitaire');
     setPaymentAmount(product.price * detailQuantity);
-    setPaymentItemTitle(`${detailQuantity}x ${product.title}`);
+    setPaymentItemTitle(`${detailQuantity}x ${product.title} (Programas)`);
     setSelectedProduct(null);
     setIsPaymentModalOpen(true);
   };
@@ -414,14 +408,14 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
     const isPackSouche = cart.some(item => item.product.category === 'souches' || item.product.category === 'packs') || totalCartAmount >= 2000;
     setPaymentPack(isPackSouche ? 'souche' : 'unitaire');
     setPaymentAmount(totalCartAmount);
-    setPaymentItemTitle(`${totalCartItemsCount} ticket(s) / souche(s) CROU-K`);
+    setPaymentItemTitle(`${totalCartItemsCount} repas / ticket(s) Programas CROU-K`);
     setIsCartOpen(false);
     setIsPaymentModalOpen(true);
   };
 
   // Payment completed successfully handler
   const handlePaymentSuccess = (newTickets: VirtualTicket[]) => {
-    showToast(`🎉 Paiement validé ! ${newTickets.length} ticket(s) généré(s) avec succès.`, 'success');
+    showToast(`🎉 Paiement validé ! ${newTickets.length} ticket(s) disponible(s).`, 'success');
     setCart([]);
     fetchTicketsCount();
     setIsTicketsModalOpen(true);
@@ -438,20 +432,46 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         </div>
       )}
 
-      {/* Main Container constrained like modern mobile / responsive */}
-      <div className="max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto px-4 pt-4">
+      {/* Main Container */}
+      <div className="max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto px-4 pt-3">
         
         {/* ============================================================== */}
-        {/* SCREEN 1: HEADER & TOP BAR                                     */}
+        {/* BRAND HEADER: PROGRAMAS & CROU-K                               */}
         {/* ============================================================== */}
-        <header className="flex items-center justify-between gap-3 mb-4 pt-1">
+        <div className="flex items-center justify-between py-1.5 mb-2.5 border-b border-slate-200/60">
+          <div className="flex items-center gap-2">
+            <span className="text-base sm:text-lg font-black tracking-tight text-slate-950 flex items-center gap-1">
+              <span>Programas</span>
+              <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+            </span>
+            <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 tracking-wider">
+              CROU-K UPGC
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenAdmin}
+              className="touch-press inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-black text-white text-[11px] font-bold shadow-xs cursor-pointer transition-colors"
+              title="Espace Administration CROU : Programmer le menu du jour"
+            >
+              <ChefHat className="w-3.5 h-3.5 text-orange-400" />
+              <span>Admin CROU</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ============================================================== */}
+        {/* SCREEN 1: SEARCH & USER BAR                                    */}
+        {/* ============================================================== */}
+        <header className="flex items-center justify-between gap-3 mb-4">
           {/* User profile avatar / Admin trigger */}
           <button
             onClick={onOpenAdmin}
-            title="Administration & Scanner CROU"
-            className="touch-press relative w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-slate-200 shrink-0 bg-orange-100 flex items-center justify-center cursor-pointer"
+            title="Administration CROU : Programmer les repas"
+            className="touch-press relative w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-slate-200 shrink-0 bg-orange-500 flex items-center justify-center cursor-pointer text-white font-black text-xs"
           >
-            <span className="text-sm font-black text-orange-600">CR</span>
+            <span>CR</span>
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
           </button>
 
@@ -462,7 +482,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un ticket, une souche..."
+              placeholder="Chercher un plat, accompagnement..."
               className="w-full bg-white text-xs text-slate-800 placeholder:text-slate-400 pl-9 pr-8 py-2.5 rounded-full border border-slate-200/90 shadow-xs focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
             />
             {searchQuery && (
@@ -492,61 +512,110 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
 
             <button
               onClick={() => setIsNotificationModalOpen(true)}
-              title="Alertes & Notifications"
+              title="Alertes Menus & Horaires"
               className="touch-press relative w-10 h-10 rounded-full bg-white border border-slate-200/90 flex items-center justify-center text-slate-700 shadow-xs hover:border-orange-200 cursor-pointer"
             >
               <Bell className="w-4 h-4" />
-              <span className="absolute 2.5 top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full" />
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-orange-500 rounded-full" />
             </button>
           </div>
         </header>
 
         {/* ============================================================== */}
-        {/* HERO PROMOTIONAL BANNER (TICKETS & SOUCHES BILLETTERIE)       */}
+        {/* TAB CONTENT: AFFLUENCE MAP (DEDICATED TAB) OR HOME MENU        */}
         {/* ============================================================== */}
-        <div className="relative mb-6 rounded-3xl bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-800 text-white p-5 sm:p-6 overflow-hidden shadow-xl border border-zinc-700/40">
-          {/* Subtle background glow */}
+        {activeTab === 'affluence' ? (
+          <div className="animate-in fade-in duration-200 mb-6">
+            <RestoAffluenceMap visitorId={visitorId} />
+          </div>
+        ) : (
+          <>
+            {/* Quick Radar Entry Banner (Direct shortcut to Affluence tab) */}
+            <div
+              onClick={() => {
+                setActiveTab('affluence');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="touch-press mb-4 p-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border border-orange-200/90 flex items-center justify-between shadow-2xs cursor-pointer hover:border-orange-300 transition-all"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-slate-950">Radar Affluence Resto U</span>
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-[10px] bg-red-100 text-red-700 font-extrabold px-1.5 py-0.2 rounded-full">
+                      Google Maps
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    Savoir s'il y a du monde au Resto U en direct • Périmètre 65m
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-orange-600 shrink-0">
+                <span>Voir la carte</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </div>
+
+            {/* HERO PROMOTIONAL BANNER (CROU MEALS & PROGRAMAS BILLETTERIE)  */}
+            <div className="relative mb-5 rounded-3xl bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-800 text-white p-5 sm:p-6 overflow-hidden shadow-xl border border-zinc-700/40">
           <div className="absolute -top-12 -right-12 w-48 h-48 bg-orange-500/20 rounded-full blur-3xl pointer-events-none" />
           
           <div className="relative z-10 flex items-center justify-between gap-4">
-            <div className="max-w-[62%] sm:max-w-[68%]">
+            <div className="max-w-[65%] sm:max-w-[70%]">
               <span className="text-[10px] font-bold tracking-wider text-orange-400 uppercase mb-1 block">
-                Billetterie Officielle • CROU Korhogo
+                Menu Officiel • CROU Korhogo
               </span>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight mb-1 text-white">
-                Vente de Tickets & Souches
+                Plats & Menus Programmés
               </h2>
-              <p className="text-xs text-zinc-300 font-medium mb-3">
-                1 ticket = <strong className="text-amber-300">200 FCFA</strong> • 10 tickets (souche) = <strong className="text-amber-300">2 000 FCFA</strong>
+              <p className="text-xs text-zinc-300 font-medium mb-1">
+                ☀️ Déjeuner : <strong className="text-amber-300">11h30 - 14h30</strong> • 🌙 Dîner : <strong className="text-amber-300">18h30 - 21h30</strong>
+              </p>
+              <p className="text-[11px] text-zinc-400 mb-3">
+                Plats subventionnés à <strong className="text-white">100 F / 200 F</strong> • Billetterie Programas
               </p>
               
-              <button
-                onClick={() => {
-                  const soucheProduct = products.find(p => p.id === 'souche-10-mixte') || products[0];
-                  openProductDetail(soucheProduct);
-                }}
-                className="touch-press inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-full shadow-lg shadow-orange-500/30 transition-all cursor-pointer"
-              >
-                <span>Acheter une souche</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    const ticketProduct = allProducts.find((p: ProductItem) => p.id === 'carnet-10-tickets') || allProducts[0];
+                    if (ticketProduct) openProductDetail(ticketProduct);
+                  }}
+                  className="touch-press inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-full shadow-lg shadow-orange-500/30 transition-all cursor-pointer"
+                >
+                  <TicketIcon className="w-3.5 h-3.5" />
+                  <span>Acheter Tickets (200 F)</span>
+                </button>
+
+                <button
+                  onClick={onOpenAdmin}
+                  className="touch-press inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-full border border-zinc-700 transition-all cursor-pointer"
+                >
+                  <ChefHat className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Programmer Menu</span>
+                </button>
+              </div>
             </div>
 
-            {/* Instant Vector Ticket Badge Icon Showcase (Loads with ZERO delay on 3G) */}
-            <div className="relative w-28 h-28 sm:w-36 sm:h-36 shrink-0 flex items-center justify-center">
-              <div className="w-full h-full transform rotate-6 hover:rotate-0 transition-transform duration-300 drop-shadow-2xl">
-                <TicketVisual
-                  type="souche"
-                  title="Souche 10 Repas"
-                  price={2000}
-                  service="tous"
-                  compact={true}
-                />
-              </div>
+            {/* Visual preview: Tchiep Poulet CROU / Ticket */}
+            <div className="relative w-24 h-24 sm:w-32 sm:h-32 shrink-0 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/10">
+              <FastFoodImage
+                src="/images/tchiep_poulet.jpg"
+                alt="Plat CROU-K"
+                category="Plat Chaud"
+                className="w-full h-full object-cover"
+              />
+              <span className="absolute bottom-1 right-1 bg-black/75 backdrop-blur-xs text-[9px] font-black px-1.5 py-0.5 rounded-md text-amber-300">
+                100 FCFA
+              </span>
             </div>
           </div>
 
-          {/* Dots indicator */}
           <div className="flex items-center justify-center gap-1.5 mt-3 pt-1">
             <span className="w-4 h-1.5 bg-orange-500 rounded-full" />
             <span className="w-1.5 h-1.5 bg-zinc-600 rounded-full" />
@@ -555,10 +624,10 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         </div>
 
         {/* ============================================================== */}
-        {/* SHOP BY CATEGORY (RAYONS DE TICKETS)                           */}
+        {/* SHOP BY CATEGORY (RAYONS & CATÉGORIES)                         */}
         {/* ============================================================== */}
-        <section className="mb-6">
-          <div className="flex items-center justify-between mb-3 px-0.5">
+        <section className="mb-5">
+          <div className="flex items-center justify-between mb-2.5 px-0.5">
             <h3 className="text-sm font-bold text-slate-900 tracking-tight">
               Rayons & Catégories
             </h3>
@@ -588,24 +657,47 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         </section>
 
         {/* ============================================================== */}
-        {/* RECOMMENDED TICKETS GRID (INSTANT VECTOR RENDERING, 0MS DELAY)  */}
+        {/* RECOMMENDED SECTION (EXACT 2-COLUMN GRID AS IN IMG_0876)       */}
         {/* ============================================================== */}
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-3.5 px-0.5">
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3 px-0.5">
             <h3 className="text-base font-bold text-slate-900 tracking-tight">
               Recommandés Pour Vous
             </h3>
             <button
               onClick={() => setSelectedCategory('all')}
-              className="text-xs font-bold text-orange-600 hover:text-orange-700"
+              className="text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
             >
               Tout voir
             </button>
           </div>
 
+          {/* If administration has not programmed dishes yet */}
+          {programmedDishes.length === 0 && selectedCategory !== 'tickets' && selectedCategory !== 'souches' && (
+            <div className="mb-4 p-4 rounded-3xl bg-amber-50 border border-amber-200 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-200/80 flex items-center justify-center shrink-0">
+                  <ChefHat className="w-5 h-5 text-amber-900" />
+                </div>
+                <div>
+                  <p className="font-bold text-xs">Menu en attente de programmation CROU-K</p>
+                  <p className="text-[11px] text-amber-800">
+                    L'administration n'a pas encore validé les plats pour aujourd'hui (11h30-14h30 / 18h30-21h30).
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onOpenAdmin}
+                className="touch-press px-3.5 py-1.5 rounded-full bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs shrink-0 cursor-pointer"
+              >
+                Programmer le menu
+              </button>
+            </div>
+          )}
+
           {filteredProducts.length === 0 ? (
             <div className="bg-white rounded-3xl p-8 text-center border border-slate-200/80 shadow-xs">
-              <p className="text-sm font-bold text-slate-700 mb-1">Aucun ticket trouvé</p>
+              <p className="text-sm font-bold text-slate-700 mb-1">Aucun article trouvé</p>
               <p className="text-xs text-slate-400 mb-3">Essayez un autre filtre ou mot-clé.</p>
               <button
                 onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
@@ -615,31 +707,31 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-4">
+            /* EXACT 2-COLUMN GRID (Matching IMG_0876) */
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
               {filteredProducts.map(product => {
                 const isFav = favorites.includes(product.id);
-                const isSouche = product.category === 'souches' || product.price >= 2000;
                 
                 return (
                   <div
                     key={product.id}
                     onClick={() => openProductDetail(product)}
-                    className="touch-press group bg-white rounded-3xl p-3.5 sm:p-4 border border-slate-200/70 shadow-xs hover:shadow-md transition-all relative flex flex-col justify-between cursor-pointer"
+                    className="touch-press group bg-white rounded-3xl p-3 sm:p-3.5 border border-slate-200/70 shadow-xs hover:shadow-md transition-all relative flex flex-col justify-between cursor-pointer"
                   >
-                    {/* Top row: Category tag & Heart Favorite Toggle */}
+                    {/* Top Row: Category Badge & Heart Favorite Toggle */}
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-bold text-slate-400 truncate max-w-[70%]">
                         {product.categoryLabel}
                       </span>
                       
-                      {/* Heart icon with bouncy state change */}
+                      {/* Heart icon button */}
                       <button
                         onClick={(e) => toggleFavorite(product.id, product.title, e)}
                         title={isFav ? "Retirer des favoris" : "Ajouter aux favoris"}
                         className="touch-press w-7 h-7 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition-transform cursor-pointer"
                       >
                         <Heart
-                          className={`w-4 h-4 transition-all duration-200 ${
+                          className={`w-3.5 h-3.5 transition-all duration-200 ${
                             isFav 
                               ? 'fill-rose-500 text-rose-500 scale-110 animate-heart-pop' 
                               : 'text-slate-400 hover:text-slate-600 stroke-[1.75]'
@@ -648,34 +740,46 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                       </button>
                     </div>
 
-                    {/* Instant Vector Ticket Voucher (NO NETWORK DELAY / ZERO BLANK SQUARES ON 3G) */}
-                    <div className="relative w-full mb-3">
-                      <TicketVisual
-                        type={isSouche ? 'souche' : 'unitaire'}
-                        title={product.title}
-                        price={product.price}
-                        service={product.service}
-                        compact={true}
-                      />
+                    {/* Image Area: FastFoodImage (0ms lag, no blank box) or Ticket visual */}
+                    <div className="relative w-full aspect-4/3 rounded-2xl overflow-hidden mb-2.5 shadow-2xs bg-slate-100">
+                      {product.isFood || product.image ? (
+                        <FastFoodImage
+                          src={product.image}
+                          alt={product.title}
+                          category={product.categoryLabel}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <TicketVisual
+                          type={product.category === 'souches' ? 'souche' : 'unitaire'}
+                          title={product.title}
+                          price={product.price}
+                          service={product.service}
+                          compact={true}
+                        />
+                      )}
+
+                      {/* Service slot badge for dishes */}
+                      {product.serviceHours && (
+                        <span className="absolute bottom-1 left-1 bg-black/70 backdrop-blur-xs text-[8px] font-bold text-white px-1.5 py-0.5 rounded">
+                          {product.service === 'dejeuner' ? '11:30 - 14:30' : product.service === 'diner' ? '18:30 - 21:30' : 'Midi & Soir'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Title & Rating */}
-                    <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug line-clamp-1 mb-1">
+                    <div className="mb-2">
+                      <h4 className="font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug line-clamp-1 mb-0.5">
                         {product.title}
                       </h4>
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500 mb-2.5">
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500">
                         <span className="text-amber-500 font-bold">★ {product.rating}</span>
                         <span className="text-slate-300">·</span>
                         <span className="text-slate-400">CROU-K</span>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-emerald-600 font-bold">
-                          {isSouche ? '10 repas' : '1 repas'}
-                        </span>
                       </div>
                     </div>
 
-                    {/* Bottom Row: Price & Quick '+' Button */}
+                    {/* Bottom Row: Price & Orange Round '+' Button */}
                     <div className="flex items-center justify-between pt-1 border-t border-slate-100">
                       <div>
                         <span className="text-xs sm:text-sm font-black text-slate-900">
@@ -688,13 +792,13 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                         )}
                       </div>
 
-                      {/* Orange '+' button with tactile shrink */}
+                      {/* Exact Orange Round '+' button matching IMG_0876 */}
                       <button
                         onClick={(e) => handleAddToCart(product, 1, undefined, undefined, e)}
-                        title="Ajouter au panier"
-                        className="touch-press w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center font-black shadow-md shadow-orange-500/25 cursor-pointer"
+                        title="Ajouter"
+                        className="touch-press w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-orange-500 hover:bg-orange-600 active:scale-90 text-white flex items-center justify-center font-black shadow-md shadow-orange-500/25 cursor-pointer transition-transform"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-4 h-4 stroke-[2.5]" />
                       </button>
                     </div>
                   </div>
@@ -711,18 +815,20 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <p className="font-bold text-slate-900">Restaurant Universitaire UPGC</p>
-              <p className="text-[11px] text-slate-500">Midi: 11h30-14h00 • Soir: 18h30-21h00</p>
+              <p className="font-bold text-slate-900">Resto U UPGC • Services Officiels</p>
+              <p className="text-[11px] text-slate-500">Déjeuner: 11h30 - 14h30 • Dîner: 18h30 - 21h30</p>
             </div>
           </div>
           <button
             onClick={() => setIsTicketsModalOpen(true)}
             className="touch-press px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white text-[11px] font-bold rounded-full shadow-xs cursor-pointer flex items-center gap-1.5"
           >
-            <TicketIcon className="w-3.5 h-3.5" />
+            <TicketIcon className="w-3.5 h-3.5 text-orange-400" />
             <span>Mes tickets ({validTicketsCount})</span>
           </button>
         </section>
+        </>
+        )}
       </div>
 
       {/* ============================================================== */}
@@ -743,7 +849,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                 </button>
 
                 <h3 className="font-bold text-sm text-slate-800">
-                  Détail du Ticket
+                  {selectedProduct.isFood ? 'Détail du Plat CROU-K' : 'Détail du Ticket'}
                 </h3>
 
                 <button
@@ -762,20 +868,40 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                 </button>
               </div>
 
-              {/* Large Ticket Vector Showcase (Loads Instantly on 3G) */}
-              <div className="relative w-full rounded-3xl mb-4 shadow-sm">
-                <TicketVisual
-                  type={selectedProduct.category === 'souches' ? 'souche' : selectedProduct.category === 'packs' ? 'pack' : 'unitaire'}
-                  title={selectedProduct.title}
-                  price={selectedProduct.price * detailQuantity}
-                  service={selectedProduct.service}
-                  compact={false}
-                />
+              {/* Showcase Image: FastFoodImage or Ticket */}
+              <div className="relative w-full aspect-16/10 rounded-3xl overflow-hidden mb-4 shadow-sm bg-slate-100">
+                {selectedProduct.isFood || selectedProduct.image ? (
+                  <FastFoodImage
+                    src={selectedProduct.image}
+                    alt={selectedProduct.title}
+                    category={selectedProduct.categoryLabel}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <TicketVisual
+                    type={selectedProduct.category === 'souches' ? 'souche' : 'unitaire'}
+                    title={selectedProduct.title}
+                    price={selectedProduct.price * detailQuantity}
+                    service={selectedProduct.service}
+                    compact={false}
+                  />
+                )}
               </div>
 
               {/* Title & Reviews & Stepper */}
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800">
+                      {selectedProduct.categoryLabel}
+                    </span>
+                    {selectedProduct.serviceHours && (
+                      <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-orange-500" />
+                        <span>{selectedProduct.serviceHours}</span>
+                      </span>
+                    )}
+                  </div>
                   <h2 className="text-xl font-black text-slate-900 tracking-tight">
                     {selectedProduct.title}
                   </h2>
@@ -809,7 +935,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
               {selectedProduct.serviceOptions && selectedProduct.serviceOptions.length > 0 && (
                 <div className="mb-4">
                   <label className="text-xs font-bold text-slate-900 block mb-2">
-                    Validité & Service
+                    Créneau & Option de Service
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {selectedProduct.serviceOptions.map(srv => {
@@ -867,13 +993,13 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                   <span>Ajouter au panier</span>
                 </button>
 
-                {/* Direct Buy opens exact Tikerama Payment Modal */}
+                {/* Direct Buy opens Payment Modal */}
                 <button
                   onClick={() => handleDirectBuyProduct(selectedProduct)}
                   className="touch-press flex-1 py-3.5 bg-[#FF0033] hover:bg-red-700 text-white font-black text-xs rounded-full shadow-lg shadow-red-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                 >
                   <Smartphone className="w-4 h-4" />
-                  <span>Acheter maintenant ≫</span>
+                  <span>Payer maintenant ≫</span>
                 </button>
               </div>
             </div>
@@ -897,7 +1023,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="font-black text-lg text-slate-900 tracking-tight">
-                    Mon Panier
+                    Mon Panier Programas
                   </h3>
                   <span className="text-xs bg-orange-100 text-orange-700 font-bold px-2 py-0.5 rounded-full">
                     {totalCartItemsCount} articles
@@ -918,12 +1044,12 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                   <div className="py-12 text-center">
                     <ShoppingBag className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                     <p className="text-sm font-bold text-slate-800 mb-1">Votre panier est vide</p>
-                    <p className="text-xs text-slate-400 mb-4">Choisissez un ticket ou une souche pour commencer.</p>
+                    <p className="text-xs text-slate-400 mb-4">Sélectionnez un repas ou des tickets pour commencer.</p>
                     <button
                       onClick={() => setIsCartOpen(false)}
                       className="touch-press px-5 py-2.5 bg-orange-500 text-white text-xs font-bold rounded-full shadow-md shadow-orange-500/25"
                     >
-                      Voir les tickets
+                      Découvrir le menu
                     </button>
                   </div>
                 ) : (
@@ -932,15 +1058,24 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                       key={item.cartItemId}
                       className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3 relative"
                     >
-                      {/* Ticket Vector Mini Badge */}
-                      <div className="w-14 h-14 rounded-xl shrink-0 overflow-hidden shadow-2xs">
-                        <TicketVisual
-                          type={item.product.category === 'souches' ? 'souche' : 'unitaire'}
-                          title={item.product.title}
-                          price={item.product.price}
-                          service={item.product.service}
-                          compact={true}
-                        />
+                      {/* Image or Ticket Mini Preview */}
+                      <div className="w-14 h-14 rounded-xl shrink-0 overflow-hidden shadow-2xs bg-slate-200">
+                        {item.product.isFood || item.product.image ? (
+                          <FastFoodImage
+                            src={item.product.image}
+                            alt={item.product.title}
+                            category={item.product.categoryLabel}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <TicketVisual
+                            type={item.product.category === 'souches' ? 'souche' : 'unitaire'}
+                            title={item.product.title}
+                            price={item.product.price}
+                            service={item.product.service}
+                            compact={true}
+                          />
+                        )}
                       </div>
 
                       {/* Info */}
@@ -976,7 +1111,6 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                           </button>
                         </div>
 
-                        {/* Orange Delete tag */}
                         <button
                           onClick={() => removeCartItem(item.cartItemId, item.product.title)}
                           title="Supprimer"
@@ -1000,24 +1134,24 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
                     <span className="line-through">{totalOriginalAmount.toLocaleString('fr-FR')} FCFA</span>
                   </div>
                   <div className="flex justify-between text-emerald-600 font-bold">
-                    <span>Subvention de l’État (CROU-K)</span>
-                    <span>-{totalDiscountAmount.toLocaleString('fr-FR')} FCFA</span>
+                    <span>Subvention d'État CROU-K</span>
+                    <span>- {totalDiscountAmount.toLocaleString('fr-FR')} FCFA</span>
                   </div>
-                  <div className="flex justify-between text-sm font-black text-slate-900 pt-1.5 border-t border-slate-200">
+                  <div className="flex justify-between text-slate-900 font-extrabold text-sm pt-1 border-t border-slate-200">
                     <span>Total à payer</span>
-                    <span className="text-[#FF0033] text-base font-black">
-                      {totalCartAmount.toLocaleString('fr-FR')} F CFA
+                    <span className="text-base text-red-600 font-black">
+                      {totalCartAmount.toLocaleString('fr-FR')} FCFA
                     </span>
                   </div>
                 </div>
 
-                {/* Big Red Checkout Pill Button */}
+                {/* Big Red Checkout Button (Matching IMG_0878) */}
                 <button
                   onClick={handleProceedToPayment}
-                  className="touch-press w-full py-4 bg-[#FF0033] hover:bg-red-700 text-white font-black text-sm rounded-full shadow-xl shadow-red-500/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                  className="touch-press w-full py-4 bg-[#FF0033] hover:bg-red-700 text-white font-black text-sm rounded-full shadow-xl shadow-red-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
                 >
                   <Smartphone className="w-4 h-4" />
-                  <span>Procéder au paiement ({totalCartAmount.toLocaleString('fr-FR')} F CFA) ≫</span>
+                  <span>Passer au paiement ≫</span>
                 </button>
               </div>
             )}
@@ -1027,14 +1161,15 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
       )}
 
       {/* ============================================================== */}
-      {/* FLOATING PILL NAVIGATION BAR                                   */}
+      {/* FLOATING BOTTOM NAV BAR (TOUCH-FRIENDLY & COMPACT)             */}
       {/* ============================================================== */}
-      <nav className="fixed bottom-4 left-4 right-4 max-w-sm sm:max-w-md mx-auto z-40 bg-white/95 backdrop-blur-md shadow-2xl rounded-full border border-slate-200/90 p-1.5 flex items-center justify-between px-3">
-        
+      <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200/80 shadow-2xl flex items-center gap-3">
         {/* Tab 1: Accueil */}
         <button
           onClick={() => {
             setActiveTab('home');
+            setSelectedCategory('all');
+            setSearchQuery('');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           className={`touch-press transition-all cursor-pointer ${
@@ -1045,6 +1180,27 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         >
           <Home className="w-4 h-4" />
           {activeTab === 'home' && <span>Accueil</span>}
+        </button>
+
+        {/* Tab 2: Affluence & Carte (Google Maps) */}
+        <button
+          onClick={() => {
+            setActiveTab('affluence');
+            setSelectedProduct(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`touch-press transition-all cursor-pointer ${
+            activeTab === 'affluence'
+              ? 'bg-orange-600 text-white px-3.5 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 shadow-md shadow-orange-600/30'
+              : 'p-2 text-slate-400 hover:text-slate-700 relative'
+          }`}
+          title="Affluence & Carte Google Maps Resto U"
+        >
+          <MapPin className="w-4 h-4" />
+          {activeTab !== 'affluence' && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          )}
+          {activeTab === 'affluence' && <span>Affluence</span>}
         </button>
 
         {/* Tab 2: Recherche */}
@@ -1085,7 +1241,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         <button
           onClick={() => setIsTicketsModalOpen(true)}
           className="touch-press p-2 text-slate-400 hover:text-slate-700 transition-all cursor-pointer relative"
-          title="Mes Tickets CROU"
+          title="Mes Tickets CROU-K"
         >
           <QrCode className="w-4 h-4" />
           {validTicketsCount > 0 && (

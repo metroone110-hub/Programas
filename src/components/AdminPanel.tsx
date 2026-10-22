@@ -379,6 +379,132 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  // Quick 1-click official CROU menu programming
+  const handleProgramOfficialLunch = () => {
+    const lunchDishes: MenuItem[] = [
+      {
+        id: `crou-dejeuner-1-${Date.now()}`,
+        title: 'Tchiep Poulet CROU',
+        description: 'Riz rouge sénégalo-ivoirien cuisiné au feu de bois, cuisse de poulet rôtie aux aromates du chef et bananes plantains dorées.',
+        category: 'plat',
+        badgeLabel: 'Plat Chaud',
+        price: 100,
+        originalPrice: 500,
+        image: '/images/tchiep_poulet.jpg',
+        service: 'dejeuner',
+        rating: 4.9,
+        reviewCount: 420,
+        tags: ['fait_maison', 'local', 'halal'],
+        allergens: ['Gluten'],
+        isAvailable: true
+      },
+      {
+        id: `crou-dejeuner-2-${Date.now()}`,
+        title: 'Sauce Graine & Foutou',
+        description: 'Sauce graine onctueuse mijotée avec morceaux de bœuf sélectionnés et poisson fumé, servie avec foutou banane pilé.',
+        category: 'plat',
+        badgeLabel: 'Plat Chaud',
+        price: 100,
+        originalPrice: 500,
+        image: '/images/sauce_graine.jpg',
+        service: 'dejeuner',
+        rating: 4.8,
+        reviewCount: 380,
+        tags: ['fait_maison', 'local'],
+        allergens: ['Poisson'],
+        isAvailable: true
+      },
+      {
+        id: `crou-dejeuner-3-${Date.now()}`,
+        title: 'Salade de Fruits du Poro',
+        description: 'Assortiment frais de mangues de Korhogo, ananas mûrs et papayes de saison du verger régional.',
+        category: 'dessert',
+        badgeLabel: 'Dessert & Fraîcheur',
+        price: 100,
+        originalPrice: 300,
+        image: '/images/salade_fruits.jpg',
+        service: 'dejeuner',
+        rating: 4.7,
+        reviewCount: 195,
+        tags: ['bio', 'fait_maison', 'local'],
+        allergens: [],
+        isAvailable: true
+      }
+    ];
+
+    setWorkingMenu(prev => ({
+      ...prev,
+      service: 'dejeuner',
+      theme: 'Menu Déjeuner Traditionnel CROU-K (11h30 - 14h30)',
+      items: lunchDishes
+    }));
+    setSaveSuccess('Menu Déjeuner officiel (11h30 - 14h30) programmé avec succès ! Cliquez sur "Publier en direct".');
+    setTimeout(() => setSaveSuccess(null), 4000);
+  };
+
+  const handleProgramOfficialDinner = () => {
+    const dinnerDishes: MenuItem[] = [
+      {
+        id: `crou-diner-1-${Date.now()}`,
+        title: 'Alloco & Poisson Braisé',
+        description: 'Bananes plantains mûres frites à l’huile végétale claire, accompagnées de darne de poisson braisé et condiment piment doux.',
+        category: 'plat',
+        badgeLabel: 'Spécialité Ivoirienne',
+        price: 200,
+        originalPrice: 500,
+        image: '/images/alloco_poisson.jpg',
+        service: 'diner',
+        rating: 4.9,
+        reviewCount: 310,
+        tags: ['fait_maison', 'local', 'halal'],
+        allergens: ['Poisson'],
+        isAvailable: true
+      },
+      {
+        id: `crou-diner-2-${Date.now()}`,
+        title: 'Kedjenou de Poulet & Attiéké',
+        description: 'Kedjenou traditionnel mijoté à l’étouffée avec tomates fraîches, aubergines et oignons, servi avec attiéké savoureux.',
+        category: 'plat',
+        badgeLabel: 'Plat Chaud',
+        price: 200,
+        originalPrice: 500,
+        image: '/images/tchiep_poulet.jpg',
+        service: 'diner',
+        rating: 4.9,
+        reviewCount: 275,
+        tags: ['fait_maison', 'local', 'halal'],
+        allergens: [],
+        isAvailable: true
+      },
+      {
+        id: `crou-diner-3-${Date.now()}`,
+        title: 'Salade de Fruits du Poro',
+        description: 'Mangues fraîches, papayes sucrées et ananas Victoria pour clore le repas du soir.',
+        category: 'dessert',
+        badgeLabel: 'Dessert & Fraîcheur',
+        price: 100,
+        originalPrice: 300,
+        image: '/images/salade_fruits.jpg',
+        service: 'diner',
+        rating: 4.8,
+        reviewCount: 160,
+        tags: ['bio', 'fait_maison', 'local'],
+        allergens: [],
+        isAvailable: true
+      }
+    ];
+
+    setWorkingMenu(prev => ({
+      ...prev,
+      service: 'diner',
+      theme: 'Menu Dîner Spécialités CROU-K (18h30 - 21h30)',
+      items: dinnerDishes
+    }));
+    setSaveSuccess('Menu Dîner officiel (18h30 - 21h30) programmé avec succès ! Cliquez sur "Publier en direct".');
+    setTimeout(() => setSaveSuccess(null), 4000);
+  };
+
+
   // Apply OCR scanned items
   const handleApplyExtractedMenu = (scanned: ScanMenuResult, mode: 'replace' | 'append') => {
     const newItems: MenuItem[] = scanned.items.map((item, idx) => ({
@@ -885,8 +1011,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     }
                     className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800"
                   >
-                    <option value="dejeuner">☀️ Midi (Déjeuner)</option>
-                    <option value="diner">🌙 Soir (Dîner)</option>
+                    <option value="dejeuner">☀️ Déjeuner (11h30 - 14h30)</option>
+                    <option value="diner">🌙 Dîner (18h30 - 21h30)</option>
                   </select>
 
                   <button
@@ -897,6 +1023,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     <span>Publier en direct</span>
                   </button>
+                </div>
+
+                {/* 1-CLICK QUICK CROU PROGRAMMING BAR */}
+                <div className="mt-3 p-3.5 rounded-2xl bg-gradient-to-r from-orange-50 via-amber-50 to-orange-100 border border-orange-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-orange-800 tracking-wider block">
+                      ⚡ Programmation Rapide CROU-K (Plats & Prix Subventionnés 100 F / 200 F)
+                    </span>
+                    <p className="text-xs text-slate-700 font-semibold">
+                      Préparez et chargez automatiquement les plats officiels du Resto U UPGC en un clic.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleProgramOfficialLunch}
+                      className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                    >
+                      <span>☀️ Déjeuner (11h30 - 14h30)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleProgramOfficialDinner}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                    >
+                      <span>🌙 Dîner (18h30 - 21h30)</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Notice if a menu already exists in history for this date & service */}
@@ -1478,6 +1632,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Créneau de service
+                  </label>
+                  <select
+                    value={editingItem.service || 'dejeuner'}
+                    onChange={(e) => setEditingItem({ ...editingItem, service: e.target.value as 'dejeuner' | 'diner' | 'tous' })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
+                  >
+                    <option value="dejeuner">☀️ Déjeuner (11h30 - 14h30)</option>
+                    <option value="diner">🌙 Dîner (18h30 - 21h30)</option>
+                    <option value="tous">☀️🌙 Midi & Soir</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Prix Étudiant (FCFA)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingItem.price ?? 100}
+                    onChange={(e) => setEditingItem({ ...editingItem, price: parseInt(e.target.value, 10) || 100 })}
+                    placeholder="100"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     Disponibilité
                   </label>
                   <select
@@ -1485,10 +1669,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onChange={(e) => setEditingItem({ ...editingItem, isAvailable: e.target.value === 'yes' })}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
                   >
-                    <option value="yes">🟢 En stock</option>
+                    <option value="yes">🟢 En service</option>
                     <option value="no">🔴 Épuisé</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Photo Officielle CROU
+                </label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {[
+                    { label: 'Tchiep', src: '/images/tchiep_poulet.jpg' },
+                    { label: 'Graine', src: '/images/sauce_graine.jpg' },
+                    { label: 'Alloco', src: '/images/alloco_poisson.jpg' },
+                    { label: 'Fruits', src: '/images/salade_fruits.jpg' }
+                  ].map(p => (
+                    <button
+                      key={p.src}
+                      type="button"
+                      onClick={() => setEditingItem({ ...editingItem, image: p.src })}
+                      className={`touch-press p-1 rounded-xl border text-center transition-all ${
+                        editingItem.image === p.src
+                          ? 'border-orange-500 ring-2 ring-orange-500/30 bg-orange-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <img src={p.src} alt={p.label} className="w-full h-10 object-cover rounded-lg mb-0.5" />
+                      <span className="text-[10px] font-bold text-slate-700 block truncate">{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={editingItem.image || ''}
+                  onChange={(e) => setEditingItem({ ...editingItem, image: e.target.value })}
+                  placeholder="Ou URL personnalisée de la photo"
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium"
+                />
               </div>
 
               <div>

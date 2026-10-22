@@ -46,6 +46,11 @@ import {
   getTicketStats,
   resetAllTickets,
 } from './server/tickets.ts';
+import {
+  updateStudentPresence,
+  getLivePresence,
+  RESTO_CROU_K,
+} from './server/presence.ts';
 import type { RestaurantData, ServiceMenu } from './src/types.ts';
 
 dotenv.config();
@@ -720,6 +725,36 @@ app.post('/api/tickets/reset', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Reset tickets error:', error);
     return res.status(500).json({ error: 'Erreur lors de la réinitialisation' });
+  }
+});
+
+// ------------------- PRESENCE & GOOGLE MAPS GEOFENCE ROUTES -------------------
+
+// GET /api/presence/live - Real-time crowd count, active students in circle, and service forecast
+app.get('/api/presence/live', (req: Request, res: Response) => {
+  try {
+    const visitorId = req.query.visitorId as string | undefined;
+    const data = getLivePresence(visitorId);
+    return res.json(data);
+  } catch (error) {
+    console.error('Presence live error:', error);
+    return res.status(500).json({ error: 'Erreur lors de la récupération de l’affluence' });
+  }
+});
+
+// POST /api/presence/ping - Register or update a student's location / simulated presence in geofence
+app.post('/api/presence/ping', (req: Request, res: Response) => {
+  try {
+    const { visitorId, lat, lng, simulatedInside } = req.body;
+    if (!visitorId) {
+      return res.status(400).json({ error: 'visitorId requis' });
+    }
+    const result = updateStudentPresence(visitorId, lat, lng, simulatedInside);
+    const liveData = getLivePresence(visitorId);
+    return res.json({ success: true, ...result, live: liveData });
+  } catch (error) {
+    console.error('Presence ping error:', error);
+    return res.status(500).json({ error: 'Erreur mise à jour présence' });
   }
 });
 

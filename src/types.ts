@@ -19,6 +19,13 @@ export interface MenuItem {
   allergens?: string[];
   priceExtra?: string; // ex: "+0,50€" pour option premium
   isAvailable: boolean;
+  price?: number; // Prix étudiant subventionné ex: 100 ou 200 FCFA
+  originalPrice?: number; // Prix réel non subventionné (500 FCFA)
+  image?: string;
+  service?: 'dejeuner' | 'diner' | 'tous';
+  rating?: number;
+  reviewCount?: number;
+  badgeLabel?: string;
 }
 
 export type ServiceType = 'dejeuner' | 'diner';
@@ -263,4 +270,43 @@ export interface TicketStats {
     label: string;
     payerPhone?: string;
   }>;
+}
+
+export interface StudentPresenceMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  distanceMeters: number;
+  isMe?: boolean;
+}
+
+export interface HourlyForecastItem {
+  time: string;
+  crowd: number;
+  label: string;
+  level: 'faible' | 'moderee' | 'forte';
+}
+
+export interface LivePresenceData {
+  resto: {
+    lat: number;
+    lng: number;
+    name: string;
+    campus: string;
+    radiusMeters: number;
+    lunchHours: string;
+    dinnerHours: string;
+  };
+  insideCount: number;
+  students: StudentPresenceMarker[];
+  currentService: string;
+  isServiceTime: boolean;
+  affluenceLevel: 'faible' | 'moderee' | 'forte';
+  waitTimeMinutes: number;
+  crowdBadge: string;
+  forecast: {
+    lunch: HourlyForecastItem[];
+    dinner: HourlyForecastItem[];
+  };
+  updatedAt: string;
 }
