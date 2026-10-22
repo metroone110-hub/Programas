@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import type { RestaurantData, VirtualTicket, MenuItem } from '../types';
 import { StudentTicketsModal } from './StudentTicketsModal';
+import { StudentProfileModal } from './StudentProfileModal';
 import { NotificationModal } from './NotificationModal';
 import { TikeramaPaymentModal } from './TikeramaPaymentModal';
 import { RestoAffluenceMap } from './RestoAffluenceMap';
@@ -38,6 +39,7 @@ import { AboutRestoCrou } from './AboutRestoCrou';
 import { TicketVisual } from './TicketVisual';
 import { FastFoodImage } from './FastFoodImage';
 import { getOrGenerateVisitorId } from '../utils/analytics';
+import { getStoredStudentProfile, type StudentProfile } from '../services/studentAuth';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
@@ -132,6 +134,8 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
 
   // Modals
   const [isTicketsModalOpen, setIsTicketsModalOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(() => getStoredStudentProfile());
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(2000);
@@ -466,14 +470,31 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         {/* SCREEN 1: SEARCH & USER BAR                                    */}
         {/* ============================================================== */}
         <header className="flex items-center justify-between gap-3 mb-4">
-          {/* User profile avatar / Admin trigger */}
+          {/* Student Profile avatar button */}
           <button
-            onClick={onOpenAdmin}
-            title="Administration CROU : Programmer les repas"
-            className="touch-press relative w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-slate-200 shrink-0 bg-orange-500 flex items-center justify-center cursor-pointer text-white font-black text-xs"
+            onClick={() => {
+              setStudentProfile(getStoredStudentProfile());
+              setIsProfileModalOpen(true);
+            }}
+            title={studentProfile ? `Mon Compte Étudiant UPGC : ${studentProfile.displayName}` : "Connexion Compte Étudiant UPGC"}
+            className="touch-press relative w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-slate-200 shrink-0 bg-orange-500 flex items-center justify-center cursor-pointer text-white font-black text-xs transition-transform active:scale-95"
           >
-            <span>CR</span>
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
+            {studentProfile?.photoURL ? (
+              <img
+                src={studentProfile.photoURL}
+                alt={studentProfile.displayName}
+                className="w-full h-full object-cover"
+              />
+            ) : studentProfile ? (
+              <span>{studentProfile.displayName.slice(0, 2).toUpperCase()}</span>
+            ) : (
+              <User className="w-5 h-5 text-white" />
+            )}
+            {studentProfile?.isVerified ? (
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" title="Compte vérifié Gmail" />
+            ) : (
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-amber-400 rounded-full ring-2 ring-white animate-pulse" title="Vérification requise" />
+            )}
           </button>
 
           {/* Search Bar pill */}
@@ -1252,6 +1273,26 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
             <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
           )}
         </button>
+
+        {/* Tab 5: Profil Étudiant UPGC */}
+        <button
+          onClick={() => {
+            setStudentProfile(getStoredStudentProfile());
+            setIsProfileModalOpen(true);
+          }}
+          className={`touch-press transition-all cursor-pointer relative ${
+            isProfileModalOpen
+              ? 'bg-orange-500 text-white px-3.5 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 shadow-md shadow-orange-500/30'
+              : 'p-2 text-slate-400 hover:text-slate-700'
+          }`}
+          title="Profil Étudiant & Compte UPGC"
+        >
+          <User className="w-4 h-4" />
+          {studentProfile?.isVerified && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full" />
+          )}
+          {isProfileModalOpen && <span>Profil</span>}
+        </button>
       </nav>
 
       {/* ============================================================== */}
@@ -1280,6 +1321,22 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         initialMethod="CINETPAY"
         initialPack={paymentPack}
         autoOpenPayForm={false}
+      />
+
+      {/* ============================================================== */}
+      {/* STUDENT PROFILE & GMAIL OTP MODAL                              */}
+      {/* ============================================================== */}
+      <StudentProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          setStudentProfile(getStoredStudentProfile());
+        }}
+        onOpenTickets={() => {
+          setIsProfileModalOpen(false);
+          setIsTicketsModalOpen(true);
+        }}
+        validTicketsCount={validTicketsCount}
       />
 
       <NotificationModal

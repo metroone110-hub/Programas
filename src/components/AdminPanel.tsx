@@ -368,8 +368,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       });
       const json = await res.json();
       if (json.success) {
+        if (workingMenu.date === date && workingMenu.service === service) {
+          setWorkingMenu(prev => ({ ...prev, theme: '', items: [] }));
+        }
         await onRefreshData();
-        setSaveSuccess('Menu supprimé de l\'historique avec succès.');
+        setSaveSuccess('Menu supprimé définitivement avec succès.');
         setTimeout(() => setSaveSuccess(null), 3000);
       } else {
         setSaveError(json.error || 'Erreur lors de la suppression');
@@ -530,22 +533,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setSaveSuccess(null), 5000);
   };
 
-  // Item deletion
-  const handleDeleteItem = (id: string) => {
-    setWorkingMenu((prev) => ({
-      ...prev,
-      items: prev.items.filter((item) => item.id !== id)
-    }));
+  // Item deletion with immediate persistence to server
+  const handleDeleteItem = async (id: string) => {
+    const updatedItems = workingMenu.items.filter((item) => item.id !== id);
+    const updatedMenu = { ...workingMenu, items: updatedItems };
+    setWorkingMenu(updatedMenu);
+
+    if (token) {
+      try {
+        await fetch('/api/menu', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ menu: updatedMenu })
+        });
+        await onRefreshData();
+        setSaveSuccess('Plat supprimé définitivement du menu.');
+        setTimeout(() => setSaveSuccess(null), 2500);
+      } catch (err) {
+        console.error('Erreur de suppression sur le serveur:', err);
+      }
+    }
   };
 
-  // Toggle item availability
-  const handleToggleAvailability = (id: string) => {
-    setWorkingMenu((prev) => ({
-      ...prev,
-      items: prev.items.map((item) =>
-        item.id === id ? { ...item, isAvailable: !item.isAvailable } : item
-      )
-    }));
+  // Toggle item availability with immediate persistence
+  const handleToggleAvailability = async (id: string) => {
+    const updatedItems = workingMenu.items.map((item) =>
+      item.id === id ? { ...item, isAvailable: !item.isAvailable } : item
+    );
+    const updatedMenu = { ...workingMenu, items: updatedItems };
+    setWorkingMenu(updatedMenu);
+
+    if (token) {
+      try {
+        await fetch('/api/menu', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ menu: updatedMenu })
+        });
+        await onRefreshData();
+      } catch (err) {
+        console.error('Erreur mise à jour disponibilité:', err);
+      }
+    }
   };
 
   // Item saving (Add or Edit)
@@ -1094,15 +1129,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="flex items-center gap-2 shrink-0">
                 {workingMenu.items.length > 0 && (
                   <button
-                    onClick={() => {
-                      if (window.confirm("Voulez-vous retirer tous les plats et dépublier le menu d'aujourd'hui ?")) {
-                        setWorkingMenu({ ...workingMenu, theme: '', items: [] });
+                    onClick={async () => {
+                      if (window.confirm("Voulez-vous retirer tous les plats et dépublier le menu d'aujourd'hui ? Les étudiants ne verront plus aucun plat tant que vous n'en aurez pas programmé.")) {
+                        try {
+                          setIsSaving(true);
+                          const res = await fetch('/api/menu/clear', {
+                            method: 'POST',
+                            headers: {
+                              Authorization: `Bearer ${token}`
+                            }
+                          });
+                          if (res.ok) {
+                            setWorkingMenu(prev => ({ ...prev, theme: '', items: [] }));
+                            await onRefreshData();
+                            setSaveSuccess('Tous les plats ont été retirés et le menu a été dépublié.');
+                            setTimeout(() => setSaveSuccess(null), 3000);
+                          } else {
+                            setSaveError('Erreur lors du retrait du menu.');
+                          }
+                        } catch (err: any) {
+                          setSaveError(err.message || 'Erreur réseau');
+                        } finally {
+                          setIsSaving(false);
+                        }
                       }
                     }}
-                    className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2.5 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 transition-colors flex items-center gap-1"
+                    className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2.5 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    Vider le menu
+                    Vider et dépublier le menu
                   </button>
                 )}
                 <button

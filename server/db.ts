@@ -143,24 +143,31 @@ export function publishMenuWithHistory(menu: ServiceMenu): RestaurantData {
     data.menuHistory = [];
   }
 
-  // Update existing history entry or insert new one
-  const existingIndex = data.menuHistory.findIndex(
-    m => m.date === menu.date && m.service === menu.service
-  );
-
-  if (existingIndex >= 0) {
-    data.menuHistory[existingIndex] = { ...menu };
+  if (menu.items.length === 0) {
+    // Admin deliberately unpublished/emptied the menu
+    data.menuHistory = data.menuHistory.filter(
+      m => !(m.date === menu.date && m.service === menu.service)
+    );
   } else {
-    data.menuHistory.unshift({ ...menu });
-  }
+    // Update existing history entry or insert new one
+    const existingIndex = data.menuHistory.findIndex(
+      m => m.date === menu.date && m.service === menu.service
+    );
 
-  // Sort history descending by date, then service
-  data.menuHistory.sort((a, b) => {
-    if (b.date !== a.date) {
-      return b.date.localeCompare(a.date);
+    if (existingIndex >= 0) {
+      data.menuHistory[existingIndex] = { ...menu };
+    } else {
+      data.menuHistory.unshift({ ...menu });
     }
-    return b.service === 'diner' ? 1 : -1;
-  });
+
+    // Sort history descending by date, then service
+    data.menuHistory.sort((a, b) => {
+      if (b.date !== a.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return b.service === 'diner' ? 1 : -1;
+    });
+  }
 
   // OPTION A: Purge anything older than 3 days
   purgeMenusOlderThanThreeDays(data);
@@ -174,7 +181,7 @@ export function publishMenuWithHistory(menu: ServiceMenu): RestaurantData {
 }
 
 /**
- * Delete a specific menu from history
+ * Delete a specific menu from history and clear currentMenu if it matches
  */
 export function deleteHistoricMenu(date: string, service: string): RestaurantData {
   const data = getRestaurantData();
@@ -183,6 +190,46 @@ export function deleteHistoricMenu(date: string, service: string): RestaurantDat
       m => !(m.date === date && m.service === service)
     );
   }
+
+  // If the deleted menu matches currentMenu, clear currentMenu items so they don't reappear
+  if (data.currentMenu && (data.currentMenu.date === date || !date) && (data.currentMenu.service === service || !service)) {
+    data.currentMenu = {
+      id: `${new Date().toISOString().split('T')[0]}-dejeuner`,
+      date: new Date().toISOString().split('T')[0],
+      service: 'dejeuner',
+      theme: '',
+      items: [],
+      publishedAt: new Date().toISOString()
+    };
+  }
+
+  saveRestaurantData(data);
+  return data;
+}
+
+/**
+ * Clear all items from the current active menu
+ */
+export function clearCurrentMenu(): RestaurantData {
+  const data = getRestaurantData();
+  const currentDate = data.currentMenu?.date || new Date().toISOString().split('T')[0];
+  const currentService = data.currentMenu?.service || 'dejeuner';
+
+  if (Array.isArray(data.menuHistory)) {
+    data.menuHistory = data.menuHistory.filter(
+      m => !(m.date === currentDate && m.service === currentService)
+    );
+  }
+
+  data.currentMenu = {
+    id: `${currentDate}-${currentService}`,
+    date: currentDate,
+    service: currentService,
+    theme: '',
+    items: [],
+    publishedAt: new Date().toISOString()
+  };
+
   saveRestaurantData(data);
   return data;
 }

@@ -10,6 +10,7 @@ import {
   saveRestaurantData,
   publishMenuWithHistory,
   deleteHistoricMenu,
+  clearCurrentMenu,
   resetToDefaults,
 } from './server/db.ts';
 import {
@@ -215,6 +216,24 @@ app.delete('/api/menu/history/:date/:service', (req: Request, res: Response) => 
   } catch (error) {
     console.error('Error deleting historic menu:', error);
     return res.status(500).json({ error: 'Erreur lors de la suppression du menu' });
+  }
+});
+
+// POST /api/menu/clear - Admin: empty all dishes from the current menu and unpublish it
+app.post('/api/menu/clear', (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized(req)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+    const updatedData = clearCurrentMenu();
+    return res.json({
+      success: true,
+      message: 'Tous les menus ont été retirés et dépubliés avec succès',
+      data: updatedData,
+    });
+  } catch (error) {
+    console.error('Error clearing menu:', error);
+    return res.status(500).json({ error: 'Erreur lors du retrait du menu' });
   }
 });
 
