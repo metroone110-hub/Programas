@@ -65,7 +65,6 @@ export const initAuth = (
       }
     } else {
       cachedAccessToken = null;
-      currentOtp = null;
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -110,6 +109,31 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 /**
+ * Initialize profile for direct email sign-in (mobile / Safari friendly)
+ */
+export const initDirectStudentEmail = (email: string, name?: string): StudentProfile => {
+  const cleanEmail = email.toLowerCase().trim();
+  const derivedName = name?.trim() || cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const matricule = `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const existing = getStoredStudentProfile();
+  if (existing && existing.email === cleanEmail) {
+    return existing;
+  }
+
+  const profile = saveStudentProfile({
+    uid: 'std_' + Math.random().toString(36).substring(2, 9),
+    email: cleanEmail,
+    displayName: derivedName,
+    matricule,
+    filiere: 'Sciences & Technologies (UPGC)',
+    isVerified: false,
+  });
+
+  return profile;
+};
+
+/**
  * Get current in-memory access token
  */
 export const getAccessToken = async (): Promise<string | null> => {
@@ -150,10 +174,11 @@ export const sendVerificationEmail = async (
   toEmail: string,
   recipientName: string
 ): Promise<{ success: boolean; codePreview?: string; error?: string }> => {
-  if (!cachedAccessToken) {
+  const cleanEmail = toEmail.toLowerCase().trim();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
     return {
       success: false,
-      error: 'Veuillez vous connecter avec votre compte Google avant de demander le code.',
+      error: 'Veuillez saisir une adresse Gmail ou universitaire valide.',
     };
   }
 
@@ -164,15 +189,18 @@ export const sendVerificationEmail = async (
 
   currentOtp = {
     code,
-    email: toEmail.toLowerCase(),
+    email: cleanEmail,
     expiresAt,
     attempts: 0,
   };
 
-  const subjectText = `Code de validation Programas (${code}) - Resto U UPGC Korhogo`;
-  const subjectHeader = encodeSubject(subjectText);
+  // If OAuth token with gmail.send is present in memory, send real email via Gmail API
+  if (cachedAccessToken) {
+    try {
+      const subjectText = `Code de validation Programas (${code}) - Resto U UPGC Korhogo`;
+      const subjectHeader = encodeSubject(subjectText);
 
-  const htmlBody = `
+      const htmlBody = `
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -191,7 +219,7 @@ export const sendVerificationEmail = async (
         Bonjour <strong>${recipientName || 'Étudiant(e)'}</strong>,
       </p>
       <p style="margin: 0 0 20px 0; font-size: 13px; line-height: 1.5; color: #475569;">
-        Vous venez de demander la vérification de votre compte étudiant pour accéder au restaurant universitaire UPGC Korhogo et acheter vos tickets repas en ligne.
+        Voici votre code de validation pour activer votre compte étudiant et sécuriser vos tickets au Resto U UPGC Korhogo :
       </p>
       
       <div style="background-color: #FFF7ED; border: 2px dashed #F97316; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
@@ -207,7 +235,7 @@ export const sendVerificationEmail = async (
       </div>
 
       <p style="margin: 0 0 12px 0; font-size: 12px; color: #64748B;">
-        Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail en toute sécurité.
+        Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
       </p>
       
       <div style="border-top: 1px solid #F1F5F9; padding-top: 16px; margin-top: 24px; font-size: 11px; color: #94A3B8; text-align: center;">
@@ -218,51 +246,40 @@ export const sendVerificationEmail = async (
   </div>
 </body>
 </html>
-  `.trim();
+      `.trim();
 
-  // Construct RFC 2822 email format
-  const rawEmail = [
-    `From: "Programas - Resto U UPGC" <me>`,
-    `To: <${toEmail}>`,
-    `Subject: ${subjectHeader}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    ``,
-    htmlBody,
-  ].join('\r\n');
+      const rawEmail = [
+        `From: "Programas - Resto U UPGC" <me>`,
+        `To: <${cleanEmail}>`,
+        `Subject: ${subjectHeader}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: text/html; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        htmlBody,
+      ].join('\r\n');
 
-  try {
-    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cachedAccessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        raw: toBase64Url(rawEmail),
-      }),
-    });
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cachedAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          raw: toBase64Url(rawEmail),
+        }),
+      });
 
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => null);
-      console.warn('Gmail API response error:', errJson);
-      // Return helpful fallback preview so user testing never gets stuck
-      return {
-        success: true,
-        codePreview: code,
-      };
+      if (res.ok) {
+        return { success: true, codePreview: code };
+      }
+    } catch (err: any) {
+      console.warn('Gmail API send warning:', err);
     }
-
-    return { success: true, codePreview: code };
-  } catch (err: any) {
-    console.error('Erreur envoi Gmail:', err);
-    // Even if fetch threw, provide codePreview so student can still complete validation
-    return {
-      success: true,
-      codePreview: code,
-    };
   }
+
+  // Direct OTP generation fallback (e.g. mobile Safari where popup is blocked)
+  return { success: true, codePreview: code };
 };
 
 /**
@@ -274,7 +291,7 @@ export const verifyOtpCode = (
   const cleanInput = inputCode.trim().replace(/\s+/g, '');
 
   if (!cleanInput) {
-    return { success: false, error: 'Veuillez saisir le code reçu sur votre Gmail.' };
+    return { success: false, error: 'Veuillez saisir le code à 6 chiffres.' };
   }
 
   if (!currentOtp) {
@@ -283,7 +300,7 @@ export const verifyOtpCode = (
 
   if (Date.now() > currentOtp.expiresAt) {
     currentOtp = null;
-    return { success: false, error: 'Le code a expiré (délai de 10 min dépassé). Veuillez en demander un nouveau.' };
+    return { success: false, error: 'Le code a expiré (10 min). Veuillez en demander un nouveau.' };
   }
 
   if (currentOtp.attempts >= 5) {

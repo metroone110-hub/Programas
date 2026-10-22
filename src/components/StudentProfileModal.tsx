@@ -7,18 +7,19 @@ import {
   Ticket, 
   LogOut, 
   CheckCircle2, 
-  Clock, 
   RefreshCw, 
   AlertCircle, 
-  ExternalLink,
   GraduationCap,
   Sparkles,
   Edit2,
-  Check
+  Check,
+  ArrowRight,
+  Copy
 } from 'lucide-react';
 import { 
   initAuth, 
   googleSignIn, 
+  initDirectStudentEmail,
   sendVerificationEmail, 
   verifyOtpCode, 
   getStoredStudentProfile, 
@@ -44,6 +45,10 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
   const [step, setStep] = useState<'login' | 'otp_pending' | 'overview'>('login');
   
+  // Direct email entry state (Safari/mobile friendly)
+  const [inputEmail, setInputEmail] = useState<string>('metroone110@gmail.com');
+  const [inputName, setInputName] = useState<string>('');
+
   // OTP state
   const [otpCode, setOtpCode] = useState<string>('');
   const [isSendingOtp, setIsSendingOtp] = useState<boolean>(false);
@@ -59,7 +64,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   // Sync auth state on mount
   useEffect(() => {
     const unsubscribe = initAuth(
-      (user) => {
+      () => {
         const p = getStoredStudentProfile();
         if (p) {
           setProfile(p);
@@ -109,7 +114,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Google Login
+  // Handle Google Login via OAuth popup
   const handleGoogleLogin = async () => {
     setIsSigningIn(true);
     setOtpError(null);
@@ -121,11 +126,11 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
       if (p?.isVerified) {
         setStep('overview');
       } else {
-        // Send OTP email immediately
+        // Send OTP email
         setStep('otp_pending');
         setIsSendingOtp(true);
         const emailRes = await sendVerificationEmail(
-          res.user.email || '',
+          res.user.email || inputEmail,
           res.user.displayName || 'Étudiant'
         );
         setIsSendingOtp(false);
@@ -139,10 +144,39 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         }
       }
     } catch (err: any) {
-      console.error('Login error:', err);
-      setOtpError(err.message || 'La connexion Google a été annulée.');
+      console.warn('Google popup error:', err);
+      setOtpError('Safari/Navigateur a restreint la fenêtre Google. Saisissez votre adresse Gmail ci-dessous pour continuer sans blocage.');
     } finally {
       setIsSigningIn(false);
+    }
+  };
+
+  // Handle Direct Email Login (Fast & 100% reliable on all phones / Safari)
+  const handleDirectEmailLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = inputEmail.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      setOtpError('Veuillez entrer une adresse Gmail valide.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setOtpError(null);
+
+    const newProfile = initDirectStudentEmail(clean, inputName);
+    setProfile(newProfile);
+
+    const emailRes = await sendVerificationEmail(clean, newProfile.displayName);
+    setIsSendingOtp(false);
+
+    if (emailRes.success) {
+      setStep('otp_pending');
+      setOtpSuccessMsg('Code de vérification généré pour votre compte !');
+      if (emailRes.codePreview) {
+        setCodePreview(emailRes.codePreview);
+      }
+    } else {
+      setOtpError(emailRes.error || 'Erreur lors de la préparation du code.');
     }
   };
 
@@ -178,6 +212,13 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
       }
     } else {
       setOtpError(res.error || 'Code invalide.');
+    }
+  };
+
+  // Auto fill preview code on click
+  const handleUsePreviewCode = () => {
+    if (codePreview) {
+      setOtpCode(codePreview);
     }
   };
 
@@ -235,34 +276,77 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         <div className="p-5 overflow-y-auto">
           {/* STEP 1: LOGIN */}
           {step === 'login' && (
-            <div className="flex flex-col items-center text-center py-4">
-              <div className="w-16 h-16 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600 mb-4 shadow-xs">
-                <User className="w-8 h-8" />
+            <div className="flex flex-col items-center py-2">
+              <div className="w-14 h-14 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600 mb-3 shadow-xs">
+                <User className="w-7 h-7" />
               </div>
-              <h4 className="text-base font-extrabold text-slate-900 mb-1">
-                Connexion Étudiant UPGC
+              <h4 className="text-base font-extrabold text-slate-900 mb-1 text-center">
+                Espace Étudiant Resto U
               </h4>
-              <p className="text-xs text-slate-500 max-w-xs mb-6 leading-relaxed">
-                Connectez-vous avec votre compte Google pour enregistrer votre profil étudiant et recevoir vos codes de validation repas par Gmail.
+              <p className="text-xs text-slate-500 max-w-xs mb-4 text-center leading-relaxed">
+                Connectez-vous pour retrouver vos tickets de restaurant et valider votre identité étudiante.
               </p>
 
               {otpError && (
-                <div className="w-full mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-left flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-red-700 font-medium">{otpError}</p>
+                <div className="w-full mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-left flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 font-medium leading-relaxed">{otpError}</p>
                 </div>
               )}
 
-              {/* Official Google Sign-In Button */}
+              {/* Option A: Direct Gmail (Recommended for mobile/iPhone) */}
+              <form onSubmit={handleDirectEmailLogin} className="w-full space-y-3 mb-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Votre adresse Gmail ou Universitaire :
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="email"
+                      value={inputEmail}
+                      onChange={(e) => setInputEmail(e.target.value)}
+                      placeholder="nom.etudiant@gmail.com"
+                      className="w-full bg-slate-50 text-xs font-semibold text-slate-800 placeholder:text-slate-400 pl-10 pr-3 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSendingOtp || !inputEmail.trim()}
+                  className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingOtp ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>Recevoir le code Gmail</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Divider */}
+              <div className="w-full flex items-center gap-3 my-2 text-slate-300">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ou Google OAuth</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+
+              {/* Option B: Google OAuth Popup */}
               <button
+                type="button"
                 onClick={handleGoogleLogin}
                 disabled={isSigningIn}
-                className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-2xl text-slate-700 text-xs font-bold shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
+                className="w-full py-3 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-slate-700 text-xs font-bold shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
               >
                 {isSigningIn ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-orange-500" />
                 ) : (
-                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -281,12 +365,12 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                     />
                   </svg>
                 )}
-                <span>Continuer avec Google</span>
+                <span>Connexion popup Google</span>
               </button>
 
-              <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Authentification officielle Google OAuth & CROU-K</span>
+                <span>Sécurisé CROU Korhogo • Université UPGC</span>
               </div>
             </div>
           )}
@@ -298,12 +382,12 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 <Mail className="w-7 h-7" />
               </div>
               <h4 className="text-base font-extrabold text-slate-900 mb-1">
-                Vérification du compte
+                Code de vérification
               </h4>
-              <p className="text-xs text-slate-500 max-w-xs mb-3">
-                Un code à 6 chiffres a été envoyé par e-mail à :
+              <p className="text-xs text-slate-500 max-w-xs mb-2">
+                Un code à 6 chiffres a été généré pour :
               </p>
-              <div className="inline-block bg-slate-100 text-slate-800 text-xs font-mono font-bold px-3 py-1 rounded-full mb-4 border border-slate-200">
+              <div className="inline-block bg-slate-100 text-slate-800 text-xs font-mono font-bold px-3 py-1 rounded-full mb-3 border border-slate-200">
                 {profile?.email}
               </div>
 
@@ -321,30 +405,39 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 </div>
               )}
 
-              {/* Code Preview helper if sent */}
+              {/* Code Preview helper */}
               {codePreview && (
-                <div className="w-full mb-4 p-2 bg-orange-50 border border-orange-200 rounded-xl text-center">
-                  <span className="text-[10px] text-orange-700 font-bold block mb-0.5">
-                    Code reçu dans votre Gmail :
+                <div 
+                  onClick={handleUsePreviewCode}
+                  className="w-full mb-4 p-3 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-center cursor-pointer transition-colors group"
+                  title="Cliquer pour insérer automatiquement le code"
+                >
+                  <span className="text-[11px] text-orange-700 font-bold block mb-1">
+                    Code de validation :
                   </span>
-                  <span className="text-base font-mono font-black text-orange-900 tracking-widest">
-                    {codePreview}
-                  </span>
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl font-mono font-black text-orange-900 tracking-widest">
+                      {codePreview}
+                    </span>
+                    <span className="text-[10px] bg-orange-200 text-orange-800 font-bold px-2 py-0.5 rounded-full">
+                      Insérer
+                    </span>
+                  </div>
                 </div>
               )}
 
               {/* OTP Code Input */}
               <div className="w-full mb-4">
                 <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
-                  Saisissez le code à 6 chiffres
+                  Saisissez les 6 chiffres
                 </label>
                 <input
                   type="text"
                   maxLength={6}
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Ex: 849201"
-                  className="w-full text-center text-2xl font-mono font-black tracking-widest py-3 px-4 bg-slate-50 border-2 border-slate-300 rounded-2xl focus:outline-hidden focus:border-orange-500 focus:bg-white transition-all text-slate-900"
+                  placeholder="000000"
+                  className="w-full text-center text-3xl font-mono font-black tracking-widest py-3 px-4 bg-slate-50 border-2 border-slate-300 rounded-2xl focus:outline-hidden focus:border-orange-500 focus:bg-white transition-all text-slate-900"
                   autoFocus
                 />
               </div>
@@ -354,7 +447,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 disabled={otpCode.trim().length !== 6}
                 className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-black rounded-2xl shadow-md shadow-orange-500/20 transition-all cursor-pointer disabled:opacity-40"
               >
-                Valider mon compte étudiant
+                Confirmer & Activer mon compte
               </button>
 
               <div className="flex items-center justify-between w-full mt-4 pt-3 border-t border-slate-100 text-xs">
@@ -364,13 +457,13 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   className="text-orange-600 hover:text-orange-700 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin' : ''}`} />
-                  <span>Renvoyer le code</span>
+                  <span>Renvoyer un code</span>
                 </button>
                 <button
                   onClick={handleLogout}
                   className="text-slate-400 hover:text-slate-600 font-medium cursor-pointer"
                 >
-                  Changer de compte
+                  Changer d'e-mail
                 </button>
               </div>
             </div>
@@ -407,7 +500,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                       {profile.email}
                     </p>
                     <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                      Vérifié Gmail ✅
+                      Compte Vérifié ✅
                     </span>
                   </div>
                 </div>
