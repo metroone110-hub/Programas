@@ -29,6 +29,7 @@ import type {
   PaymentDiagnosisResult,
   MoovDiagnosisResult,
   CinetPayDiagnosisResult,
+  JekoDiagnosisResult,
   OpenApiFullDiagnostic 
 } from '../types';
 import { playScanSound } from '../utils/qrcode';
@@ -99,7 +100,60 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
     }
   };
 
-  const [gatewayTab, setGatewayTab] = useState<'cinetpay' | 'moov' | 'mtn'>('cinetpay');
+  const [gatewayTab, setGatewayTab] = useState<'jeko' | 'cinetpay' | 'moov' | 'mtn'>('jeko');
+
+  // Jèko Pay State (Wave, Orange Money, MTN MoMo, Moov Africa, Djamo, Jèko)
+  const [jekoApiKey, setJekoApiKey] = useState<string>('');
+  const [jekoApiKeyId, setJekoApiKeyId] = useState<string>('');
+  const [jekoStoreId, setJekoStoreId] = useState<string>('59ae202a-f583-4a15-970f-9e99bd1e0baa');
+  const [jekoWebhookSecret, setJekoWebhookSecret] = useState<string>('');
+  const [jekoDiagnosis, setJekoDiagnosis] = useState<JekoDiagnosisResult | null>(null);
+  const [testingJeko, setTestingJeko] = useState<boolean>(false);
+  const [simulatingJeko, setSimulatingJeko] = useState<boolean>(false);
+  const [jekoSimResult, setJekoSimResult] = useState<string | null>(null);
+
+  // Run live diagnosis on Jeko
+  const runJekoDiagnosis = async () => {
+    try {
+      setTestingJeko(true);
+      const res = await fetch('/api/tickets/jeko-diagnosis');
+      const data = await res.json();
+      if (data.diagnosis) {
+        setJekoDiagnosis(data.diagnosis);
+      }
+    } catch (err) {
+      console.error('Failed to run Jeko diagnosis:', err);
+    } finally {
+      setTestingJeko(false);
+    }
+  };
+
+  // Test simulation for Jeko
+  const handleSimulateJeko = async (operator: string) => {
+    try {
+      setSimulatingJeko(true);
+      const res = await fetch('/api/tickets/jeko-simulate-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'unitaire',
+          phone: '0102030405',
+          visitorId: 'vis_admin_test',
+          operator,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setJekoSimResult(`✅ Simulation Jèko (${operator}) réussie : 1 ticket repas généré dans la base.`);
+        fetchStats();
+        setTimeout(() => setJekoSimResult(null), 4000);
+      }
+    } catch (err: any) {
+      setJekoSimResult(`❌ Erreur: ${err.message}`);
+    } finally {
+      setSimulatingJeko(false);
+    }
+  };
 
   // CinetPay State (Wave, Orange Money, MTN MoMo, Moov Flooz)
   const [cinetpayApiKey, setCinetpayApiKey] = useState<string>('');
@@ -282,6 +336,10 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
           if (json.config.cinetpaySiteId) setCinetpaySiteId(json.config.cinetpaySiteId);
           if (json.config.cinetpaySecretKey) setCinetpaySecretKey(json.config.cinetpaySecretKey);
           if (json.config.cinetpayMode) setCinetpayMode(json.config.cinetpayMode);
+          if (json.config.jekoApiKey) setJekoApiKey(json.config.jekoApiKey);
+          if (json.config.jekoApiKeyId) setJekoApiKeyId(json.config.jekoApiKeyId);
+          if (json.config.jekoStoreId) setJekoStoreId(json.config.jekoStoreId);
+          if (json.config.jekoWebhookSecret) setJekoWebhookSecret(json.config.jekoWebhookSecret);
           if (json.config.momoSubscriptionKey || json.config.momoApiKey) {
             setCustomKeyInput(json.config.momoSubscriptionKey || json.config.momoApiKey);
           }
@@ -322,11 +380,16 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
           cinetpaySiteId,
           cinetpaySecretKey,
           cinetpayMode,
+          jekoApiKey,
+          jekoApiKeyId,
+          jekoStoreId,
+          jekoWebhookSecret,
         }),
       });
       if (res.ok) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3500);
+        runJekoDiagnosis();
       }
     } catch (err) {
       console.error('Failed to save config:', err);
@@ -369,6 +432,7 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
   useEffect(() => {
     fetchStats();
     runMomoDiagnosis();
+    runJekoDiagnosis();
     fetchPaymentConfig();
   }, []);
 
@@ -550,6 +614,20 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0 overflow-x-auto max-w-full">
             <button
               type="button"
+              onClick={() => setGatewayTab('jeko')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                gatewayTab === 'jeko'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-950'
+              }`}
+            >
+              <span>⚡</span>
+              <span>Jèko Pay (Wave · OM · MoMo)</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 font-black">Actif 🇨🇮</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setGatewayTab('cinetpay')}
               className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 gatewayTab === 'cinetpay'
@@ -588,6 +666,272 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
             </button>
           </div>
         </div>
+
+        {/* CONTENU ONGLET JEKO PAY (WAVE, ORANGE, MTN, MOOV) */}
+        {gatewayTab === 'jeko' && (
+          <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-black shadow-xs">
+                  <ShieldCheck className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h5 className="font-black text-slate-950 text-base">
+                      Passerelle Agrégateur Jèko Pay (Côte d'Ivoire)
+                    </h5>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900">
+                      Wave · Orange Money · MTN MoMo · Moov Africa
+                    </span>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 flex items-center gap-1">
+                      <span>🛡️</span>
+                      <span>Protection Rate-Limit 429 Active</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Encaissez les étudiants UPGC sur tous les réseaux avec validation instantanée par Webhook sécurisé et mécanisme de réessai automatique anti-saturation.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={runJekoDiagnosis}
+                  disabled={testingJeko}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${testingJeko ? 'animate-spin' : ''}`} />
+                  <span>{testingJeko ? 'Test en cours...' : 'Tester la connexion Jèko'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* RÉSULTAT DU DIAGNOSTIC JEKO */}
+            {jekoDiagnosis && (
+              <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200/80 space-y-3 animate-in fade-in duration-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${jekoDiagnosis.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className="font-bold text-slate-900">
+                      {jekoDiagnosis.message}
+                    </span>
+                    <span className="font-mono text-[10px] bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full font-bold">
+                      HTTP {jekoDiagnosis.httpStatus}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    Vérifié à {new Date(jekoDiagnosis.testedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                  <div className="p-2.5 bg-white rounded-xl border border-emerald-100">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Clé API Marchand</span>
+                    <span className="font-mono font-bold text-slate-800 text-[11px]">{jekoDiagnosis.apiKeyPreview}</span>
+                  </div>
+                  <div className="p-2.5 bg-white rounded-xl border border-emerald-100">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Secret Webhook HMAC</span>
+                    <span className="font-mono font-bold text-slate-800 text-[11px]">{jekoDiagnosis.webhookSecretPreview}</span>
+                  </div>
+                  <div className="p-2.5 bg-white rounded-xl border border-emerald-100">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Algorithme Anti-Saturation</span>
+                    <span className="font-bold text-teal-700 text-[11px]">Backoff exponentiel (1s à 16s)</span>
+                  </div>
+                </div>
+
+                {jekoDiagnosis.recommendations.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[10px] font-black uppercase text-emerald-900 tracking-wider">
+                      État opérationnel
+                    </span>
+                    <ul className="text-xs text-slate-700 space-y-1 pl-4 list-disc">
+                      {jekoDiagnosis.recommendations.map((rec, i) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* BOX WEBHOOK PRODUCTION URL POUR COPIER DANS LE DASHBOARD JEKO */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                  <span>🔗</span>
+                  <span>URL Webhook Officielle CROU à renseigner sur le portail Jèko Pay :</span>
+                </span>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Signature HMAC-SHA256 active
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value="https://crou-menu-resto-u-648760950612.europe-west1.run.app/api/webhooks/jeko"
+                  className="w-full bg-white px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs text-slate-800 select-all cursor-pointer font-bold"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Lorsque Jèko valide une transaction mobile (Wave, Orange, MTN ou Moov), cette URL génère automatiquement le ticket repas sécurisé avec QR code dans la base de données.
+              </p>
+            </div>
+
+            {/* SIMULATEUR DE PAIEMENT JEKO POUR TESTER LE FLUX INSTANTANÉMENT */}
+            <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200/80 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h6 className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                    <span>🧪</span>
+                    <span>Tester une simulation instantanée Jèko (Mode Test Resto U)</span>
+                  </h6>
+                  <p className="text-[11px] text-emerald-800 font-medium">
+                    Cliquez sur un opérateur pour tester immédiatement la création d'un ticket repas et le contrôler au scanner.
+                  </p>
+                </div>
+                {jekoSimResult && (
+                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-xl">
+                    {jekoSimResult}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={simulatingJeko}
+                  onClick={() => handleSimulateJeko('Wave CI')}
+                  className="py-2.5 px-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  <span>🌊</span>
+                  <span>Wave CI</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={simulatingJeko}
+                  onClick={() => handleSimulateJeko('Orange Money CI')}
+                  className="py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  <span>🍊</span>
+                  <span>Orange Money</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={simulatingJeko}
+                  onClick={() => handleSimulateJeko('MTN MoMo CI')}
+                  className="py-2.5 px-3 bg-[#FFCC00] hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  <span>🟡</span>
+                  <span>MTN MoMo</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={simulatingJeko}
+                  onClick={() => handleSimulateJeko('Moov Africa CI')}
+                  className="py-2.5 px-3 bg-[#005CA9] hover:bg-[#004d8c] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  <span>🔵</span>
+                  <span>Moov Africa</span>
+                </button>
+              </div>
+            </div>
+
+            {/* FORMULAIRE DE PARAMÉTRAGE JEKO */}
+            <form onSubmit={handleSaveConfig} className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Clé API Jèko Pay (API Key - X-API-KEY) :
+                  </label>
+                  <input
+                    type="text"
+                    value={jekoApiKey}
+                    onChange={(e) => setJekoApiKey(e.target.value)}
+                    placeholder="Ex: jeko_c4f416c852f48e..."
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Générée depuis le portail développeur Jèko (commence par jeko_)
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    ID de la Clé API (X-API-KEY-ID) :
+                  </label>
+                  <input
+                    type="text"
+                    value={jekoApiKeyId}
+                    onChange={(e) => setJekoApiKeyId(e.target.value)}
+                    placeholder="Ex: identifiant unique dans le tableau des clés"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Visible dans le tableau de bord Jèko (colonne ID de votre clé API)
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Identifiant Boutique (Store ID) :
+                  </label>
+                  <input
+                    type="text"
+                    value={jekoStoreId}
+                    onChange={(e) => setJekoStoreId(e.target.value)}
+                    placeholder="Ex: 59ae202a-f583-4a15-970f-9e99bd1e0baa"
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Identifiant de votre boutique ou store Jèko (par défaut: 59ae202a...)
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Secret Webhook Jèko (HMAC-SHA256) :
+                  </label>
+                  <input
+                    type="text"
+                    value={jekoWebhookSecret}
+                    onChange={(e) => setJekoWebhookSecret(e.target.value)}
+                    placeholder="Ex: bf74a75e95c8c88f601..."
+                    className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Fourni lors de la configuration du webhook pour authentifier les notifications
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={savingConfig}
+                  className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 text-white font-black text-xs rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  {savingConfig ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enregistrement...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Enregistrer les identifiants Jèko Pay</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* CONTENU ONGLET 0 : CINETPAY MULTI-OPÉRATEURS (WAVE, ORANGE, MTN, MOOV) */}
         {gatewayTab === 'cinetpay' && (

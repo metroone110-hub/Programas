@@ -14,6 +14,7 @@ import type {
 import { MtnMomoClient, type OpenApiFullDiagnostic } from './mtnMomoClient.ts';
 import { MoovMoneyClient, type MoovDiagnosisResult } from './moovMoneyClient.ts';
 import { CinetPayClient, type CinetPayConfig } from './cinetPayClient.ts';
+import { JekoClient, type JekoDiagnosisResult } from './jekoClient.ts';
 import { validateIvorianPhoneNumber } from '../src/utils/phoneValidator.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -57,6 +58,13 @@ export interface PaymentConfig {
   cinetpayMode?: 'sandbox' | 'production';
   cinetpayNotifyUrl?: string;
   cinetpayReturnUrl?: string;
+  // Jeko API Configuration (Wave, Orange, MTN, Moov via Jeko CI)
+  jekoApiKey?: string;
+  jekoApiKeyId?: string;
+  jekoStoreId?: string;
+  jekoSecretKey?: string;
+  jekoWebhookSecret?: string;
+  jekoMode?: 'sandbox' | 'production';
 }
 
 function ensureDataDirectory() {
@@ -109,6 +117,21 @@ export function getCinetPayClient(overrideConfig?: Partial<PaymentConfig>): Cine
 
 export async function diagnoseCinetPayApi(overrideConfig?: Partial<PaymentConfig>): Promise<CinetPayDiagnosisResult> {
   const client = getCinetPayClient(overrideConfig);
+  return await client.diagnose();
+}
+
+export function getJekoClient(overrideConfig?: Partial<PaymentConfig>): JekoClient {
+  const cfg = { ...getPaymentConfig(), ...overrideConfig };
+  return new JekoClient({
+    apiKey: cfg.jekoApiKey,
+    apiKeyId: cfg.jekoApiKeyId,
+    storeId: cfg.jekoStoreId,
+    webhookSecret: cfg.jekoWebhookSecret,
+  });
+}
+
+export async function diagnoseJekoApi(overrideConfig?: Partial<PaymentConfig>): Promise<JekoDiagnosisResult> {
+  const client = getJekoClient(overrideConfig);
   return await client.diagnose();
 }
 
@@ -171,7 +194,7 @@ export function createAndSaveTickets(params: {
   type: 'unitaire' | 'souche';
   phone: string;
   visitorId: string;
-  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'JEKO' | 'DEMO';
   referenceId: string;
   isSimulation?: boolean;
 }): VirtualTicket[] {
@@ -378,7 +401,7 @@ export async function processPayment(
   phone: string,
   type: 'unitaire' | 'souche',
   visitorId: string,
-  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' = 'MTN_MOMO',
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'JEKO' | 'DEMO' = 'MTN_MOMO',
   forceSimulation: boolean = false
 ): Promise<MomoPayResponse> {
   const isSimulation = forceSimulation || paymentMethod === 'DEMO';
@@ -527,9 +550,9 @@ export async function processPayment(
     const ticketId = `TK-CROUK-${type === 'unitaire' ? '200' : '2000'}-${Date.now().toString(36).toUpperCase()}-${randomSuffix}`;
     const securityCode = generateSecurityCode();
 
-    const actualMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' = isSimulation 
+    const actualMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'JEKO' | 'DEMO' = isSimulation 
       ? 'DEMO' 
-      : (paymentMethod === 'MOOV_MONEY' ? 'MOOV_MONEY' : paymentMethod === 'CINETPAY' ? 'CINETPAY' : 'MTN_MOMO');
+      : (paymentMethod === 'JEKO' ? 'JEKO' : paymentMethod === 'MOOV_MONEY' ? 'MOOV_MONEY' : paymentMethod === 'CINETPAY' ? 'CINETPAY' : 'MTN_MOMO');
 
     const ticket: VirtualTicket & { visitorId: string } = {
       id: ticketId,

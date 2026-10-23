@@ -29,7 +29,7 @@ interface StudentTicketsModalProps {
   isOpen: boolean;
   onClose: () => void;
   visitorId: string;
-  initialMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
+  initialMethod?: 'JEKO' | 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
   initialPack?: 'unitaire' | 'souche';
   autoOpenPayForm?: boolean;
 }
@@ -38,7 +38,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   isOpen,
   onClose,
   visitorId,
-  initialMethod = 'CINETPAY',
+  initialMethod = 'JEKO',
   initialPack = 'unitaire',
   autoOpenPayForm = false,
 }) => {
@@ -48,7 +48,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   
   // Payment states
   const [selectedPack, setSelectedPack] = useState<'unitaire' | 'souche'>(initialPack);
-  const [selectedMethod, setSelectedMethod] = useState<'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO'>(initialMethod);
+  const [selectedMethod, setSelectedMethod] = useState<'JEKO' | 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO'>(initialMethod);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [isProcessingPay, setIsProcessingPay] = useState<boolean>(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -68,6 +68,14 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
   } | null>(null);
   const [cinetpayChecking, setCinetpayChecking] = useState<boolean>(false);
 
+  // Jèko Active Session & Polling State
+  const [jekoSession, setJekoSession] = useState<{
+    reference: string;
+    paymentUrl?: string;
+    amount: number;
+  } | null>(null);
+  const [jekoChecking, setJekoChecking] = useState<boolean>(false);
+
   useEffect(() => {
     if (isOpen) {
       if (initialMethod) setSelectedMethod(initialMethod);
@@ -76,6 +84,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
       setPayError(null);
       setRejectedKeyInfo(null);
       setCinetpaySession(null);
+      setJekoSession(null);
     }
   }, [isOpen, initialMethod, initialPack, autoOpenPayForm]);
 
@@ -206,12 +215,102 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
     }
   };
 
+  // Check Jeko payment confirmation status
+  const checkJekoStatus = async (reference: string) => {
+    try {
+      setJekoChecking(true);
+      const res = await fetch(`/api/tickets/jeko-status/${encodeURIComponent(reference)}`);
+      const data = await res.json();
+      if (data.success && data.status === 'SUCCESSFUL') {
+        setPaySuccessMsg(data.message || 'Paiement Jèko confirmé avec succès ! Vos tickets repas sont prêts.');
+        setJekoSession(null);
+        setShowPayForm(false);
+        await fetchMyTickets();
+        setActiveTab('tickets');
+      } else {
+        setPayError(data.message || 'Paiement en cours de confirmation par les réseaux mobiles (Jèko).');
+      }
+    } catch (err: any) {
+      setPayError(err.message || 'Erreur lors de la vérification du statut Jèko.');
+    } finally {
+      setJekoChecking(false);
+    }
+  };
+
+  // Test simulation for Jeko
+  const simulateJekoValidation = async (reference: string) => {
+    try {
+      setJekoChecking(true);
+      const res = await fetch('/api/tickets/jeko-simulate-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: selectedPack,
+          phone: phoneNumber || '0102030405',
+          visitorId,
+          operator: 'Wave / Orange / MTN / Moov',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPaySuccessMsg('✅ Paiement Jèko validé en mode test ! Vos tickets repas ont été générés.');
+        setJekoSession(null);
+        setShowPayForm(false);
+        await fetchMyTickets();
+        setActiveTab('tickets');
+      }
+    } catch (err: any) {
+      setPayError(err.message || 'Erreur lors de la simulation Jèko');
+    } finally {
+      setJekoChecking(false);
+    }
+  };
+
   // Handle Payment submission
   const handlePay = async (e?: React.FormEvent, forceSimulation: boolean = false) => {
     if (e) e.preventDefault();
     setPayError(null);
     setRejectedKeyInfo(null);
     setPaySuccessMsg(null);
+
+    // If Jeko selected, initiate multi-operator session via Jeko Pay
+    if (selectedMethod === 'JEKO') {
+      try {
+        setIsProcessingPay(true);
+        const clean = normalizeIvorianPhone(phoneNumber);
+        if (clean) localStorage.setItem('crouk_student_momo_phone', clean);
+
+        const res = await fetch('/api/tickets/jeko-init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: selectedPack,
+            phone: clean || '0102030405',
+            visitorId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || data.error || 'Erreur initialisation Jèko Pay');
+        }
+
+        setJekoSession({
+          reference: data.reference,
+          paymentUrl: data.paymentUrl,
+          amount: selectedPack === 'souche' ? 2000 : 200,
+        });
+
+        // If direct checkout URL provided, open in new tab
+        if (data.paymentUrl && data.paymentUrl.startsWith('http')) {
+          window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
+        }
+      } catch (err: any) {
+        setPayError(err.message || 'Erreur lors de l\'initialisation Jèko Pay');
+      } finally {
+        setIsProcessingPay(false);
+      }
+      return;
+    }
 
     // If CinetPay selected, initiate multi-operator session
     if (selectedMethod === 'CINETPAY') {
@@ -696,7 +795,25 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     Choisissez votre moyen de paiement Mobile Money :
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMethod('JEKO');
+                        setPayError(null);
+                        setRejectedKeyInfo(null);
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                        selectedMethod === 'JEKO'
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs ring-2 ring-emerald-500/50'
+                          : 'text-slate-600 hover:text-slate-950 bg-white/60'
+                      }`}
+                    >
+                      <span className="text-base">⚡</span>
+                      <span className="leading-tight">Jèko Pay</span>
+                      <span className="text-[9px] opacity-80 font-normal">Wave / OM / MoMo</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -774,7 +891,9 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                 {/* EN-TÊTE OPÉRATEUR SÉLECTIONNÉ */}
                 <div className="flex items-center gap-2 pb-2 border-b border-black/5">
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm ${
-                    selectedMethod === 'CINETPAY'
+                    selectedMethod === 'JEKO'
+                      ? 'bg-gradient-to-tr from-emerald-600 to-teal-600 text-white'
+                      : selectedMethod === 'CINETPAY'
                       ? 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white'
                       : selectedMethod === 'MTN_MOMO' 
                       ? 'bg-[#FFCC00] text-slate-950' 
@@ -782,11 +901,13 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                       ? 'bg-[#005CA9] text-white'
                       : 'bg-emerald-600 text-white'
                   }`}>
-                    {selectedMethod === 'CINETPAY' ? '🟠' : selectedMethod === 'MTN_MOMO' ? '🟡' : selectedMethod === 'MOOV_MONEY' ? '🔵' : '🧪'}
+                    {selectedMethod === 'JEKO' ? '⚡' : selectedMethod === 'CINETPAY' ? '🟠' : selectedMethod === 'MTN_MOMO' ? '🟡' : selectedMethod === 'MOOV_MONEY' ? '🔵' : '🧪'}
                   </div>
                   <div>
                     <h5 className="font-black text-slate-900 text-xs sm:text-sm">
-                      {selectedMethod === 'CINETPAY'
+                      {selectedMethod === 'JEKO'
+                        ? 'Guichet Agrégateur Jèko Pay (Wave · Orange · MTN · Moov)'
+                        : selectedMethod === 'CINETPAY'
                         ? 'Guichet Multi-Opérateurs CinetPay'
                         : selectedMethod === 'MTN_MOMO' 
                         ? 'Paiement Sécurisé MTN Mobile Money' 
@@ -795,7 +916,9 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                         : 'Mode Simulation / Test Cantine'}
                     </h5>
                     <p className="text-[10px] text-slate-400">
-                      {selectedMethod === 'CINETPAY'
+                      {selectedMethod === 'JEKO'
+                        ? 'Paiement direct Wave, Orange Money, MTN MoMo, Moov Africa'
+                        : selectedMethod === 'CINETPAY'
                         ? 'Wave · Orange Money · MTN MoMo · Moov Flooz'
                         : selectedMethod === 'MOOV_MONEY'
                         ? 'Protocole USSD Push direct · Code PIN sur mobile'
@@ -805,6 +928,27 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* INSTRUCTIONS JEKO */}
+                {selectedMethod === 'JEKO' && (
+                  <div className="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold text-emerald-950 flex items-center gap-1.5">
+                        <span>⚡</span>
+                        <span>Réseaux acceptés par Jèko Pay :</span>
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-sky-100 text-sky-900">🌊 Wave</span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-orange-100 text-orange-900">🍊 Orange</span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-100 text-amber-900">🟡 MTN</span>
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-blue-100 text-blue-900">🔵 Moov</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-emerald-900 leading-relaxed">
+                      Payez facilement vos <strong>{selectedPack === 'unitaire' ? '200 FCFA' : '2 000 FCFA'}</strong> sur le réseau de votre choix. Les tickets repas sécurisés sont générés automatiquement sur votre écran dès validation.
+                    </p>
+                  </div>
+                )}
 
                 {/* INSTRUCTIONS CINETPAY */}
                 {selectedMethod === 'CINETPAY' && (
@@ -883,6 +1027,73 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
                     <p className="text-[11px] text-emerald-700 leading-relaxed">
                       Cette option permet de tester instantanément l'émission de vrais tickets CROU-K (avec QR code et code secret) et de tester le scanner guichetier sans débiter de compte bancaire.
                     </p>
+                  </div>
+                )}
+
+                {/* AFFICHAGE DU GUICHET DE PAIEMENT JEKO EN COURS */}
+                {jekoSession && (
+                  <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-white rounded-3xl border-2 border-emerald-300 shadow-sm space-y-3.5 text-center animate-in zoom-in-95 duration-200">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center mx-auto shadow-xs">
+                      <Smartphone className="w-6 h-6 animate-pulse" />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 font-bold">
+                          Passerelle Jèko Pay
+                        </span>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-100 text-teal-950 font-bold">
+                          {jekoSession.amount} FCFA
+                        </span>
+                      </div>
+                      <h5 className="font-black text-slate-950 text-base mt-1">
+                        Session de paiement Mobile Money active
+                      </h5>
+                      <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto leading-relaxed">
+                        Finalisez le paiement sur votre mobile (Wave, Orange, MTN ou Moov). Votre ticket de cantine sera validé instantanément dès confirmation.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 pt-1 max-w-sm mx-auto">
+                      {jekoSession.paymentUrl && (
+                        <a
+                          href={jekoSession.paymentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
+                        >
+                          <span>Accéder à la page de paiement Jèko</span>
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={jekoChecking}
+                        onClick={() => checkJekoStatus(jekoSession.reference)}
+                        className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${jekoChecking ? 'animate-spin' : ''}`} />
+                        <span>{jekoChecking ? 'Vérification...' : 'Vérifier la validation du ticket'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={jekoChecking}
+                        onClick={() => simulateJekoValidation(jekoSession.reference)}
+                        className="w-full py-2.5 px-3 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 rounded-2xl text-xs font-black transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>🧪 Valider immédiatement (Test Resto U)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setJekoSession(null)}
+                        className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline pt-1 block mx-auto cursor-pointer"
+                      >
+                        Annuler cette session
+                      </button>
+                    </div>
                   </div>
                 )}
 

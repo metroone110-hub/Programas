@@ -19,6 +19,9 @@ import {
 import { 
   initAuth, 
   googleSignIn, 
+  signInWithGoogleApi,
+  getGoogleOAuthUrl,
+  checkAndHandleOAuthRedirect,
   initDirectStudentEmail,
   sendVerificationEmail, 
   verifyOtpCode, 
@@ -114,26 +117,37 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Google Login via OAuth popup
+  // Handle Google Login via Google API OAuth
   const handleGoogleLogin = async () => {
     setIsSigningIn(true);
     setOtpError(null);
     try {
-      const res = await googleSignIn();
-      const p = getStoredStudentProfile();
-      setProfile(p);
+      const res = await signInWithGoogleApi();
+      if (res?.userInfo) {
+        const cleanEmail = (res.userInfo.email || inputEmail).toLowerCase().trim();
+        const cleanName = res.userInfo.name || 'Étudiant UPGC';
+        const photo = res.userInfo.picture;
 
-      if (p?.isVerified) {
-        setStep('overview');
-      } else {
-        // Send OTP email
+        const existing = getStoredStudentProfile();
+        const matricule = existing?.matricule || `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        const updated = saveStudentProfile({
+          uid: res.userInfo.sub || 'std_' + Date.now().toString(36),
+          email: cleanEmail,
+          displayName: cleanName,
+          photoURL: photo,
+          matricule,
+          filiere: existing?.filiere || 'Sciences & Technologies (UPGC)',
+          isVerified: false,
+        });
+
+        setProfile(updated);
         setStep('otp_pending');
+
         setIsSendingOtp(true);
-        const emailRes = await sendVerificationEmail(
-          res.user.email || inputEmail,
-          res.user.displayName || 'Étudiant'
-        );
+        const emailRes = await sendVerificationEmail(cleanEmail, cleanName);
         setIsSendingOtp(false);
+
         if (emailRes.success) {
           setOtpSuccessMsg('Code de validation envoyé à votre adresse Gmail !');
           if (emailRes.codePreview) {
@@ -144,8 +158,9 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         }
       }
     } catch (err: any) {
-      console.warn('Google popup error:', err);
-      setOtpError('Safari/Navigateur a restreint la fenêtre Google. Saisissez votre adresse Gmail ci-dessous pour continuer sans blocage.');
+      console.warn('Google API prompt error, redirecting to Google OAuth:', err);
+      // Direct redirect to Google OAuth URL (authorized redirect URIs)
+      window.location.href = getGoogleOAuthUrl();
     } finally {
       setIsSigningIn(false);
     }
@@ -294,59 +309,17 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 </div>
               )}
 
-              {/* Option A: Direct Gmail (Recommended for mobile/iPhone) */}
-              <form onSubmit={handleDirectEmailLogin} className="w-full space-y-3 mb-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Votre adresse Gmail ou Universitaire :
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="email"
-                      value={inputEmail}
-                      onChange={(e) => setInputEmail(e.target.value)}
-                      placeholder="nom.etudiant@gmail.com"
-                      className="w-full bg-slate-50 text-xs font-semibold text-slate-800 placeholder:text-slate-400 pl-10 pr-3 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSendingOtp || !inputEmail.trim()}
-                  className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {isSendingOtp ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>Recevoir le code Gmail</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {/* Divider */}
-              <div className="w-full flex items-center gap-3 my-2 text-slate-300">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ou Google OAuth</span>
-                <div className="flex-1 h-px bg-slate-200" />
-              </div>
-
-              {/* Option B: Google OAuth Popup */}
+              {/* Option A: Google API OAuth (Primary) */}
               <button
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={isSigningIn}
-                className="w-full py-3 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-slate-700 text-xs font-bold shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
+                className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 border-2 border-slate-200 hover:border-orange-400 rounded-2xl text-slate-800 text-xs font-bold shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
               >
                 {isSigningIn ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-orange-500" />
                 ) : (
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -365,12 +338,54 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                     />
                   </svg>
                 )}
-                <span>Connexion popup Google</span>
+                <span>Continuer avec Google (OAuth)</span>
               </button>
+
+              {/* Divider */}
+              <div className="w-full flex items-center gap-3 my-4 text-slate-300">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ou saisie directe</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+
+              {/* Option B: Direct Gmail (Guaranteed on all mobile browsers) */}
+              <form onSubmit={handleDirectEmailLogin} className="w-full space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5 text-left">
+                    Votre adresse Gmail :
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="email"
+                      value={inputEmail}
+                      onChange={(e) => setInputEmail(e.target.value)}
+                      placeholder="nom.etudiant@gmail.com"
+                      className="w-full bg-slate-50 text-xs font-semibold text-slate-800 placeholder:text-slate-400 pl-10 pr-3 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSendingOtp || !inputEmail.trim()}
+                  className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingOtp ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>Recevoir mon code par e-mail</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
 
               <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Sécurisé CROU Korhogo • Université UPGC</span>
+                <span>API Google OAuth 2.0 & Resto U CROU-K</span>
               </div>
             </div>
           )}

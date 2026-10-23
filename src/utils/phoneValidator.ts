@@ -63,7 +63,7 @@ export function detectIvorianOperator(digits: string): IvorianOperator {
  */
 export function validateIvorianPhoneNumber(
   rawPhone: string,
-  expectedMethod?: 'MOOV_MONEY' | 'MTN_MOMO' | 'CINETPAY' | 'DEMO'
+  expectedMethod?: 'MOOV_MONEY' | 'MTN_MOMO' | 'CINETPAY' | 'JEKO' | 'DEMO'
 ): PhoneValidationResult {
   const digits = normalizeIvorianPhone(rawPhone);
   const operator = detectIvorianOperator(digits);
@@ -91,8 +91,8 @@ export function validateIvorianPhoneNumber(
     };
   }
 
-  // Validate for CinetPay (all 3 operators accepted: Moov 01, MTN 05, Orange 07)
-  if (expectedMethod === 'CINETPAY') {
+  // Validate for CinetPay or Jeko (all 3 operators accepted: Moov 01, MTN 05, Orange 07)
+  if (expectedMethod === 'CINETPAY' || expectedMethod === 'JEKO') {
     if (digits && digits.length > 0 && digits.length !== 10) {
       return {
         valid: false,

@@ -39,6 +39,8 @@ import {
   getMoovClient,
   diagnoseCinetPayApi,
   getCinetPayClient,
+  diagnoseJekoApi,
+  getJekoClient,
   createAndSaveTickets,
   loadTickets,
   getPaymentConfig,
@@ -63,8 +65,13 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 const app = express();
 
-// Enable high payload limit for mobile menu photos (JPEG/PNG camera captures)
-app.use(express.json({ limit: '50mb' }));
+// Enable high payload limit and raw body capture for HMAC webhook signatures
+app.use(express.json({
+  limit: '50mb',
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Helper to check admin authorization via secure session token
@@ -660,6 +667,241 @@ app.post('/api/tickets/cinetpay-simulate-success', (req: Request, res: Response)
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== JEKO MULTI-OPERATOR API & WEBHOOK (Wave, Orange, MTN, Moov) ====================
+
+// GET /api/webhooks/jeko & /api/tickets/jeko-webhook - Health check & automated dashboard ping from Jeko
+const handleJekoWebhookGet = (req: Request, res: Response) => {
+  return res.status(200).json({
+    success: true,
+    status: 'ONLINE',
+    service: 'CROU Resto U UPGC - Webhook Jeko',
+    timestamp: new Date().toISOString(),
+    message: 'Le récepteur de notifications Webhook Jeko est actif et prêt à recevoir les validations de paiement.',
+  });
+};
+
+app.get('/api/webhooks/jeko', handleJekoWebhookGet);
+app.get('/api/tickets/jeko-webhook', handleJekoWebhookGet);
+app.head('/api/webhooks/jeko', (req: Request, res: Response) => res.status(200).end());
+app.head('/api/tickets/jeko-webhook', (req: Request, res: Response) => res.status(200).end());
+
+// POST /api/webhooks/jeko & /api/tickets/jeko-webhook - Instant IPN notification from Jeko
+const handleJekoWebhookPost = async (req: Request, res: Response) => {
+  try {
+    const payload = req.body || {};
+    console.log('[Jeko Webhook Received]:', JSON.stringify(payload, null, 2));
+
+    // Handle initial handshake or test ping from Jeko dashboard
+    if (payload.test || payload.event === 'ping' || payload.event === 'test' || Object.keys(payload).length === 0) {
+      console.log('[Jeko Webhook] Ping/Test de validation reçu avec succès.');
+      return res.status(200).json({
+        success: true,
+        received: true,
+        test: true,
+        message: 'Ping de test validé avec succès par le serveur CROU Resto U UPGC.',
+      });
+    }
+
+    // Verify HMAC-SHA256 signature if provided by Jeko
+    const signatureHeader = req.headers['x-jeko-signature'] || 
+                            req.headers['jeko-signature'] || 
+                            req.headers['x-hub-signature-256'] || 
+                            req.headers['x-signature'];
+    const jekoSecret = (getPaymentConfig().jekoWebhookSecret || 'bf74a75e95c8c88f60169ba32cc3e6dfc121c15db43eb1e20a415159a9a1a79d').trim();
+
+    if (signatureHeader && jekoSecret) {
+      try {
+        const rawContent = (req as any).rawBody || JSON.stringify(req.body);
+        const computed = crypto.createHmac('sha256', jekoSecret).update(rawContent).digest('hex');
+        const cleanHeader = (Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader)
+          .replace(/^sha256=/, '')
+          .trim();
+
+        if (computed.toLowerCase() === cleanHeader.toLowerCase()) {
+          console.log('[Jeko Webhook] Signature HMAC-SHA256 validée avec succès !');
+        } else {
+          console.warn(`[Jeko Webhook] Avertissement: Signature différente. Reçue: ${cleanHeader}, Calculée: ${computed}`);
+        }
+      } catch (sigErr) {
+        console.warn('[Jeko Webhook] Erreur vérification signature:', sigErr);
+      }
+    }
+
+    // Extract transaction data (supports both nested and flat payload formats)
+    const data = payload.data || payload;
+    const event = (payload.event || '').toLowerCase();
+    const rawStatus = (data.status || payload.status || event || '').toString().toUpperCase();
+    const reference = (data.reference || data.id || payload.reference || payload.id || payload.transactionId || `JEKO-${Date.now().toString(36).toUpperCase()}`).toString();
+    const amount = Number(data.amount || payload.amount || 200);
+    const phone = data.customer?.phone || payload.customer?.phone || data.phone || payload.phone || '0102030405';
+    const visitorId = data.metadata?.visitorId || payload.metadata?.visitorId || data.visitorId || payload.visitorId || 'vis_jeko';
+
+    const isSuccess = 
+      rawStatus.includes('SUCCESS') ||
+      rawStatus.includes('PAID') ||
+      rawStatus.includes('COMPLETED') ||
+      event.includes('success') ||
+      event.includes('completed') ||
+      event.includes('charge.success') ||
+      event.includes('payment.success');
+
+    if (isSuccess) {
+      const ticketType: 'unitaire' | 'souche' = amount >= 2000 ? 'souche' : 'unitaire';
+      const created = createAndSaveTickets({
+        type: ticketType,
+        phone,
+        visitorId,
+        paymentMethod: 'JEKO',
+        referenceId: reference,
+        isSimulation: false,
+      });
+
+      console.log(`[Jeko Webhook] Succès ! ${created.length} ticket(s) généré(s) pour référence ${reference} (Montant: ${amount} FCFA)`);
+      return res.status(200).json({
+        success: true,
+        reference,
+        ticketsCount: created.length,
+        message: 'Paiement Jeko confirmé et ticket repas généré.',
+      });
+    }
+
+    // For other non-success events (e.g. pending, initiated, failed), acknowledge without creating duplicate tickets
+    console.log(`[Jeko Webhook] Événement enregistré (Statut: ${rawStatus}) pour réf: ${reference}`);
+    return res.status(200).json({
+      success: true,
+      received: true,
+      status: rawStatus,
+      message: 'Notification reçue et enregistrée.',
+    });
+  } catch (error: any) {
+    console.error('[Jeko Webhook Error]:', error);
+    return res.status(200).json({
+      success: false,
+      error: error.message || 'Erreur lors du traitement du webhook Jeko',
+    });
+  }
+};
+
+app.post('/api/webhooks/jeko', handleJekoWebhookPost);
+app.post('/api/tickets/jeko-webhook', handleJekoWebhookPost);
+
+// GET /api/tickets/jeko-status/:reference - Check Jeko payment confirmation status
+app.get('/api/tickets/jeko-status/:reference', async (req: Request, res: Response) => {
+  try {
+    const { reference } = req.params;
+    const allTickets = loadTickets();
+    const matched = allTickets.filter((t) => t.transactionId === reference);
+    if (matched.length > 0) {
+      return res.json({
+        success: true,
+        status: 'SUCCESSFUL',
+        tickets: matched,
+        message: 'Ticket repas Jeko trouvé et validé !',
+      });
+    }
+
+    // Interrogation directe de Jeko avec retry exponentiel (makeRequestWithRetry)
+    const client = getJekoClient();
+    if (client.isConfigured) {
+      const liveCheck = await client.checkPaymentStatus(reference);
+      if (liveCheck.success && liveCheck.status === 'SUCCESS') {
+        const amount = liveCheck.amount || 200;
+        const created = createAndSaveTickets({
+          type: amount >= 2000 ? 'souche' : 'unitaire',
+          phone: '0102030405',
+          visitorId: 'vis_jeko',
+          paymentMethod: 'JEKO',
+          referenceId: reference,
+          isSimulation: false,
+        });
+        return res.json({
+          success: true,
+          status: 'SUCCESSFUL',
+          tickets: created,
+          message: 'Paiement Jeko confirmé et ticket repas généré avec succès !',
+        });
+      }
+    }
+
+    return res.json({
+      success: false,
+      status: 'PENDING',
+      message: 'En attente de confirmation de paiement par Jeko.',
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/tickets/jeko-simulate-success - Immediate test simulation for testing the Jeko student UX
+app.post('/api/tickets/jeko-simulate-success', (req: Request, res: Response) => {
+  try {
+    const { type, phone, visitorId, operator } = req.body;
+    const ref = `JEKO-SIM-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+    const tickets = createAndSaveTickets({
+      type: type === 'souche' ? 'souche' : 'unitaire',
+      phone: phone || '0102030405',
+      visitorId: visitorId || 'vis_sim',
+      paymentMethod: 'JEKO',
+      referenceId: ref,
+      isSimulation: true,
+    });
+    return res.json({
+      success: true,
+      status: 'SUCCESSFUL',
+      tickets,
+      reference: ref,
+      message: `Paiement Jeko test (${operator || 'Wave/Orange/MTN/Moov'}) validé ! Votre ticket repas est prêt.`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/tickets/jeko-diagnosis - Real-time diagnosis of Jeko API key & webhook status
+app.get('/api/tickets/jeko-diagnosis', async (req: Request, res: Response) => {
+  try {
+    const result = await diagnoseJekoApi();
+    return res.json({ success: true, diagnosis: result });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Erreur diagnostic Jeko' });
+  }
+});
+
+// POST /api/tickets/jeko-init - Initialize payment with Jeko API
+app.post('/api/tickets/jeko-init', async (req: Request, res: Response) => {
+  try {
+    const { type, phone, visitorId, customerName, method, paymentMethod, orderId } = req.body;
+    const explicitAmount = Number(req.body.amount);
+    const amount = !isNaN(explicitAmount) && explicitAmount > 0 
+      ? explicitAmount 
+      : (type === 'souche' ? 2000 : 200);
+
+    const refBase = orderId ? `JEKO-${orderId}` : `JEKO-CROUK-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    const reference = refBase.slice(0, 50);
+    const client = getJekoClient();
+
+    const selectedChannel = method || paymentMethod || undefined;
+
+    const result = await client.initiatePayment({
+      reference,
+      amount,
+      customerPhone: phone || '0102030405',
+      customerName: customerName || 'Étudiant UPGC',
+      visitorId: visitorId || 'vis_' + Date.now().toString(36),
+      description: `Ticket Resto-U UPGC (${amount} FCFA)`,
+      returnUrl: 'https://crou-menu-resto-u-648760950612.europe-west1.run.app/',
+      notifyUrl: 'https://crou-menu-resto-u-648760950612.europe-west1.run.app/api/webhooks/jeko',
+      paymentMethod: selectedChannel,
+    });
+
+    return res.json(result);
+  } catch (error: any) {
+    console.error('[Jeko Init Error]:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Erreur initialisation Jeko' });
   }
 });
 

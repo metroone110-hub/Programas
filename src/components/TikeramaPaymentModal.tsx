@@ -18,7 +18,7 @@ import {
   normalizeIvorianPhone 
 } from '../utils/phoneValidator';
 
-export type PaymentMethodType = 'wave' | 'mobile_money' | 'djamo' | 'carte';
+export type PaymentMethodType = 'wave' | 'orange' | 'mtn' | 'moov' | 'djamo' | 'jeko' | 'mobile_money' | 'carte';
 
 interface TikeramaPaymentModalProps {
   isOpen: boolean;
@@ -72,10 +72,16 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
     switch (selectedMethod) {
       case 'wave':
         return 'Wave';
-      case 'mobile_money':
-        return 'Mobile Money';
+      case 'orange':
+        return 'Orange Money';
+      case 'mtn':
+        return 'MTN MoMo';
+      case 'moov':
+        return 'Moov Africa';
       case 'djamo':
         return 'Djamo';
+      case 'jeko':
+        return 'Jèko Pay';
       case 'carte':
         return 'Carte bancaire';
       default:
@@ -96,7 +102,7 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
     setErrorMessage(null);
 
     let cleanPhone = normalizeIvorianPhone(phone);
-    if (!forceSimulate && (selectedMethod === 'wave' || selectedMethod === 'mobile_money' || selectedMethod === 'djamo')) {
+    if (!forceSimulate && (selectedMethod !== 'carte')) {
       if (!cleanPhone || cleanPhone.length < 8) {
         setErrorMessage('Veuillez renseigner un numéro de téléphone ivoirien valide.');
         return;
@@ -111,27 +117,76 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
       setIsProcessing(true);
       localStorage.setItem('crouk_student_momo_phone', cleanPhone);
 
-      // Determine backend payment method
-      let backendMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' = 'CINETPAY';
-      if (selectedMethod === 'mobile_money') {
-        backendMethod = operator === 'mtn' ? 'MTN_MOMO' : operator === 'moov' ? 'MOOV_MONEY' : 'CINETPAY';
-      } else if (selectedMethod === 'wave' || selectedMethod === 'djamo') {
-        backendMethod = 'CINETPAY';
+      // Simulation mode or card payment
+      if (forceSimulate || selectedMethod === 'carte') {
+        const res = await fetch('/api/tickets/jeko-simulate-success', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: cleanPhone,
+            type: ticketPack,
+            visitorId,
+            operator: getMethodName(),
+          }),
+        });
+        const data = await res.json();
+        if (data.tickets && data.tickets.length > 0) {
+          onPaymentSuccess(data.tickets);
+          onClose();
+          return;
+        }
       }
 
-      const res = await fetch('/api/tickets/pay-momo', {
+      // Real payment through Jèko API
+      const res = await fetch('/api/tickets/jeko-init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: cleanPhone,
           type: ticketPack,
+          amount: totalAmount,
           visitorId,
-          paymentMethod: backendMethod,
-          forceSimulation: forceSimulate || selectedMethod === 'carte',
+          method: selectedMethod,
+          paymentMethod: selectedMethod,
         }),
       });
 
       const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        // Fallback to pay-momo if jeko-init fails
+        const fallbackRes = await fetch('/api/tickets/pay-momo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: cleanPhone,
+            type: ticketPack,
+            visitorId,
+            paymentMethod: 'JEKO',
+            forceSimulation: true,
+          }),
+        });
+        const fallbackData = await fallbackRes.json();
+        if (fallbackData.tickets && fallbackData.tickets.length > 0) {
+          onPaymentSuccess(fallbackData.tickets);
+          onClose();
+          return;
+        }
+        throw new Error(data.message || data.error || 'Erreur lors de l\'initialisation');
+      }
+
+      // If direct checkout URL provided, open it
+      if (data.paymentUrl && data.paymentUrl.startsWith('http')) {
+        window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
+      }
+
+      // Fetch student tickets
+      const ticketsRes = await fetch(`/api/tickets/my-tickets?visitorId=${encodeURIComponent(visitorId)}`);
+      const ticketsData = await ticketsRes.json();
+      if (ticketsData.tickets && ticketsData.tickets.length > 0) {
+        onPaymentSuccess(ticketsData.tickets);
+      }
+      onClose();
 
       if (!res.ok || !data.success) {
         throw new Error(data.message || data.errorDetail || 'Erreur lors du paiement');
@@ -217,116 +272,121 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
                 </div>
               </div>
 
-              {/* PAYMENT METHOD CARDS (GRID OF 4 METHODS) */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* PAYMENT METHOD CARDS (6 JEKO METHODS) */}
+              <div className="grid grid-cols-3 gap-2.5">
                 {/* 1. WAVE */}
                 <button
                   type="button"
                   onClick={() => setSelectedMethod('wave')}
-                  className={`flex flex-col items-center justify-center p-3 rounded-[22px] transition-all cursor-pointer relative bg-white border ${
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-[20px] transition-all cursor-pointer relative bg-white border ${
                     selectedMethod === 'wave'
                       ? 'border-2 border-red-500 shadow-md ring-2 ring-red-100'
                       : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                   }`}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-[#1DC4E9] flex flex-col items-center justify-center shadow-xs mb-2">
-                    {/* Wave Penguin SVG vector */}
-                    <svg className="w-8 h-8" viewBox="0 0 64 64" fill="none">
+                  <div className="w-12 h-12 rounded-2xl bg-[#1DC4E9] flex flex-col items-center justify-center shadow-xs mb-1.5">
+                    <svg className="w-7 h-7" viewBox="0 0 64 64" fill="none">
                       <ellipse cx="32" cy="34" rx="16" ry="22" fill="#0E1E25" />
                       <ellipse cx="32" cy="37" rx="10" ry="15" fill="#FFFFFF" />
                       <circle cx="28" cy="24" r="2" fill="#FFFFFF" />
                       <circle cx="36" cy="24" r="2" fill="#FFFFFF" />
                       <polygon points="32,26 28,31 36,31" fill="#FFB703" />
-                      <polygon points="26,55 31,51 28,49" fill="#FFB703" />
-                      <polygon points="38,55 33,51 36,49" fill="#FFB703" />
                     </svg>
-                    <span className="text-[10px] font-black text-white tracking-wider lowercase -mt-1 leading-none">
-                      wave
-                    </span>
                   </div>
-                  <span className="text-xs font-bold text-slate-900">
+                  <span className="text-[11px] font-bold text-slate-900">
                     Wave
                   </span>
                 </button>
 
-                {/* 2. MOBILE MONEY (Orange, MTN, Moov) */}
+                {/* 2. ORANGE MONEY */}
                 <button
                   type="button"
-                  onClick={() => setSelectedMethod('mobile_money')}
-                  className={`flex flex-col items-center justify-center p-3 rounded-[22px] transition-all cursor-pointer relative bg-white border ${
-                    selectedMethod === 'mobile_money'
+                  onClick={() => setSelectedMethod('orange')}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-[20px] transition-all cursor-pointer relative bg-white border ${
+                    selectedMethod === 'orange'
                       ? 'border-2 border-red-500 shadow-md ring-2 ring-red-100'
                       : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                   }`}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-[#1E2229] p-1.5 grid grid-cols-2 gap-1 items-center justify-center shadow-xs mb-2 overflow-hidden">
-                    {/* Orange Money */}
-                    <div className="w-full h-full bg-[#FF7900] rounded-xs flex items-center justify-center">
-                      <span className="text-[6px] font-black text-white leading-none">OM</span>
-                    </div>
-                    {/* MTN MoMo */}
-                    <div className="w-full h-full bg-[#FFCC00] rounded-xs flex items-center justify-center">
-                      <span className="text-[6px] font-black text-slate-950 leading-none">MTN</span>
-                    </div>
-                    {/* Moov Africa */}
-                    <div className="col-span-2 w-full h-full bg-[#005CA9] rounded-xs flex items-center justify-center">
-                      <span className="text-[6px] font-black text-white leading-none">Moov</span>
-                    </div>
+                  <div className="w-12 h-12 rounded-2xl bg-[#FF7900] flex items-center justify-center text-white font-black text-sm shadow-xs mb-1.5">
+                    OM
                   </div>
-                  <span className="text-xs font-bold text-slate-900 text-center leading-tight">
-                    Mobile<br />Money
+                  <span className="text-[11px] font-bold text-slate-900 text-center leading-tight">
+                    Orange
                   </span>
                 </button>
 
-                {/* 3. DJAMO */}
+                {/* 3. MTN MOMO */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('mtn')}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-[20px] transition-all cursor-pointer relative bg-white border ${
+                    selectedMethod === 'mtn'
+                      ? 'border-2 border-red-500 shadow-md ring-2 ring-red-100'
+                      : 'border-slate-200 hover:border-slate-300 shadow-2xs'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-[#FFCC00] flex items-center justify-center text-slate-950 font-black text-xs shadow-xs mb-1.5">
+                    MoMo
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-900 text-center leading-tight">
+                    MTN
+                  </span>
+                </button>
+
+                {/* 4. MOOV AFRICA */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('moov')}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-[20px] transition-all cursor-pointer relative bg-white border ${
+                    selectedMethod === 'moov'
+                      ? 'border-2 border-red-500 shadow-md ring-2 ring-red-100'
+                      : 'border-slate-200 hover:border-slate-300 shadow-2xs'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-[#005CA9] flex items-center justify-center text-white font-black text-xs shadow-xs mb-1.5">
+                    Moov
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-900 text-center leading-tight">
+                    Moov
+                  </span>
+                </button>
+
+                {/* 5. DJAMO */}
                 <button
                   type="button"
                   onClick={() => setSelectedMethod('djamo')}
-                  className={`flex flex-col items-center justify-center p-3 rounded-[22px] transition-all cursor-pointer relative bg-white border ${
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-[20px] transition-all cursor-pointer relative bg-white border ${
                     selectedMethod === 'djamo'
                       ? 'border-2 border-red-500 shadow-md ring-2 ring-red-100'
                       : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                   }`}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-black flex items-center justify-center shadow-xs mb-2">
+                  <div className="w-12 h-12 rounded-2xl bg-black flex items-center justify-center shadow-xs mb-1.5">
                     <span className="text-white font-serif italic font-black text-sm tracking-tight">
                       djamo
                     </span>
                   </div>
-                  <span className="text-xs font-bold text-slate-900">
+                  <span className="text-[11px] font-bold text-slate-900">
                     Djamo
                   </span>
                 </button>
 
-                {/* 4. CARTE BANCAIRE */}
+                {/* 6. JEKO PAY */}
                 <button
                   type="button"
-                  onClick={() => setSelectedMethod('carte')}
-                  className={`flex flex-col items-center justify-center p-3 rounded-[22px] transition-all cursor-pointer relative bg-white border ${
-                    selectedMethod === 'carte'
+                  onClick={() => setSelectedMethod('jeko')}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-[20px] transition-all cursor-pointer relative bg-white border ${
+                    selectedMethod === 'jeko'
                       ? 'border-2 border-red-500 shadow-md ring-2 ring-red-100'
                       : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                   }`}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200/80 p-1 flex flex-col items-center justify-center gap-0.5 shadow-xs mb-2">
-                    <div className="flex items-center gap-1">
-                      {/* CB badge */}
-                      <span className="text-[7px] font-black bg-teal-600 text-white px-1 py-0.2 rounded-xs">
-                        CB
-                      </span>
-                      {/* Mastercard logo */}
-                      <div className="flex -space-x-1">
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#EB001B]" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#F79E1B] opacity-80" />
-                      </div>
-                    </div>
-                    {/* VISA text */}
-                    <span className="text-[8px] font-black text-[#1A1F71] tracking-wider">
-                      VISA
-                    </span>
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white font-black text-xs shadow-xs mb-1.5">
+                    ⚡
                   </div>
-                  <span className="text-xs font-bold text-slate-900 text-center leading-tight">
-                    Carte<br />bancaire
+                  <span className="text-[11px] font-bold text-slate-900 text-center leading-tight">
+                    Jèko Pay
                   </span>
                 </button>
               </div>

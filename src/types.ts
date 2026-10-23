@@ -111,7 +111,7 @@ export interface VirtualTicket {
   createdAt: string;
   usedAt?: string;
   payerPhone?: string;
-  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO' | 'CASH';
+  paymentMethod: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'JEKO' | 'DEMO' | 'CASH';
   transactionId?: string;
   securityCode: string; // 6-digit code for cashier verification
   isSimulation?: boolean;
@@ -121,7 +121,7 @@ export interface MomoPayRequest {
   phone: string;
   type: 'unitaire' | 'souche';
   visitorId: string;
-  paymentMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'DEMO';
+  paymentMethod?: 'MTN_MOMO' | 'MOOV_MONEY' | 'CINETPAY' | 'JEKO' | 'DEMO';
   forceSimulation?: boolean;
 }
 
@@ -247,6 +247,31 @@ export interface PaymentConfigData {
   cinetpaySecretKey?: string;
   cinetpayMode?: 'sandbox' | 'production';
   cinetpayNotifyUrl?: string;
+  // Jèko Pay fields
+  jekoApiKey?: string;
+  jekoApiKeyId?: string;
+  jekoStoreId?: string;
+  jekoWebhookSecret?: string;
+  jekoMode?: 'sandbox' | 'production';
+}
+
+export interface JekoDiagnosisResult {
+  testedAt: string;
+  apiKeyPreview: string;
+  apiKeyIdPreview?: string;
+  storeIdPreview?: string;
+  hasWebhookSecret: boolean;
+  webhookSecretPreview: string;
+  connected: boolean;
+  httpStatus: number;
+  message: string;
+  recommendations: string[];
+  retryMechanism?: {
+    enabled: boolean;
+    maxRetries: number;
+    backoffFormula: string;
+    delaysMs: number[];
+  };
 }
 
 export interface TicketValidationResult {

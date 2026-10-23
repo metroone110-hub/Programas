@@ -22,11 +22,14 @@ provider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// In-memory token cache (Do NOT store in localStorage per guidelines)
+// Google OAuth Client ID provisioned for this application
+export const GOOGLE_CLIENT_ID = firebaseConfig.oAuthClientId || '648760950612-e5qsgef4mbl9pan8ae3b6a4gk7s64rot.apps.googleusercontent.com';
+
+// In-memory token cache (Do NOT store in localStorage per security guidelines)
 let cachedAccessToken: string | null = null;
 let isSigningIn = false;
 
-// Current pending OTP state (kept in memory with expiration)
+// Current pending OTP state (kept in memory with 10-min expiration)
 interface OtpState {
   code: string;
   email: string;
@@ -49,7 +52,156 @@ export interface StudentProfile {
 const STORAGE_KEY_PROFILE = 'programas_student_profile';
 
 /**
- * Initialize auth listener. Clears memory token on sign out.
+ * Get authorized redirect URI matching the Cloud Console settings
+ */
+export const getRedirectUri = (): string => {
+  if (typeof window === 'undefined') return '';
+  const origin = window.location.origin;
+  return origin.endsWith('/') ? origin : `${origin}/`;
+};
+
+/**
+ * Direct Google OAuth 2.0 authorization URL
+ */
+export const getGoogleOAuthUrl = (): string => {
+  const redirectUri = getRedirectUri();
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'token',
+    scope: 'openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/gmail.send',
+    include_granted_scopes: 'true',
+    prompt: 'select_account',
+    state: 'student_auth',
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+};
+
+/**
+ * Check if the user was just redirected back with #access_token=...
+ * Parses token, loads user info from Google API, and triggers Gmail OTP
+ */
+export const checkAndHandleOAuthRedirect = async (): Promise<{ 
+  success: boolean; 
+  profile?: StudentProfile;
+  codePreview?: string;
+  error?: string;
+}> => {
+  if (typeof window === 'undefined') return { success: false };
+  const hash = window.location.hash;
+  if (!hash || !hash.includes('access_token=')) {
+    return { success: false };
+  }
+
+  try {
+    const rawParams = hash.startsWith('#') ? hash.substring(1) : hash;
+    const params = new URLSearchParams(rawParams);
+    const accessToken = params.get('access_token');
+    if (!accessToken) return { success: false };
+
+    // Clean hash from browser URL bar without triggering reload
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+
+    cachedAccessToken = accessToken;
+
+    // Fetch student profile directly from Google UserInfo API
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    
+    if (!userRes.ok) {
+      throw new Error('Impossible de charger les informations du profil Google.');
+    }
+
+    const googleUser = await userRes.json();
+    const cleanEmail = (googleUser.email || '').toLowerCase().trim();
+    const cleanName = googleUser.name || 'Étudiant UPGC';
+    const photo = googleUser.picture;
+
+    const existing = getStoredStudentProfile();
+    const matricule = existing?.matricule || `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const profile = saveStudentProfile({
+      uid: googleUser.sub || 'std_' + Date.now().toString(36),
+      email: cleanEmail,
+      displayName: cleanName,
+      photoURL: photo,
+      matricule,
+      filiere: existing?.filiere || 'Sciences & Technologies (UPGC)',
+      isVerified: false,
+    });
+
+    // Send Gmail OTP immediately
+    const emailResult = await sendVerificationEmail(cleanEmail, cleanName);
+
+    return { 
+      success: true, 
+      profile, 
+      codePreview: emailResult.codePreview 
+    };
+  } catch (err: any) {
+    console.error('Erreur traitement retour OAuth Google:', err);
+    return { 
+      success: false, 
+      error: err.message || 'Erreur lors de la validation Google.' 
+    };
+  }
+};
+
+/**
+ * Sign in using Google Identity Services (GIS) API with fallback to direct OAuth redirect
+ */
+export const signInWithGoogleApi = (): Promise<{ 
+  accessToken: string; 
+  userInfo: { email: string; name: string; picture?: string; sub: string } 
+}> => {
+  return new Promise((resolve, reject) => {
+    // Check if Google Identity Services (GIS) is available
+    if (typeof window !== 'undefined' && (window as any).google?.accounts?.oauth2) {
+      try {
+        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/gmail.send',
+          prompt: 'select_account',
+          callback: async (resp: any) => {
+            if (resp.error) {
+              // If GIS popup blocked, redirect directly to Google OAuth URL
+              window.location.href = getGoogleOAuthUrl();
+              return;
+            }
+            if (resp.access_token) {
+              cachedAccessToken = resp.access_token;
+              try {
+                const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                  headers: { Authorization: `Bearer ${resp.access_token}` },
+                });
+                const userInfo = await userRes.json();
+                resolve({ accessToken: resp.access_token, userInfo });
+              } catch (err) {
+                reject(err);
+              }
+            }
+          },
+          error_callback: () => {
+            // Fallback to direct URL
+            window.location.href = getGoogleOAuthUrl();
+          }
+        });
+
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+        return;
+      } catch (err) {
+        console.warn('GIS init failed, switching to direct redirect:', err);
+      }
+    }
+
+    // Direct redirect to Google OAuth
+    window.location.href = getGoogleOAuthUrl();
+  });
+};
+
+/**
+ * Firebase Auth listener. Clears memory token on sign out.
  */
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
@@ -71,7 +223,7 @@ export const initAuth = (
 };
 
 /**
- * Perform Google Sign-In with popup
+ * Legacy Firebase signInWithPopup (kept for fallback compatibility)
  */
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   try {
@@ -79,12 +231,11 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
-      throw new Error('Impossible de récupérer le jeton d\'accès Google.');
+      throw new Error('Impossible de récupérer le jeton Google.');
     }
 
     cachedAccessToken = credential.accessToken;
 
-    // Check if profile exists, otherwise initialize default
     const existing = getStoredStudentProfile();
     if (!existing || existing.email !== result.user.email) {
       const defaultMatricule = `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -101,7 +252,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('Erreur Google Sign-in:', error);
+    console.error('Erreur Firebase Google Sign-in:', error);
     throw error;
   } finally {
     isSigningIn = false;
@@ -109,7 +260,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 /**
- * Initialize profile for direct email sign-in (mobile / Safari friendly)
+ * Direct student email sign-in (mobile / Safari friendly)
  */
 export const initDirectStudentEmail = (email: string, name?: string): StudentProfile => {
   const cleanEmail = email.toLowerCase().trim();
@@ -141,6 +292,13 @@ export const getAccessToken = async (): Promise<string | null> => {
 };
 
 /**
+ * Set cached access token in memory
+ */
+export const setAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+};
+
+/**
  * Helper to encode UTF-8 string to base64url without browser btoa failures
  */
 function toBase64Url(str: string): string {
@@ -168,7 +326,7 @@ function encodeSubject(subject: string): string {
 }
 
 /**
- * Generate a 6-digit OTP and send it via Gmail to the student's email address
+ * Generate a 6-digit OTP and send it via Gmail API
  */
 export const sendVerificationEmail = async (
   toEmail: string,
@@ -278,7 +436,7 @@ export const sendVerificationEmail = async (
     }
   }
 
-  // Direct OTP generation fallback (e.g. mobile Safari where popup is blocked)
+  // Fallback (or code preview for instant test)
   return { success: true, codePreview: code };
 };
 

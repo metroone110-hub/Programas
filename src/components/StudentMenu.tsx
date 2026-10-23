@@ -39,7 +39,11 @@ import { AboutRestoCrou } from './AboutRestoCrou';
 import { TicketVisual } from './TicketVisual';
 import { FastFoodImage } from './FastFoodImage';
 import { getOrGenerateVisitorId } from '../utils/analytics';
-import { getStoredStudentProfile, type StudentProfile } from '../services/studentAuth';
+import { 
+  getStoredStudentProfile, 
+  checkAndHandleOAuthRedirect, 
+  type StudentProfile 
+} from '../services/studentAuth';
 import { 
   getNotificationSettings, 
   saveNotificationSettings, 
@@ -201,6 +205,15 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
 
   useEffect(() => {
     fetchTicketsCount();
+
+    // Check if returning from Google OAuth redirect with #access_token=...
+    checkAndHandleOAuthRedirect().then((res) => {
+      if (res.success && res.profile) {
+        setStudentProfile(res.profile);
+        setIsProfileModalOpen(true);
+        showToast(`🎉 Bienvenue ${res.profile.displayName} ! Code de validation envoyé à votre Gmail.`, 'success');
+      }
+    });
   }, [visitorId]);
 
   // Helper to map image for dish based on title
