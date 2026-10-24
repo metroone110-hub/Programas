@@ -105,7 +105,7 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
   // Jèko Pay State (Wave, Orange Money, MTN MoMo, Moov Africa, Djamo, Jèko)
   const [jekoApiKey, setJekoApiKey] = useState<string>('');
   const [jekoApiKeyId, setJekoApiKeyId] = useState<string>('');
-  const [jekoStoreId, setJekoStoreId] = useState<string>('59ae202a-f583-4a15-970f-9e99bd1e0baa');
+  const [jekoStoreId, setJekoStoreId] = useState<string>('895f3110-845b-4d11-a291-f28dc954c0cd');
   const [jekoWebhookSecret, setJekoWebhookSecret] = useState<string>('');
   const [jekoDiagnosis, setJekoDiagnosis] = useState<JekoDiagnosisResult | null>(null);
   const [testingJeko, setTestingJeko] = useState<boolean>(false);
@@ -885,7 +885,7 @@ export const AdminTicketScanner: React.FC<AdminTicketScannerProps> = ({ token })
                     type="text"
                     value={jekoStoreId}
                     onChange={(e) => setJekoStoreId(e.target.value)}
-                    placeholder="Ex: 59ae202a-f583-4a15-970f-9e99bd1e0baa"
+                    placeholder="Ex: 895f3110-845b-4d11-a291-f28dc954c0cd"
                     className="w-full bg-white px-3 py-2 rounded-xl border border-black/10 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">

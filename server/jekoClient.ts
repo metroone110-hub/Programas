@@ -101,7 +101,7 @@ export class JekoClient {
   constructor(config: JekoConfig = {}) {
     this.apiKey = (config.apiKey || process.env.JEKO_API_KEY || '').trim();
     this.apiKeyId = (config.apiKeyId || process.env.JEKO_API_KEY_ID || '').trim();
-    this.storeId = (config.storeId || process.env.JEKO_STORE_ID || '59ae202a-f583-4a15-970f-9e99bd1e0baa').trim();
+    this.storeId = (config.storeId || process.env.JEKO_STORE_ID || '895f3110-845b-4d11-a291-f28dc954c0cd').trim();
     this.webhookSecret = (config.webhookSecret || process.env.JEKO_WEBHOOK_SECRET || '').trim();
     this.baseUrl = (config.baseUrl || 'https://api.jeko.africa').replace(/\/+$/, '');
   }
@@ -241,6 +241,28 @@ export class JekoClient {
         }
       }
 
+      if (res.status === 404 && json?.message?.toLowerCase?.().includes('store')) {
+        recommendations.push(
+          'Clé API et Identifiant de clé (X-API-KEY-ID) validés avec succès par Jèko ! 🎉',
+          `L'identifiant de boutique (Store ID: "${this.storeId}") n'existe pas ou n'est pas rattaché à cette clé dans votre compte Jèko.`,
+          'Vérifiez la section "Boutiques" / "Stores" de votre tableau de bord Jèko pour copier l\'ID de votre boutique.',
+          'Le mode simulation instantanée reste disponible pour tester l\'achat des tickets sans interruption.'
+        );
+        return {
+          testedAt,
+          apiKeyPreview: this.maskedApiKey,
+          apiKeyIdPreview: this.maskedApiKeyId,
+          storeIdPreview: this.storeId,
+          hasWebhookSecret: Boolean(this.webhookSecret),
+          webhookSecretPreview: this.maskedSecret,
+          connected: false,
+          httpStatus: 404,
+          message: 'Clé API validée ! Identifiant de boutique (Store ID) à vérifier dans votre espace Jèko.',
+          recommendations,
+          retryMechanism,
+        };
+      }
+
       recommendations.push(
         `Jèko a répondu avec le statut HTTP ${res.status}: ${json?.message || 'Vérifiez les identifiants.'}`
       );
@@ -298,7 +320,7 @@ export class JekoClient {
       const failureUrl = errorUrl || returnUrl || 'https://crou-menu-resto-u-648760950612.europe-west1.run.app/?payment_error=true';
 
       const bodyPayload = {
-        storeId: this.storeId || '59ae202a-f583-4a15-970f-9e99bd1e0baa',
+        storeId: this.storeId || '895f3110-845b-4d11-a291-f28dc954c0cd',
         amountCents: amount,
         currency: 'XOF',
         reference: `ORDER-${reference}`,
