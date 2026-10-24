@@ -38,6 +38,7 @@ import { RestoAffluenceMap } from './RestoAffluenceMap';
 import { AboutRestoCrou } from './AboutRestoCrou';
 import { TicketVisual } from './TicketVisual';
 import { FastFoodImage } from './FastFoodImage';
+import { AuthGatewayModal } from './AuthGatewayModal';
 import { getOrGenerateVisitorId } from '../utils/analytics';
 import { 
   getStoredStudentProfile, 
@@ -137,6 +138,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
 
   // Modals
+  const [isAuthGatewayOpen, setIsAuthGatewayOpen] = useState<boolean>(false);
   const [isTicketsModalOpen, setIsTicketsModalOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(() => getStoredStudentProfile());
@@ -512,8 +514,13 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
           {/* Student Profile avatar button */}
           <button
             onClick={() => {
-              setStudentProfile(getStoredStudentProfile());
-              setIsProfileModalOpen(true);
+              const p = getStoredStudentProfile();
+              setStudentProfile(p);
+              if (!p) {
+                setIsAuthGatewayOpen(true);
+              } else {
+                setIsProfileModalOpen(true);
+              }
             }}
             title={studentProfile ? `Mon Compte Étudiant UPGC : ${studentProfile.displayName}` : "Connexion Compte Étudiant UPGC"}
             className="touch-press relative w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-slate-200 shrink-0 bg-orange-500 flex items-center justify-center cursor-pointer text-white font-black text-xs transition-transform active:scale-95"
@@ -1316,11 +1323,16 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         {/* Tab 5: Profil Étudiant UPGC */}
         <button
           onClick={() => {
-            setStudentProfile(getStoredStudentProfile());
-            setIsProfileModalOpen(true);
+            const p = getStoredStudentProfile();
+            setStudentProfile(p);
+            if (!p) {
+              setIsAuthGatewayOpen(true);
+            } else {
+              setIsProfileModalOpen(true);
+            }
           }}
           className={`touch-press transition-all cursor-pointer relative ${
-            isProfileModalOpen
+            isProfileModalOpen || isAuthGatewayOpen
               ? 'bg-orange-500 text-white px-3.5 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 shadow-md shadow-orange-500/30'
               : 'p-2 text-slate-400 hover:text-slate-700'
           }`}
@@ -1330,7 +1342,7 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
           {studentProfile?.isVerified && (
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full" />
           )}
-          {isProfileModalOpen && <span>Profil</span>}
+          {(isProfileModalOpen || isAuthGatewayOpen) && <span>Profil</span>}
         </button>
       </nav>
 
@@ -1360,6 +1372,18 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         initialMethod="CINETPAY"
         initialPack={paymentPack}
         autoOpenPayForm={false}
+      />
+
+      {/* ============================================================== */}
+      {/* AUTH GATEWAY MODAL (LANDING / LOGIN / SIGNUP)                  */}
+      {/* ============================================================== */}
+      <AuthGatewayModal
+        isOpen={isAuthGatewayOpen}
+        onClose={() => setIsAuthGatewayOpen(false)}
+        onAuthSuccess={(p) => {
+          setStudentProfile(p);
+          showToast(`🎉 Bienvenue ${p.displayName} !`, 'success');
+        }}
       />
 
       {/* ============================================================== */}

@@ -45,9 +45,8 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
   
   // Phone / details prompt step
   const [showInputStep, setShowInputStep] = useState<boolean>(false);
-  const [phone, setPhone] = useState<string>(() => {
-    return localStorage.getItem('crouk_student_momo_phone') || '';
-  });
+  // Phone number starts STRICTLY EMPTY by default as requested by user
+  const [phone, setPhone] = useState<string>('');
   const [operator, setOperator] = useState<'orange' | 'mtn' | 'moov'>('orange');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -73,8 +72,13 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
       setIsCheckingStatus(false);
       setSessionSuccess(false);
       setAcceptedTerms(true);
-      const saved = localStorage.getItem('crouk_student_momo_phone');
-      if (saved) setPhone(saved);
+      // Strictly empty phone number on every open: do NOT pre-fill with any cached number
+      setPhone('');
+      try {
+        localStorage.removeItem('crouk_student_momo_phone');
+      } catch {
+        // ignore
+      }
     }
   }, [isOpen]);
 
@@ -173,18 +177,13 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
     let cleanPhone = normalizeIvorianPhone(phone);
     if (!forceSimulate && (selectedMethod !== 'carte')) {
       if (!cleanPhone || cleanPhone.length < 8) {
-        setErrorMessage('Veuillez renseigner un numéro de téléphone ivoirien valide.');
+        setErrorMessage('Veuillez renseigner votre numéro de téléphone (Orange, MTN, Moov ou Wave).');
         return;
       }
     }
 
-    if (!cleanPhone) {
-      cleanPhone = '0102030405';
-    }
-
     try {
       setIsProcessing(true);
-      localStorage.setItem('crouk_student_momo_phone', cleanPhone);
 
       // Simulation mode (only when explicitly requested by clicking test button)
       if (forceSimulate) {
@@ -399,15 +398,11 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
                       : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                   }`}
                 >
-                  <div className="w-12 h-12 rounded-2xl bg-[#1DC4E9] flex flex-col items-center justify-center shadow-xs mb-1.5">
-                    <svg className="w-7 h-7" viewBox="0 0 64 64" fill="none">
-                      <ellipse cx="32" cy="34" rx="16" ry="22" fill="#0E1E25" />
-                      <ellipse cx="32" cy="37" rx="10" ry="15" fill="#FFFFFF" />
-                      <circle cx="28" cy="24" r="2" fill="#FFFFFF" />
-                      <circle cx="36" cy="24" r="2" fill="#FFFFFF" />
-                      <polygon points="32,26 28,31 36,31" fill="#FFB703" />
-                    </svg>
-                  </div>
+                  <img
+                    src="/assets/aistudio/IMG_1013_e6727301.png"
+                    alt="Wave"
+                    className="w-12 h-12 rounded-2xl object-cover shadow-xs mb-1.5"
+                  />
                   <span className="text-[11px] font-bold text-slate-900">
                     Wave
                   </span>
@@ -626,7 +621,7 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="01 02 03 04 05"
+                      placeholder="Ex: 07 01 02 03 04"
                       className="w-full pl-24 pr-4 py-3 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-red-500"
                     />
                   </div>
@@ -671,17 +666,6 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
                       <span className="font-mono text-base font-black">≫</span>
                     </>
                   )}
-                </button>
-
-                {/* Simulation button for easy demo / campus wifi test without wasting live airtime */}
-                <button
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={() => handleConfirmPayment(true)}
-                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Test Cantine Immédiat (Simulation Gratuite)</span>
                 </button>
               </div>
             </div>

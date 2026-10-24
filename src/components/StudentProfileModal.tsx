@@ -19,6 +19,7 @@ import {
 import { 
   initAuth, 
   googleSignIn, 
+  signInWithFirebaseOAuth,
   signInWithGoogleApi,
   getGoogleOAuthUrl,
   checkAndHandleOAuthRedirect,
@@ -49,7 +50,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const [step, setStep] = useState<'login' | 'otp_pending' | 'overview'>('login');
   
   // Direct email entry state (Safari/mobile friendly)
-  const [inputEmail, setInputEmail] = useState<string>('metroone110@gmail.com');
+  const [inputEmail, setInputEmail] = useState<string>('');
   const [inputName, setInputName] = useState<string>('');
 
   // OTP state
@@ -117,50 +118,32 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Google Login via Google API OAuth
+  // Handle Google Login via Firebase OAuth
   const handleGoogleLogin = async () => {
     setIsSigningIn(true);
     setOtpError(null);
     try {
-      const res = await signInWithGoogleApi();
-      if (res?.userInfo) {
-        const cleanEmail = (res.userInfo.email || inputEmail).toLowerCase().trim();
-        const cleanName = res.userInfo.name || 'Étudiant UPGC';
-        const photo = res.userInfo.picture;
+      const res = await signInWithFirebaseOAuth();
+      if (res.success && res.profile) {
+        setProfile(res.profile);
+        setStep('overview');
+        setEditMatricule(res.profile.matricule);
+        setEditFiliere(res.profile.filiere);
+        return;
+      }
 
-        const existing = getStoredStudentProfile();
-        const matricule = existing?.matricule || `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-        const updated = saveStudentProfile({
-          uid: res.userInfo.sub || 'std_' + Date.now().toString(36),
-          email: cleanEmail,
-          displayName: cleanName,
-          photoURL: photo,
-          matricule,
-          filiere: existing?.filiere || 'Sciences & Technologies (UPGC)',
-          isVerified: false,
-        });
-
-        setProfile(updated);
-        setStep('otp_pending');
-
-        setIsSendingOtp(true);
-        const emailRes = await sendVerificationEmail(cleanEmail, cleanName);
-        setIsSendingOtp(false);
-
-        if (emailRes.success) {
-          setOtpSuccessMsg('Code de validation envoyé à votre adresse Gmail !');
-          if (emailRes.codePreview) {
-            setCodePreview(emailRes.codePreview);
-          }
-        } else {
-          setOtpError(emailRes.error || 'Erreur lors de l\'envoi du code Gmail.');
-        }
+      if (res.unauthorizedDomain) {
+        setOtpError(
+          `Domaine Firebase non autorisé. Veuillez ajouter "${res.domain}" dans la console Firebase (Authentication > Paramètres > Domaines autorisés). Vous pouvez aussi vous connecter avec le formulaire ci-dessous.`
+        );
+      } else if (res.popupBlocked) {
+        setOtpError("La popup de connexion a été bloquée par votre navigateur. Veuillez autoriser les fenêtres pop-up.");
+      } else if (res.error) {
+        setOtpError(res.error);
       }
     } catch (err: any) {
-      console.warn('Google API prompt error, redirecting to Google OAuth:', err);
-      // Direct redirect to Google OAuth URL (authorized redirect URIs)
-      window.location.href = getGoogleOAuthUrl();
+      console.warn('Firebase OAuth prompt error:', err);
+      setOtpError("L'authentification Google via Firebase nécessite l'autorisation du domaine. Renseignez votre adresse Gmail ci-dessous pour une connexion immédiate.");
     } finally {
       setIsSigningIn(false);
     }

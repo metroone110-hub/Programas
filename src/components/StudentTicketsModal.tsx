@@ -85,6 +85,7 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
       setRejectedKeyInfo(null);
       setCinetpaySession(null);
       setJekoSession(null);
+      setPhoneNumber('');
     }
   }, [isOpen, initialMethod, initialPack, autoOpenPayForm]);
 

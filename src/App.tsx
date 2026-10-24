@@ -4,6 +4,8 @@ import { StudentMenu } from './components/StudentMenu';
 import { AdminPanel } from './components/AdminPanel';
 import { DeployGuideModal } from './components/DeployGuideModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { AuthGatewayModal } from './components/AuthGatewayModal';
+import { getStoredStudentProfile } from './services/studentAuth';
 import { RefreshCw, Utensils, AlertTriangle } from 'lucide-react';
 import { trackVisit } from './utils/analytics';
 
@@ -13,6 +15,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'student' | 'admin'>('student');
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+
+  // Show Auth Gateway at the beginning of the application if not yet logged in / entered
+  const [isAuthGatewayOpen, setIsAuthGatewayOpen] = useState<boolean>(() => {
+    try {
+      const hasEntered = sessionStorage.getItem('crouk_entered_app');
+      const profile = getStoredStudentProfile();
+      return !hasEntered && !profile;
+    } catch {
+      return false;
+    }
+  });
 
   const fetchMenuData = async (isBackground = false) => {
     try {
@@ -132,6 +145,29 @@ export default function App() {
       <DeployGuideModal
         isOpen={isGuideOpen}
         onClose={() => setIsGuideOpen(false)}
+      />
+
+      {/* Auth Gateway at application start */}
+      <AuthGatewayModal
+        isOpen={isAuthGatewayOpen}
+        onClose={() => {
+          setIsAuthGatewayOpen(false);
+          try {
+            sessionStorage.setItem('crouk_entered_app', 'true');
+          } catch {
+            // ignore
+          }
+        }}
+        onAuthSuccess={() => {
+          setIsAuthGatewayOpen(false);
+          try {
+            sessionStorage.setItem('crouk_entered_app', 'true');
+          } catch {
+            // ignore
+          }
+        }}
+        initialMode="landing"
+        canDismiss={true}
       />
 
       {/* Offline Indicator */}

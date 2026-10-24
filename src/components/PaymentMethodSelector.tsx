@@ -46,15 +46,11 @@ const METHODS_CONFIG: Record<PaymentMethod, MethodInfo> = {
     ringColor: 'ring-sky-200',
     badge: '🌊 Wave',
     icon: (
-      <div className="w-8 h-8 rounded-xl bg-[#1DC4E9] flex items-center justify-center shadow-xs">
-        <svg className="w-5 h-5" viewBox="0 0 64 64" fill="none">
-          <ellipse cx="32" cy="34" rx="16" ry="22" fill="#0E1E25" />
-          <ellipse cx="32" cy="37" rx="10" ry="15" fill="#FFFFFF" />
-          <circle cx="28" cy="24" r="2" fill="#FFFFFF" />
-          <circle cx="36" cy="24" r="2" fill="#FFFFFF" />
-          <polygon points="32,26 28,31 36,31" fill="#FFB703" />
-        </svg>
-      </div>
+      <img
+        src="/assets/aistudio/IMG_1013_e6727301.png"
+        alt="Wave"
+        className="w-8 h-8 rounded-xl object-cover shadow-xs"
+      />
     ),
   },
   orange: {
@@ -149,9 +145,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   compact = false,
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('wave');
-  const [customerPhone, setCustomerPhone] = useState<string>(() => {
-    return initialPhone || localStorage.getItem('crouk_student_momo_phone') || '';
-  });
+  const [customerPhone, setCustomerPhone] = useState<string>(initialPhone || '');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -172,10 +166,14 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   ) => {
     setErrorMsg(null);
     setSuccessMsg(null);
-    setIsProcessing(true);
 
-    const cleanPhone = normalizeIvorianPhone(customerPhone) || '0102030405';
-    localStorage.setItem('crouk_student_momo_phone', cleanPhone);
+    const cleanPhone = normalizeIvorianPhone(customerPhone);
+    if (!cleanPhone || cleanPhone.length < 8) {
+      setErrorMsg('Veuillez saisir votre numéro de téléphone (Orange, MTN, Moov ou Wave).');
+      return;
+    }
+
+    setIsProcessing(true);
 
     const effectiveOrderId = order || `ORD-${Date.now().toString(36).toUpperCase()}`;
 
@@ -341,7 +339,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             type="tel"
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
-            placeholder="01 02 03 04 05"
+            placeholder="Ex: 07 01 02 03 04"
             className="w-full pl-13 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-slate-900"
           />
         </div>

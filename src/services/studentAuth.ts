@@ -1,26 +1,17 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
-  getAuth, 
   signInWithPopup, 
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut, 
   type User 
 } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db, googleProvider, firebaseConfig } from './firebase';
 
-// Initialize Firebase App singleton
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+export { auth, db };
 
 // Provider with Workspace & Google Profile scopes
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/userinfo.email');
-provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
-provider.addScope('https://www.googleapis.com/auth/gmail.send');
-provider.setCustomParameters({
-  prompt: 'select_account',
-});
+export const provider = googleProvider;
 
 // Google OAuth Client ID provisioned for this application
 export const GOOGLE_CLIENT_ID = firebaseConfig.oAuthClientId || '648760950612-e5qsgef4mbl9pan8ae3b6a4gk7s64rot.apps.googleusercontent.com';
@@ -220,6 +211,116 @@ export const initAuth = (
       if (onAuthFailure) onAuthFailure();
     }
   });
+};
+
+export interface FirebaseOAuthResult {
+  success: boolean;
+  profile?: StudentProfile;
+  user?: User;
+  error?: string;
+  unauthorizedDomain?: boolean;
+  domain?: string;
+  popupClosed?: boolean;
+  popupBlocked?: boolean;
+}
+
+/**
+ * Standard Firebase OAuth Authentication with Google Auth Provider
+ * Persists profile in Firestore /users/{userId} and updates local session
+ */
+export const signInWithFirebaseOAuth = async (): Promise<FirebaseOAuthResult> => {
+  try {
+    isSigningIn = true;
+    const result = await signInWithPopup(auth, googleProvider);
+    const user = result.user;
+    const cleanEmail = (user.email || '').toLowerCase().trim();
+    const cleanName = user.displayName || 'Étudiant UPGC';
+    const photo = user.photoURL || undefined;
+
+    const existing = getStoredStudentProfile();
+    const matricule =
+      existing?.matricule ||
+      `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const filiere = existing?.filiere || 'Sciences & Technologies (UPGC)';
+
+    const profile: StudentProfile = {
+      uid: user.uid,
+      email: cleanEmail,
+      displayName: cleanName,
+      photoURL: photo,
+      matricule,
+      filiere,
+      isVerified: true,
+      verifiedAt: new Date().toISOString(),
+    };
+
+    saveStudentProfile(profile);
+
+    // Save profile to Firestore database (/users/{userId})
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await setDoc(
+        userRef,
+        {
+          uid: user.uid,
+          email: cleanEmail,
+          displayName: cleanName,
+          photoURL: photo || null,
+          matricule,
+          filiere,
+          role: cleanEmail === 'metroone110@gmail.com' ? 'admin' : 'student',
+          isVerified: true,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (dbErr) {
+      console.warn('Firestore profile sync note:', dbErr);
+    }
+
+    return {
+      success: true,
+      profile,
+      user,
+    };
+  } catch (error: any) {
+    console.error('Erreur Firebase OAuth:', error);
+    const code = error?.code || '';
+    const message = error?.message || '';
+
+    if (code === 'auth/unauthorized-domain' || message.includes('unauthorized domain')) {
+      const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
+      return {
+        success: false,
+        unauthorizedDomain: true,
+        domain: currentDomain,
+        error: `Le domaine "${currentDomain}" n'est pas encore enregistré dans les domaines autorisés de votre projet Firebase.`,
+      };
+    }
+
+    if (code === 'auth/popup-closed-by-user') {
+      return {
+        success: false,
+        popupClosed: true,
+        error: 'Fenêtre de connexion fermée.',
+      };
+    }
+
+    if (code === 'auth/popup-blocked') {
+      return {
+        success: false,
+        popupBlocked: true,
+        error: 'La fenêtre de connexion a été bloquée par votre navigateur. Veuillez autoriser les fenêtres pop-up.',
+      };
+    }
+
+    return {
+      success: false,
+      error: message || 'Erreur lors de la connexion via Firebase.',
+    };
+  } finally {
+    isSigningIn = false;
+  }
 };
 
 /**
@@ -539,11 +640,170 @@ export const logoutStudent = async () => {
   } catch (err) {
     console.warn('SignOut warning:', err);
   }
-  cachedAccessToken = null;
   currentOtp = null;
   try {
     localStorage.removeItem(STORAGE_KEY_PROFILE);
   } catch {
     // ignore
   }
+};
+
+const STORAGE_KEY_ACCOUNTS = 'crouk_registered_accounts';
+
+export interface RegisteredAccount {
+  id: string;
+  name: string;
+  identifier: string;
+  email: string;
+  phone?: string;
+  matricule: string;
+  filiere: string;
+  password?: string;
+  createdAt: string;
+}
+
+export const getSavedAccounts = (): RegisteredAccount[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const registerStudentAccount = (params: {
+  name: string;
+  identifier: string;
+  password?: string;
+  matricule?: string;
+  filiere?: string;
+}): { success: boolean; profile?: StudentProfile; error?: string } => {
+  const cleanId = params.identifier.trim().toLowerCase();
+  const cleanName = params.name.trim();
+
+  if (!cleanId) {
+    return { success: false, error: 'Veuillez saisir votre e-mail ou numéro mobile.' };
+  }
+  if (!cleanName) {
+    return { success: false, error: 'Veuillez saisir votre nom et prénom.' };
+  }
+
+  const accounts = getSavedAccounts();
+  const exists = accounts.find(
+    (a) =>
+      a.identifier.toLowerCase() === cleanId ||
+      a.email.toLowerCase() === cleanId ||
+      (a.matricule && a.matricule.toLowerCase() === cleanId)
+  );
+
+  if (exists) {
+    return {
+      success: false,
+      error: 'Un compte existe déjà avec cet identifiant. Veuillez vous connecter.',
+    };
+  }
+
+  const isEmail = cleanId.includes('@');
+  const email = isEmail ? cleanId : `${cleanId.replace(/\D/g, '')}@etudiant.upgc.ci`;
+  const defaultMatricule =
+    params.matricule?.trim() ||
+    `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const filiere = params.filiere?.trim() || 'Sciences & Technologies (UPGC)';
+
+  const newAcc: RegisteredAccount = {
+    id: 'usr_' + Date.now().toString(36),
+    name: cleanName,
+    identifier: cleanId,
+    email,
+    phone: !isEmail ? cleanId : undefined,
+    matricule: defaultMatricule,
+    filiere,
+    password: params.password,
+    createdAt: new Date().toISOString(),
+  };
+
+  accounts.push(newAcc);
+  try {
+    localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+  } catch {
+    // ignore
+  }
+
+  const profile = saveStudentProfile({
+    uid: newAcc.id,
+    email: newAcc.email,
+    displayName: newAcc.name,
+    matricule: newAcc.matricule,
+    filiere: newAcc.filiere,
+    isVerified: true,
+    verifiedAt: new Date().toISOString(),
+  });
+
+  return { success: true, profile };
+};
+
+export const loginStudentAccount = (
+  identifier: string,
+  password?: string
+): { success: boolean; profile?: StudentProfile; error?: string } => {
+  const cleanId = identifier.trim().toLowerCase();
+  if (!cleanId) {
+    return { success: false, error: 'Veuillez renseigner votre identifiant ou e-mail.' };
+  }
+
+  const accounts = getSavedAccounts();
+  const found = accounts.find(
+    (a) =>
+      a.identifier.toLowerCase() === cleanId ||
+      a.email.toLowerCase() === cleanId ||
+      (a.phone && a.phone.includes(cleanId)) ||
+      (a.matricule && a.matricule.toLowerCase() === cleanId)
+  );
+
+  if (found) {
+    if (password && found.password && found.password !== password) {
+      return { success: false, error: 'Mot de passe incorrect pour ce compte.' };
+    }
+
+    const profile = saveStudentProfile({
+      uid: found.id,
+      email: found.email,
+      displayName: found.name,
+      matricule: found.matricule,
+      filiere: found.filiere,
+      isVerified: true,
+      verifiedAt: new Date().toISOString(),
+    });
+
+    return { success: true, profile };
+  }
+
+  // If not previously saved in local storage, allow instant direct login with student credentials
+  const isEmail = cleanId.includes('@');
+  const defaultName = cleanId.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  const defaultMatricule = `UPGC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const createdProfile = saveStudentProfile({
+    uid: 'std_' + Date.now().toString(36),
+    email: isEmail ? cleanId : `${cleanId}@etudiant.upgc.ci`,
+    displayName: defaultName || 'Étudiant UPGC',
+    matricule: defaultMatricule,
+    filiere: 'Sciences & Technologies (UPGC)',
+    isVerified: true,
+    verifiedAt: new Date().toISOString(),
+  });
+
+  return { success: true, profile: createdProfile };
+};
+
+export const getAuthorizedGoogleDomains = () => {
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  return {
+    currentOrigin,
+    devOrigin: 'https://ais-dev-s7jmfetse63yx36zu3eo4z-327586051225.europe-west1.run.app',
+    preOrigin: 'https://ais-pre-s7jmfetse63yx36zu3eo4z-327586051225.europe-west1.run.app',
+    firebaseAuthDomain: 'gen-lang-client-0578572037.firebaseapp.com',
+    firebaseRedirectHandler: 'https://gen-lang-client-0578572037.firebaseapp.com/__/auth/handler',
+    oAuthClientId: GOOGLE_CLIENT_ID,
+  };
 };
