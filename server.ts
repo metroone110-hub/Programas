@@ -788,31 +788,50 @@ const handleJekoWebhookPost = async (req: Request, res: Response) => {
 app.post('/api/webhooks/jeko', handleJekoWebhookPost);
 app.post('/api/tickets/jeko-webhook', handleJekoWebhookPost);
 
-// GET /api/tickets/jeko-status/:reference - Check Jeko payment confirmation status
+// In-memory mapping of active Jeko payment sessions for reliable status polling
+interface JekoPaymentSession {
+  requestId: string;
+  reference: string;
+  amount: number;
+  phone: string;
+  visitorId: string;
+  type: 'unitaire' | 'souche';
+  createdAt: number;
+}
+const activeJekoSessions = new Map<string, JekoPaymentSession>();
+
+// GET /api/tickets/jeko-status/:reference - Check real Jeko payment confirmation status
 app.get('/api/tickets/jeko-status/:reference', async (req: Request, res: Response) => {
   try {
     const { reference } = req.params;
     const allTickets = loadTickets();
-    const matched = allTickets.filter((t) => t.transactionId === reference);
+    const matched = allTickets.filter((t) => t.transactionId === reference || (t as any).referenceId === reference);
     if (matched.length > 0) {
       return res.json({
         success: true,
         status: 'SUCCESSFUL',
         tickets: matched,
-        message: 'Ticket repas Jeko trouvé et validé !',
+        message: 'Paiement Jèko confirmé et ticket repas prêt !',
       });
     }
 
     // Interrogation directe de Jeko avec retry exponentiel (makeRequestWithRetry)
     const client = getJekoClient();
     if (client.isConfigured) {
-      const liveCheck = await client.checkPaymentStatus(reference);
+      const session = activeJekoSessions.get(reference);
+      const lookupId = session?.requestId || reference;
+
+      const liveCheck = await client.checkPaymentStatus(lookupId);
       if (liveCheck.success && liveCheck.status === 'SUCCESS') {
-        const amount = liveCheck.amount || 200;
+        const amount = liveCheck.amount || session?.amount || 200;
+        const phone = liveCheck.payerPhone || session?.phone || '0102030405';
+        const visitorId = session?.visitorId || 'vis_jeko';
+        const type: 'unitaire' | 'souche' = session?.type || (amount >= 2000 ? 'souche' : 'unitaire');
+
         const created = createAndSaveTickets({
-          type: amount >= 2000 ? 'souche' : 'unitaire',
-          phone: '0102030405',
-          visitorId: 'vis_jeko',
+          type,
+          phone,
+          visitorId,
           paymentMethod: 'JEKO',
           referenceId: reference,
           isSimulation: false,
@@ -821,7 +840,15 @@ app.get('/api/tickets/jeko-status/:reference', async (req: Request, res: Respons
           success: true,
           status: 'SUCCESSFUL',
           tickets: created,
-          message: 'Paiement Jeko confirmé et ticket repas généré avec succès !',
+          message: 'Paiement réel Jèko confirmé par l\'opérateur ! Vos tickets ont été émis.',
+        });
+      }
+
+      if (liveCheck.status === 'FAILED') {
+        return res.json({
+          success: false,
+          status: 'FAILED',
+          message: liveCheck.message || 'Le paiement Jèko a échoué ou a expiré.',
         });
       }
     }
@@ -829,7 +856,7 @@ app.get('/api/tickets/jeko-status/:reference', async (req: Request, res: Respons
     return res.json({
       success: false,
       status: 'PENDING',
-      message: 'En attente de confirmation de paiement par Jeko.',
+      message: 'En attente de confirmation de paiement sur votre mobile (Wave, Orange, MTN ou Moov).',
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
@@ -886,6 +913,17 @@ app.post('/api/tickets/jeko-init', async (req: Request, res: Response) => {
 
     const selectedChannel = method || paymentMethod || undefined;
 
+    const appBaseUrl = (
+      req.headers.origin ||
+      (req.headers.referer ? new URL(req.headers.referer).origin : '') ||
+      process.env.APP_URL ||
+      'https://ais-dev-s7jmfetse63yx36zu3eo4z-327586051225.europe-west1.run.app'
+    ).replace(/\/+$/, '');
+
+    const successUrl = `${appBaseUrl}/?payment_success=true&reference=${encodeURIComponent(reference)}`;
+    const errorUrl = `${appBaseUrl}/?payment_error=true&reference=${encodeURIComponent(reference)}`;
+    const notifyUrl = `${appBaseUrl}/api/webhooks/jeko`;
+
     const result = await client.initiatePayment({
       reference,
       amount,
@@ -893,10 +931,25 @@ app.post('/api/tickets/jeko-init', async (req: Request, res: Response) => {
       customerName: customerName || 'Étudiant UPGC',
       visitorId: visitorId || 'vis_' + Date.now().toString(36),
       description: `Ticket Resto-U UPGC (${amount} FCFA)`,
-      returnUrl: 'https://crou-menu-resto-u-648760950612.europe-west1.run.app/',
-      notifyUrl: 'https://crou-menu-resto-u-648760950612.europe-west1.run.app/api/webhooks/jeko',
+      returnUrl: successUrl,
+      errorUrl: errorUrl,
+      notifyUrl: notifyUrl,
       paymentMethod: selectedChannel,
     });
+
+    if (result.success && result.requestId) {
+      const sessionData: JekoPaymentSession = {
+        requestId: result.requestId,
+        reference: result.reference,
+        amount,
+        phone: phone || '0102030405',
+        visitorId: visitorId || 'vis_' + Date.now().toString(36),
+        type: (type === 'souche' || amount >= 2000) ? 'souche' : 'unitaire',
+        createdAt: Date.now(),
+      };
+      activeJekoSessions.set(result.requestId, sessionData);
+      activeJekoSessions.set(result.reference, sessionData);
+    }
 
     return res.json(result);
   } catch (error: any) {

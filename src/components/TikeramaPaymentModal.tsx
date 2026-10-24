@@ -51,6 +51,17 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
   const [operator, setOperator] = useState<'orange' | 'mtn' | 'moov'>('orange');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Real Jeko active session state
+  const [activeSession, setActiveSession] = useState<{
+    reference: string;
+    requestId?: string;
+    paymentUrl?: string;
+    amount: number;
+    methodName: string;
+  } | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(false);
+  const [sessionSuccess, setSessionSuccess] = useState<boolean>(false);
 
   // Sync state on open
   useEffect(() => {
@@ -58,11 +69,44 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
       setErrorMessage(null);
       setIsProcessing(false);
       setShowInputStep(false);
+      setActiveSession(null);
+      setIsCheckingStatus(false);
+      setSessionSuccess(false);
       setAcceptedTerms(true);
       const saved = localStorage.getItem('crouk_student_momo_phone');
       if (saved) setPhone(saved);
     }
   }, [isOpen]);
+
+  // Polling for real transaction completion on Jeko servers
+  useEffect(() => {
+    if (!activeSession || sessionSuccess) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/tickets/jeko-status/${encodeURIComponent(activeSession.reference)}`);
+        const data = await res.json();
+        if (data.success && data.status === 'SUCCESSFUL' && isMounted) {
+          setSessionSuccess(true);
+          clearInterval(interval);
+          setTimeout(() => {
+            if (isMounted) {
+              onPaymentSuccess(data.tickets || []);
+              onClose();
+            }
+          }, 1500);
+        }
+      } catch (e) {
+        // quiet poll
+      }
+    }, 3500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeSession, sessionSuccess, onPaymentSuccess, onClose]);
 
   if (!isOpen) return null;
 
@@ -98,6 +142,31 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
     setShowInputStep(true);
   };
 
+  const checkManualStatus = async () => {
+    if (!activeSession) return;
+    setIsCheckingStatus(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`/api/tickets/jeko-status/${encodeURIComponent(activeSession.reference)}`);
+      const data = await res.json();
+      if (data.success && data.status === 'SUCCESSFUL' && data.tickets?.length > 0) {
+        setSessionSuccess(true);
+        setTimeout(() => {
+          onPaymentSuccess(data.tickets);
+          onClose();
+        }, 1200);
+      } else if (data.status === 'FAILED') {
+        setErrorMessage(data.message || 'Le paiement a échoué ou a expiré sur Jèko.');
+      } else {
+        setErrorMessage(data.message || 'Paiement en attente : nous n\'avons pas encore reçu la confirmation de Jèko. Veuillez valider le paiement sur votre mobile et réessayer.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erreur lors de la vérification');
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
   const handleConfirmPayment = async (forceSimulate = false) => {
     setErrorMessage(null);
 
@@ -117,8 +186,8 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
       setIsProcessing(true);
       localStorage.setItem('crouk_student_momo_phone', cleanPhone);
 
-      // Simulation mode or card payment
-      if (forceSimulate || selectedMethod === 'carte') {
+      // Simulation mode (only when explicitly requested by clicking test button)
+      if (forceSimulate) {
         const res = await fetch('/api/tickets/jeko-simulate-success', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -126,7 +195,7 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
             phone: cleanPhone,
             type: ticketPack,
             visitorId,
-            operator: getMethodName(),
+            operator: `${getMethodName()} (Test Simulation)`,
           }),
         });
         const data = await res.json();
@@ -137,7 +206,7 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
         }
       }
 
-      // Real payment through Jèko API
+      // REAL direct payment communication with Jèko API
       const res = await fetch('/api/tickets/jeko-init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,56 +223,27 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        // Fallback to pay-momo if jeko-init fails
-        const fallbackRes = await fetch('/api/tickets/pay-momo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: cleanPhone,
-            type: ticketPack,
-            visitorId,
-            paymentMethod: 'JEKO',
-            forceSimulation: true,
-          }),
-        });
-        const fallbackData = await fallbackRes.json();
-        if (fallbackData.tickets && fallbackData.tickets.length > 0) {
-          onPaymentSuccess(fallbackData.tickets);
-          onClose();
-          return;
-        }
-        throw new Error(data.message || data.error || 'Erreur lors de l\'initialisation');
+        // Display REAL error from Jeko API directly to the user! NO fake fallback!
+        throw new Error(data.message || data.error || 'Erreur lors de la communication avec les serveurs Jèko.');
       }
 
-      // If direct checkout URL provided, open it
+      // Open real Jeko checkout redirect URL
       if (data.paymentUrl && data.paymentUrl.startsWith('http')) {
         window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
       }
 
-      // Fetch student tickets
-      const ticketsRes = await fetch(`/api/tickets/my-tickets?visitorId=${encodeURIComponent(visitorId)}`);
-      const ticketsData = await ticketsRes.json();
-      if (ticketsData.tickets && ticketsData.tickets.length > 0) {
-        onPaymentSuccess(ticketsData.tickets);
-      }
-      onClose();
+      // Enter REAL waiting session
+      setActiveSession({
+        reference: data.reference,
+        requestId: data.requestId,
+        paymentUrl: data.paymentUrl,
+        amount: totalAmount,
+        methodName: getMethodName(),
+      });
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || data.errorDetail || 'Erreur lors du paiement');
-      }
-
-      if (data.tickets && data.tickets.length > 0) {
-        onPaymentSuccess(data.tickets);
-        onClose();
-      } else {
-        // Fallback fetch if tickets not returned directly
-        const ticketsRes = await fetch(`/api/tickets/my-tickets?visitorId=${encodeURIComponent(visitorId)}`);
-        const ticketsData = await ticketsRes.json();
-        onPaymentSuccess(ticketsData.tickets || []);
-        onClose();
-      }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Échec du paiement. Veuillez réessayer.');
+      console.error('[Jeko Payment Error]:', err);
+      setErrorMessage(err.message || 'Échec de l\'initialisation du paiement avec Jèko Pay.');
     } finally {
       setIsProcessing(false);
     }
@@ -250,7 +290,82 @@ export const TikeramaPaymentModal: React.FC<TikeramaPaymentModalProps> = ({
         {/* ============================================================== */}
         <div className="p-5 sm:p-6 space-y-6 overflow-y-auto">
           
-          {!showInputStep ? (
+          {activeSession ? (
+            /* STEP 3: LIVE REAL JEKO SESSION */
+            <div className="space-y-4 animate-in fade-in duration-150 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center mx-auto shadow-md">
+                <Smartphone className="w-7 h-7 animate-pulse" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 font-bold">
+                    Passerelle Jèko Pay • {activeSession.methodName}
+                  </span>
+                  <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-950 font-bold">
+                    {formattedAmount}
+                  </span>
+                </div>
+                <h4 className="font-black text-slate-950 text-base mt-2">
+                  Demande de paiement transmise à Jèko
+                </h4>
+                <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto leading-relaxed">
+                  Veuillez valider le paiement sur votre mobile ({activeSession.methodName}). Votre ticket repas officiel sera généré dès confirmation reçue de Jèko.
+                </p>
+              </div>
+
+              {activeSession.paymentUrl && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Si la page de paiement Jèko ne s'est pas ouverte automatiquement :
+                  </p>
+                  <a
+                    href={activeSession.paymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
+                  >
+                    <span>Ouvrir la page de paiement sécurisée Jèko</span>
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              )}
+
+              {sessionSuccess ? (
+                <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-2xl text-xs text-emerald-900 font-bold flex items-center justify-center gap-2">
+                  <Check className="w-5 h-5 text-emerald-600" />
+                  <span>Paiement réel confirmé par Jèko ! Génération de vos tickets en cours...</span>
+                </div>
+              ) : (
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={isCheckingStatus}
+                    onClick={checkManualStatus}
+                    className="w-full py-3.5 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-black shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isCheckingStatus ? 'animate-spin text-amber-400' : ''}`} />
+                    <span>{isCheckingStatus ? 'Interrogation des serveurs Jèko...' : 'Vérifier la confirmation de paiement'}</span>
+                  </button>
+
+                  {errorMessage && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2 text-left">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{errorMessage}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSession(null)}
+                    className="text-xs font-bold text-slate-400 hover:text-slate-600 underline pt-1 block mx-auto cursor-pointer"
+                  >
+                    Annuler et changer de moyen de paiement
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : !showInputStep ? (
             <>
               {/* PAYS SELECTOR */}
               <div>

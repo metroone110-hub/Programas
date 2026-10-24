@@ -1079,15 +1079,6 @@ export const StudentTicketsModal: React.FC<StudentTicketsModalProps> = ({
 
                       <button
                         type="button"
-                        disabled={jekoChecking}
-                        onClick={() => simulateJekoValidation(jekoSession.reference)}
-                        className="w-full py-2.5 px-3 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 rounded-2xl text-xs font-black transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <span>🧪 Valider immédiatement (Test Resto U)</span>
-                      </button>
-
-                      <button
-                        type="button"
                         onClick={() => setJekoSession(null)}
                         className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline pt-1 block mx-auto cursor-pointer"
                       >

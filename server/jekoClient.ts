@@ -36,6 +36,19 @@ export interface JekoInitPaymentResult {
   rawResponse?: any;
 }
 
+export interface JekoCheckPaymentResult {
+  success: boolean;
+  reference: string;
+  status: 'SUCCESS' | 'PENDING' | 'FAILED';
+  amount?: number;
+  payerPhone?: string;
+  payerName?: string;
+  transactionId?: string;
+  paymentMethod?: string;
+  message?: string;
+  rawResponse?: any;
+}
+
 export interface JekoDiagnosisResult {
   testedAt: string;
   apiKeyPreview: string;
@@ -323,7 +336,7 @@ export class JekoClient {
         storeId: this.storeId || '895f3110-845b-4d11-a291-f28dc954c0cd',
         amountCents: amount,
         currency: 'XOF',
-        reference: `ORDER-${reference}`,
+        reference: reference,
         paymentDetails: {
           type: 'redirect',
           data: {
@@ -404,14 +417,7 @@ export class JekoClient {
   /**
    * Query transaction status from Jeko Partner API using makeRequestWithRetry
    */
-  async checkPaymentStatus(reference: string): Promise<{
-    success: boolean;
-    reference: string;
-    status: 'SUCCESS' | 'PENDING' | 'FAILED';
-    amount?: number;
-    rawResponse?: any;
-    message?: string;
-  }> {
+  async checkPaymentStatus(reference: string): Promise<JekoCheckPaymentResult> {
     if (!this.isConfigured) {
       return {
         success: false,
@@ -452,11 +458,24 @@ export class JekoClient {
           rawStatus.includes('INITIATED') ||
           rawStatus.includes('PROCESSING');
 
+        // Extract transaction details according to official Jeko format
+        const txn = json.transaction;
+        const realAmount = txn?.amount?.amount || (json.amountCents ? Number(json.amountCents) : undefined);
+        const payerPhone = txn?.counterpartIdentifier;
+        const payerName = txn?.counterpartLabel;
+        const transactionId = txn?.id || json.id;
+        const paymentMethod = json.paymentMethod;
+
         return {
           success: true,
-          reference,
+          reference: json.reference || reference,
           status: isSuccess ? 'SUCCESS' : isPending ? 'PENDING' : 'FAILED',
-          amount: json.amountCents ? Number(json.amountCents) : undefined,
+          amount: realAmount,
+          payerPhone,
+          payerName,
+          transactionId,
+          paymentMethod,
+          message: json.errorReason || (isSuccess ? 'Paiement Jèko validé avec succès' : undefined),
           rawResponse: json,
         };
       }

@@ -229,30 +229,26 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
     await initiatePayment(orderId, amount, selectedMethod);
   };
 
-  // Immediate simulation test check
-  const handleTestSimulation = async () => {
+  // Check real payment status on Jeko servers
+  const checkSessionStatus = async () => {
+    if (!paymentSession) return;
     setIsProcessing(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/tickets/jeko-simulate-success', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: amount >= 2000 ? 'souche' : 'unitaire',
-          phone: customerPhone || '0102030405',
-          visitorId,
-          operator: METHODS_CONFIG[selectedMethod].label,
-        }),
-      });
+      const res = await fetch(`/api/tickets/jeko-status/${encodeURIComponent(paymentSession.reference)}`);
       const data = await res.json();
-      if (data.success && data.tickets) {
-        setSuccessMsg(`✅ Paiement ${selectedMethod.toUpperCase()} validé avec succès en mode test !`);
+      if (data.success && data.status === 'SUCCESSFUL' && data.tickets?.length > 0) {
+        setSuccessMsg('✅ Paiement Jèko confirmé avec succès ! Ticket repas généré.');
         if (onPaymentSuccess) {
           onPaymentSuccess(data.tickets);
         }
+      } else if (data.status === 'FAILED') {
+        setErrorMsg(data.message || 'Le paiement a échoué ou a expiré sur Jèko.');
+      } else {
+        setSuccessMsg(data.message || 'Paiement en attente de validation sur votre mobile. Complétez le paiement puis réessayez.');
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Erreur simulation');
+      setErrorMsg(err.message || 'Erreur lors de la vérification');
     } finally {
       setIsProcessing(false);
     }
@@ -371,12 +367,12 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
       )}
 
       {/* ACTION BUTTONS */}
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
         <button
           type="button"
           onClick={handlePayment}
           disabled={isProcessing}
-          className="flex-1 py-3 px-4 bg-slate-950 hover:bg-slate-800 text-white font-black text-xs rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
+          className="w-full sm:flex-1 py-3 px-4 bg-slate-950 hover:bg-slate-800 text-white font-black text-xs rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
         >
           {isProcessing ? (
             <>
@@ -390,15 +386,18 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
           )}
         </button>
 
-        <button
-          type="button"
-          onClick={handleTestSimulation}
-          disabled={isProcessing}
-          title="Tester sans débit réel"
-          className="py-3 px-3.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-black text-xs rounded-2xl transition-all active:scale-98 disabled:opacity-50 cursor-pointer shrink-0"
-        >
-          🧪 Test
-        </button>
+        {paymentSession && (
+          <button
+            type="button"
+            onClick={checkSessionStatus}
+            disabled={isProcessing}
+            title="Vérifier la confirmation de paiement"
+            className="w-full sm:w-auto py-3 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-2xl transition-all active:scale-98 disabled:opacity-50 cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} />
+            <span>Vérifier validation</span>
+          </button>
+        )}
       </div>
     </div>
   );

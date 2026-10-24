@@ -214,6 +214,32 @@ export const StudentMenu: React.FC<StudentMenuProps> = ({
         showToast(`🎉 Bienvenue ${res.profile.displayName} ! Code de validation envoyé à votre Gmail.`, 'success');
       }
     });
+
+    // Check if returning from Jeko payment redirect
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('payment_success') === 'true') {
+        const ref = params.get('reference') || params.get('ref');
+        if (ref) {
+          fetch(`/api/tickets/jeko-status/${encodeURIComponent(ref)}`)
+            .then((r) => r.json())
+            .then((res) => {
+              if (res.success && res.status === 'SUCCESSFUL') {
+                showToast('🎉 Paiement Jèko confirmé avec succès ! Votre ticket repas est prêt.', 'success');
+                fetchTicketsCount();
+                setIsTicketsModalOpen(true);
+              } else {
+                showToast(res.message || 'Paiement en cours de traitement par Jèko...', 'info');
+              }
+            })
+            .catch(() => {});
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (params.get('payment_error') === 'true') {
+        showToast('Le paiement n\'a pas abouti sur Jèko Pay.', 'error');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch {}
   }, [visitorId]);
 
   // Helper to map image for dish based on title
