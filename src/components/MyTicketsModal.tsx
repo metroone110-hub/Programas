@@ -55,8 +55,14 @@ export const MyTicketsModal: React.FC<Props> = ({ isOpen, onClose, user, onSelec
                 onClick={() => onSelectTicket(t)}
                 className="p-3.5 bg-slate-50 hover:bg-orange-50/50 border border-slate-200 hover:border-orange-200 rounded-2xl cursor-pointer transition-all flex items-center justify-between gap-3 group"
               >
-                <div className="p-2.5 bg-white border border-slate-200 rounded-xl group-hover:border-orange-300">
-                  <QrCode className="w-6 h-6 text-slate-700 group-hover:text-orange-600" />
+                <div className="w-12 h-10 rounded-xl overflow-hidden border border-slate-200 group-hover:border-orange-400 flex-shrink-0 bg-slate-900 shadow-xs relative">
+                  <img
+                    src="/assets/aistudio/IMG_1038_80198fc0.jpeg"
+                    alt="Ticket CROU"
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                 </div>
 
                 <div className="flex-1 min-w-0">

@@ -163,16 +163,28 @@ export const StudentTicketsModal: React.FC<Props> = ({
                     </span>
                   </div>
 
-                  <h5 className="font-bold text-slate-900 text-sm group-hover:text-orange-600 transition-colors">
-                    {t.dishName}
-                  </h5>
+                  <div className="flex items-center space-x-3 my-2">
+                    <div className="w-14 h-9 rounded-lg overflow-hidden border border-slate-200 bg-slate-900 flex-shrink-0 relative">
+                      <img
+                        src="/assets/aistudio/IMG_1038_80198fc0.jpeg"
+                        alt="Ticket Officiel CROU"
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-black/20"></div>
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-orange-600 transition-colors truncate">
+                        {t.dishName}
+                      </h5>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {t.canteenName}
+                      </p>
+                    </div>
+                  </div>
 
-                  <p className="text-xs text-slate-500 mt-1">
-                    {t.canteenName}
-                  </p>
-
-                  <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="font-mono text-slate-500">{t.ticketNumber}</span>
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="font-mono text-[11px] text-slate-500">{t.ticketNumber}</span>
                     <span className="font-bold text-orange-600">{t.price} FCFA</span>
                   </div>
                 </div>

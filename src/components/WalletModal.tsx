@@ -15,7 +15,7 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
   const [selectedAmount, setSelectedAmount] = useState<number>(1000);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [selectedMethod, setSelectedMethod] = useState<'Wave' | 'Orange' | 'MTN' | 'Moov'>('Wave');
-  const [phoneForPayment, setPhoneForPayment] = useState<string>(user.phone || '');
+  const [phoneForPayment, setPhoneForPayment] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
 

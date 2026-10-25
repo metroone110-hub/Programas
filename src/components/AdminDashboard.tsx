@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -10,12 +10,27 @@ import {
   AlertTriangle, 
   ArrowLeft, 
   UtensilsCrossed, 
-  TrendingUp,
-  Image as ImageIcon,
-  DollarSign
+  TrendingUp, 
+  ShieldCheck, 
+  Search, 
+  QrCode, 
+  Ticket, 
+  DollarSign, 
+  AlertOctagon, 
+  UserCheck, 
+  UserX,
+  Scan,
+  RefreshCw
 } from 'lucide-react';
-import { Dish, Canteen, CrowdLevel } from '../types';
+import { Dish, Canteen, CrowdLevel, UserProfile, MealTicket } from '../types';
 import { GoogleGenAI } from '@google/genai';
+import { ImageWithLoader } from './ImageWithLoader';
+import { 
+  getAllRegisteredStudents, 
+  verifyTurnstileTicket, 
+  getFraudAuditLogs, 
+  FraudAuditLog 
+} from '../services/studentAuth';
 
 interface Props {
   canteen: Canteen;
@@ -36,6 +51,8 @@ export const AdminDashboard: React.FC<Props> = ({
   onDeleteDish,
   onClose
 }) => {
+  const [adminTab, setAdminTab] = useState<'dishes' | 'fraud' | 'tickets'>('dishes');
+
   // New dish form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -47,6 +64,27 @@ export const AdminDashboard: React.FC<Props> = ({
   // AI Scan state
   const [isScanning, setIsScanning] = useState(false);
   const [scanResultNotice, setScanResultNotice] = useState<string | null>(null);
+
+  // Anti-fraud & Student Matricules Registry
+  const [students, setStudents] = useState<UserProfile[]>([]);
+  const [matriculeSearch, setMatriculeSearch] = useState('');
+  const [fraudLogs, setFraudLogs] = useState<FraudAuditLog[]>([]);
+
+  // Turnstile scanner simulation
+  const [scanTicketNumber, setScanTicketNumber] = useState('');
+  const [scanMatricule, setScanMatricule] = useState('');
+  const [scanResult, setScanResult] = useState<{ status: string; message: string; ticket?: MealTicket } | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  useEffect(() => {
+    loadRegistryData();
+  }, []);
+
+  const loadRegistryData = async () => {
+    const list = await getAllRegisteredStudents();
+    setStudents(list);
+    setFraudLogs(getFraudAuditLogs());
+  };
 
   // Crowd controls
   const handleCrowdChange = (level: CrowdLevel) => {
@@ -68,15 +106,15 @@ export const AdminDashboard: React.FC<Props> = ({
     const newDish: Dish = {
       id: 'dish_' + Math.random().toString(36).substring(2, 9),
       name: name.trim(),
-      description: description.trim() || 'Plat préparé avec soin par l\'équipe de la cantine CROU.',
+      description: description.trim() || 'Plat préparé avec soin par l\'équipe du restaurant universitaire CROU.',
       category,
       price: parseInt(price, 10) || 200,
-      regularPrice: (parseInt(price, 10) || 200) * 8,
+      regularPrice: (parseInt(price, 10) || 200) * 10,
       imageUrl: imageUrl.trim() || 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
       isAvailable: true,
       mealType,
       canteenId: canteen.id,
-      tags: ['Nouveauté', 'Resto U'],
+      tags: ['Distribution Officielle', 'Resto U'],
       rating: 5.0,
       ratingCount: 1
     };
@@ -87,393 +125,566 @@ export const AdminDashboard: React.FC<Props> = ({
     setImageUrl('');
   };
 
-  // AI Menu scanner
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleRunTurnstileCheck = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scanTicketNumber.trim()) return;
 
-    setIsScanning(true);
-    setScanResultNotice(null);
+    setIsVerifying(true);
+    setScanResult(null);
 
-    try {
-      // In browser, create preview and simulate or use Gemini API
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        
-        try {
-          const ai = new GoogleGenAI();
-          const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: file.type || 'image/jpeg',
-                      data: base64Data
-                    }
-                  },
-                  {
-                    text: 'Analyse cette image de tableau ou menu de cantine / restaurant universitaire. Extrais le nom du plat principal détecté, une brève description appétissante, le prix (si non visible, mets 200) et la catégorie (plat_principal, entree, dessert ou boisson). Réponds UNIQUEMENT en JSON avec les clés : name, description, price, category.'
-                  }
-                ]
-              }
-            ]
-          });
-
-          const text = response.text || '';
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            setName(parsed.name || 'Plat Détecté');
-            setDescription(parsed.description || 'Plat extrait par IA');
-            setPrice(parsed.price ? String(parsed.price) : '200');
-            if (parsed.category) setCategory(parsed.category);
-            setScanResultNotice('Menu analysé avec succès par l\'IA ! Vous pouvez vérifier et valider ci-dessous.');
-          } else {
-            fallbackScanExtraction();
-          }
-        } catch (apiErr) {
-          fallbackScanExtraction();
-        } finally {
-          setIsScanning(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      fallbackScanExtraction();
-      setIsScanning(false);
-    }
-  };
-
-  const fallbackScanExtraction = () => {
-    setName('Plat du Jour : Riz Sauce Arachide & Bœuf');
-    setDescription('Détecté sur le tableau de la cantine CROU. Riz blanc avec sauce arachide onctueuse et morceaux de bœuf.');
-    setPrice('200');
-    setCategory('plat_principal');
-    setScanResultNotice('Plat du tableau extrait automatiquement ! Formulaire pré-rempli.');
+    const res = await verifyTurnstileTicket(scanTicketNumber.trim(), scanMatricule.trim());
+    setScanResult(res);
+    setIsVerifying(false);
+    loadRegistryData();
   };
 
   const canteenDishes = dishes.filter(d => d.canteenId === canteen.id);
 
+  const filteredStudents = students.filter(s => {
+    const q = matriculeSearch.toLowerCase();
+    const matMatch = (s.matricule || '').toLowerCase().includes(q);
+    const nameMatch = (s.displayName || '').toLowerCase().includes(q);
+    return matMatch || nameMatch;
+  });
+
   return (
-    <div className="min-h-screen bg-slate-100 pb-20 animate-fadeIn">
-      {/* Top Navbar */}
-      <div className="bg-slate-900 text-white sticky top-0 z-30 shadow-md">
-        <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+      {/* Top Header */}
+      <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-lg border-b border-slate-800">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors"
+              className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-300 hover:text-white"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded bg-orange-600 text-[10px] font-bold uppercase tracking-wider text-white">
-                  Panneau Admin
+                <span className="text-base font-black font-cabinet text-white">
+                  Administration Restau. U • CROU Korhogo
                 </span>
-                <h1 className="text-base font-bold text-white font-cabinet truncate max-w-[240px] sm:max-w-none">
-                  {canteen.name}
-                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  crouk_admin
+                </span>
               </div>
-              <p className="text-xs text-slate-400">Gestion des menus, stocks et affluence étudiante</p>
+              <p className="text-xs text-slate-400">
+                {canteen.name} • UPGC Korhogo
+              </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-200 transition-colors"
-          >
-            Quitter
-          </button>
-        </div>
-      </div>
+          {/* Navigation Tabs */}
+          <div className="flex items-center space-x-1.5 p-1 bg-slate-800 rounded-2xl border border-slate-700 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setAdminTab('dishes')}
+              className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 ${
+                adminTab === 'dishes'
+                  ? 'bg-orange-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <UtensilsCrossed className="w-4 h-4" />
+              <span>Plats Distribués</span>
+            </button>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+            <button
+              type="button"
+              onClick={() => { setAdminTab('fraud'); loadRegistryData(); }}
+              className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 ${
+                adminTab === 'fraud'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Contrôle Anti-Fraude ({students.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setAdminTab('tickets'); loadRegistryData(); }}
+              className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 ${
+                adminTab === 'tickets'
+                  ? 'bg-slate-700 text-amber-300 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Ticket className="w-4 h-4" />
+              <span>Billetterie & Ventes</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6">
         
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-medium">Repas servis aujourd'hui</span>
-              <UtensilsCrossed className="w-4 h-4 text-orange-500" />
+        {/* TAB 1: PLATS DU MENU CROU ("mets juste les plats distribuer par l'admin") */}
+        {adminTab === 'dishes' && (
+          <div className="space-y-6">
+            
+            {/* Live Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+                <span className="text-xs text-slate-500 font-semibold block">Plats Distribués</span>
+                <span className="text-2xl font-black font-cabinet text-slate-900">{canteenDishes.length}</span>
+                <span className="text-[11px] text-emerald-600 font-bold block mt-0.5">
+                  {canteenDishes.filter(d => d.isAvailable).length} en service actif
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+                <span className="text-xs text-slate-500 font-semibold block">Tarif Subventionné</span>
+                <span className="text-2xl font-black font-cabinet text-orange-600">200 FCFA</span>
+                <span className="text-[11px] text-slate-400 block mt-0.5">Subvention CROUK 90%</span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+                <span className="text-xs text-slate-500 font-semibold block">File au Tourniquet</span>
+                <span className="text-lg font-black text-slate-900 capitalize">
+                  {canteen.crowdLevel === 'faible' ? 'Fluide' : canteen.crowdLevel === 'moyen' ? 'Moyenne' : 'Forte'}
+                </span>
+                <span className="text-[11px] text-slate-400 block mt-0.5">~{canteen.waitingTimeMinutes} min d'attente</span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+                <span className="text-xs text-slate-500 font-semibold block">Étudiants Inscrits</span>
+                <span className="text-2xl font-black font-cabinet text-slate-900">{students.length}</span>
+                <span className="text-[11px] text-indigo-600 font-bold block mt-0.5">Matricules audités</span>
+              </div>
             </div>
-            <div className="text-2xl font-black font-cabinet text-slate-900">842</div>
-            <div className="text-[11px] text-emerald-600 font-semibold mt-1">↑ +14% vs hier</div>
-          </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-medium">Recettes subventionnées</span>
-              <DollarSign className="w-4 h-4 text-emerald-600" />
-            </div>
-            <div className="text-2xl font-black font-cabinet text-slate-900">168 400 F</div>
-            <div className="text-[11px] text-slate-500 mt-1">100% collecté via Mobile Money</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-medium">Affluence actuelle</span>
-              <Users className="w-4 h-4 text-blue-500" />
-            </div>
-            <div className="text-lg font-bold text-slate-900 capitalize">
-              {canteen.crowdLevel === 'faible' ? 'Fluide (Faible)' : canteen.crowdLevel === 'moyen' ? 'Moyenne' : 'Forte affluence'}
-            </div>
-            <div className="text-[11px] text-slate-500 mt-1">~{canteen.waitingTimeMinutes} min d'attente</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-medium">Plats au menu</span>
-              <TrendingUp className="w-4 h-4 text-purple-500" />
-            </div>
-            <div className="text-2xl font-black font-cabinet text-slate-900">{canteenDishes.length}</div>
-            <div className="text-[11px] text-slate-500 mt-1">{canteenDishes.filter(d => d.isAvailable).length} disponibles</div>
-          </div>
-        </div>
-
-        {/* Real-time Crowd Management */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
-          <h2 className="text-base font-bold text-slate-900 mb-1 font-cabinet">
-            Affluence en direct au tourniquet
-          </h2>
-          <p className="text-xs text-slate-500 mb-4">
-            Ajustez l'état de la file d'attente pour informer les étudiants en temps réel sur leur téléphone.
-          </p>
-
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => handleCrowdChange('faible')}
-              className={`p-3 rounded-2xl border flex flex-col items-center text-center transition-all ${
-                canteen.crowdLevel === 'faible'
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20'
-                  : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-emerald-500 mb-1.5"></span>
-              <span className="font-bold text-xs">Fluide / Faible</span>
-              <span className="text-[10px] text-slate-500 mt-0.5">~5 min d'attente</span>
-            </button>
-
-            <button
-              onClick={() => handleCrowdChange('moyen')}
-              className={`p-3 rounded-2xl border flex flex-col items-center text-center transition-all ${
-                canteen.crowdLevel === 'moyen'
-                  ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20'
-                  : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-amber-500 mb-1.5"></span>
-              <span className="font-bold text-xs">Moyenne</span>
-              <span className="text-[10px] text-slate-500 mt-0.5">~15 min d'attente</span>
-            </button>
-
-            <button
-              onClick={() => handleCrowdChange('eleve')}
-              className={`p-3 rounded-2xl border flex flex-col items-center text-center transition-all ${
-                canteen.crowdLevel === 'eleve'
-                  ? 'border-red-500 bg-red-50 text-red-900 ring-2 ring-red-500/20'
-                  : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-red-500 mb-1.5"></span>
-              <span className="font-bold text-xs">Forte affluence</span>
-              <span className="text-[10px] text-slate-500 mt-0.5">~30 min d'attente</span>
-            </button>
-          </div>
-        </div>
-
-        {/* AI Menu Scanner & Add Dish Form */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* Add dish form */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+            {/* Live Crowd Adjuster */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-bold text-slate-900 font-cabinet">Ajouter un plat au menu</h2>
-                <p className="text-xs text-slate-500">Publiez les préparations culinaires du jour</p>
+                <h3 className="font-extrabold text-sm text-slate-900">Affluence en Direct (Radar CROU)</h3>
+                <p className="text-xs text-slate-500">Mettez à jour le temps d'attente visible par les étudiants.</p>
               </div>
-
-              {/* AI Scan Trigger Button */}
-              <label className="cursor-pointer inline-flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all active:scale-95">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Scanner avec IA</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handlePhotoUpload}
-                  disabled={isScanning}
-                />
-              </label>
+              <div className="flex items-center space-x-2">
+                {(['faible', 'moyen', 'eleve'] as const).map(lvl => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => handleCrowdChange(lvl)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      canteen.crowdLevel === lvl
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {lvl === 'faible' ? '🟢 Fluide (~5m)' : lvl === 'moyen' ? '🟡 Moyenne (~15m)' : '🔴 Forte (~30m)'}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {isScanning && (
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center space-x-3 text-xs text-purple-900">
-                <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                <span>Gemini analyse la photo du menu ou du tableau de cantine...</span>
-              </div>
-            )}
+            {/* Create Dish Form & Current Dish List */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Form */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-black text-base text-slate-900 font-cabinet">Ajouter un Plat Distribué</h3>
+                    <p className="text-xs text-slate-500">Configurez le menu servi au restaurant universitaire.</p>
+                  </div>
+                  <span className="px-2.5 py-1 bg-orange-100 text-orange-800 text-[10px] font-black rounded-lg">
+                    Tarif 200 FCFA
+                  </span>
+                </div>
 
-            {scanResultNotice && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-2 text-xs text-emerald-900">
-                <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span>{scanResultNotice}</span>
-              </div>
-            )}
+                <form onSubmit={handleCreateDish} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nom du Plat *</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Ex: Tchep au Poulet & Banane Alloco"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold"
+                      required
+                    />
+                  </div>
 
-            <form onSubmit={handleCreateDish} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Nom du plat</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Sauce Graine avec Foutou Banane"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white"
-                />
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Description du repas</label>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Ingrédients, garniture..."
+                      rows={2}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Service</label>
+                      <select
+                        value={mealType}
+                        onChange={(e) => setMealType(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold"
+                      >
+                        <option value="dejeuner">☀️ Déjeuner (Midi)</option>
+                        <option value="diner">🌙 Dîner (Soir)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Catégorie</label>
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold"
+                      >
+                        <option value="plat_principal">Plat Principal Chaud</option>
+                        <option value="entree">Entrée & Alloco</option>
+                        <option value="dessert">Dessert & Dêguê</option>
+                        <option value="boisson">Jus de bissap & Boisson</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Photo du plat (URL)</label>
+                    <input
+                      type="url"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Publier au Menu des Étudiants</span>
+                  </button>
+                </form>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Description & Ingrédients</label>
-                <textarea
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ex: Sauce mijotée avec viande de bœuf tendre et piment doux..."
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white"
-                />
+              {/* Dishes List */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-base text-slate-900 font-cabinet">
+                    Plats Actuels ({canteenDishes.length})
+                  </h3>
+                  <span className="text-xs text-slate-400">Modifications instantanées</span>
+                </div>
+
+                <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                  {canteenDishes.map((d) => (
+                    <div
+                      key={d.id}
+                      className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/70 transition-colors"
+                    >
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-200 flex-shrink-0">
+                        <ImageWithLoader
+                          src={d.imageUrl}
+                          alt={d.name}
+                          className="w-full h-full"
+                          imgClassName="object-cover"
+                          showSpiralText={false}
+                        />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-xs text-slate-900 truncate">
+                            {d.name}
+                          </span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            d.mealType === 'dejeuner' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'
+                          }`}>
+                            {d.mealType === 'dejeuner' ? 'Midi' : 'Soir'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-orange-600">
+                          {d.price} FCFA
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => onToggleDishAvailability(d.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                            d.isAvailable
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                              : 'bg-red-100 text-red-800 hover:bg-red-200'
+                          }`}
+                        >
+                          {d.isAvailable ? 'En stock' : 'Rupture'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onDeleteDish(d.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                          title="Supprimer ce plat"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Prix (FCFA)</label>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: CONTRÔLE ANTI-FRAUDE & REGISTRE DES MATRICULES */}
+        {adminTab === 'fraud' && (
+          <div className="space-y-6">
+            
+            {/* Turnstile Scan Simulator */}
+            <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-red-600/30 border border-red-500/30 rounded-2xl">
+                    <Scan className="w-6 h-6 text-red-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-white font-cabinet">
+                      Simulateur de Borne / Scanner Tourniquet CROU
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Vérification immédiate de l'authenticité et détection de tentative de fraude.
+                    </p>
+                  </div>
+                </div>
+                <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-mono font-bold text-amber-300">
+                  Borne Restau U #01
+                </span>
+              </div>
+
+              <form onSubmit={handleRunTurnstileCheck} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
                   <input
-                    type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    type="text"
+                    value={scanTicketNumber}
+                    onChange={(e) => setScanTicketNumber(e.target.value)}
+                    placeholder="Entrez le numéro du ticket (ex: CROUK-2026-016278)"
+                    className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-xs sm:text-sm text-white placeholder:text-slate-500 font-mono tracking-wider focus:outline-none focus:border-orange-500"
+                    required
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Service</label>
-                  <select
-                    value={mealType}
-                    onChange={(e) => setMealType(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={scanMatricule}
+                    onChange={(e) => setScanMatricule(e.target.value.toUpperCase())}
+                    placeholder="Matricule de l'étudiant (Optionnel)"
+                    className="flex-1 px-3 py-3 bg-black/50 border border-white/20 rounded-2xl text-xs text-white placeholder:text-slate-500 font-mono uppercase focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isVerifying}
+                    className="px-5 py-3 bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center space-x-1.5 active:scale-95 disabled:opacity-50 cursor-pointer flex-shrink-0"
                   >
-                    <option value="dejeuner">Déjeuner (Midi)</option>
-                    <option value="diner">Dîner (Soir)</option>
-                  </select>
+                    <span>{isVerifying ? 'Scan...' : 'Scanner'}</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Scan Result Feedback */}
+              {scanResult && (
+                <div className={`p-4 rounded-2xl border text-xs leading-relaxed flex items-start space-x-3 ${
+                  scanResult.status === 'valid'
+                    ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-200'
+                    : 'bg-red-950/70 border-red-500/60 text-red-200 animate-bounce'
+                }`}>
+                  {scanResult.status === 'valid' ? (
+                    <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertOctagon className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <span className="font-extrabold text-sm block">{scanResult.message}</span>
+                    {scanResult.ticket && (
+                      <span className="text-[11px] text-slate-300 block mt-1 font-mono">
+                        Ticket: {scanResult.ticket.ticketNumber} • Date: {scanResult.ticket.date} • Repas: {scanResult.ticket.dishName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Students Matricules Table */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-base text-slate-900 font-cabinet">
+                    Registre des Étudiants & Matricules UPGC ({students.length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Contrôle des numéros de matricule pour prévenir toute tentative d'usurpation ou de fraude.
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Catégorie</label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="plat_principal">Plat Principal</option>
-                    <option value="entree">Entrée</option>
-                    <option value="dessert">Dessert</option>
-                    <option value="boisson">Boisson</option>
-                  </select>
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={matriculeSearch}
+                    onChange={(e) => setMatriculeSearch(e.target.value)}
+                    placeholder="Rechercher un matricule..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">URL de la photo (Optionnel)</label>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white"
-                />
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-y border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">Matricule Étudiant</th>
+                      <th className="py-3 px-4">Nom et Prénoms</th>
+                      <th className="py-3 px-4">Solde</th>
+                      <th className="py-3 px-4">Tickets Actifs</th>
+                      <th className="py-3 px-4">Tickets Consommés</th>
+                      <th className="py-3 px-4">Statut Anti-Fraude</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {filteredStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-400">
+                          Aucun étudiant correspondant au matricule recherché.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredStudents.map((st) => {
+                        const validCount = (st.savedTickets || []).filter(t => t.status === 'valid').length;
+                        const usedCount = (st.savedTickets || []).filter(t => t.status === 'used').length;
+                        return (
+                          <tr key={st.uid} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-orange-600">
+                              {st.matricule || st.uid}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-slate-900">
+                              {st.displayName}
+                            </td>
+                            <td className="py-3 px-4 font-extrabold text-slate-800">
+                              {st.balance} FCFA
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                {validCount} prêt{validCount > 1 ? 's' : ''}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-500">
+                              {usedCount} repas
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <UserCheck className="w-3 h-3 text-emerald-600" />
+                                <span>Authentifié UPGC</span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
+            </div>
 
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center space-x-1.5 active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Publier au menu du jour</span>
-              </button>
-            </form>
-          </div>
-
-          {/* Current dishes list */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-            <h2 className="text-base font-bold text-slate-900 font-cabinet">
-              Plats enregistrés ({canteenDishes.length})
-            </h2>
-
-            <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
-              {canteenDishes.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-400">
-                  Aucun plat pour ce restaurant pour le moment.
+            {/* Fraud Logs History */}
+            {fraudLogs.length > 0 && (
+              <div className="bg-white p-6 rounded-3xl border border-red-200 shadow-xs space-y-3">
+                <div className="flex items-center space-x-2 text-red-600 font-bold text-sm font-cabinet">
+                  <AlertOctagon className="w-4 h-4" />
+                  <span>Journal des Alertes de Fraude Récents</span>
                 </div>
-              ) : (
-                canteenDishes.map((dish) => (
-                  <div
-                    key={dish.id}
-                    className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/60 transition-colors"
-                  >
-                    <img
-                      src={dish.imageUrl}
-                      alt={dish.name}
-                      className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-xs text-slate-900 truncate">
-                          {dish.name}
-                        </span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          dish.mealType === 'dejeuner' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'
-                        }`}>
-                          {dish.mealType === 'dejeuner' ? 'Midi' : 'Soir'}
+                <div className="space-y-2">
+                  {fraudLogs.map((log) => (
+                    <div key={log.id} className="p-3 bg-red-50 border border-red-100 rounded-2xl flex items-start justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-red-900 block">{log.reason}</span>
+                        <span className="text-[11px] text-red-700 font-mono mt-0.5 block">
+                          Matricule: {log.matricule} • Ticket No: {log.ticketNumber} • {log.timestamp}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 font-medium">
-                        {dish.price} FCFA • {dish.category.replace('_', ' ')}
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-red-600 text-white">
+                        {log.severity}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* TAB 3: BILLETTERIE & HISTORIQUE DES VENTES */}
+        {adminTab === 'tickets' && (
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-base text-slate-900 font-cabinet">Billets Officiels Émis</h3>
+                <p className="text-xs text-slate-500">Tous les tickets subventionnés enregistrés dans le système CROUK.</p>
+              </div>
+              <button
+                type="button"
+                onClick={loadRegistryData}
+                className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 transition-colors"
+                title="Actualiser"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {students.flatMap(s => s.savedTickets || []).length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  Aucun ticket encore émis pour le moment.
+                </div>
+              ) : (
+                students.flatMap(s => s.savedTickets || []).map((t) => (
+                  <div
+                    key={t.id}
+                    className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
+                        🎟️
+                      </div>
+                      <div>
+                        <span className="font-black text-slate-900 block">{t.dishName}</span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          {t.ticketNumber} • {t.studentName} ({t.studentMatricule})
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => onToggleDishAvailability(dish.id)}
-                        className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${
-                          dish.isAvailable
-                            ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'
-                            : 'bg-red-100 hover:bg-red-200 text-red-800'
-                        }`}
-                      >
-                        {dish.isAvailable ? 'Disponible' : 'Rupture'}
-                      </button>
-
-                      <button
-                        onClick={() => onDeleteDish(dish.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div className="text-right">
+                      <span className="font-black text-orange-600 block">{t.price} FCFA</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        t.status === 'valid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {t.status === 'valid' ? 'Valide' : 'Consommé'}
+                      </span>
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
-        </div>
+        )}
 
-      </div>
+      </main>
     </div>
   );
 };

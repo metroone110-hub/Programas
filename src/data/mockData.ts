@@ -234,6 +234,7 @@ export const INITIAL_DISHES: Dish[] = [
     allergens: [],
     rating: 4.9,
     ratingCount: 418
+  },
   {
     id: 'dish-5',
     name: 'Sauce Feuille & Riz Parfumé',
