@@ -71,3 +71,23 @@
   animation: textGlow 3s ease-in-out infinite;
 }
 
+@keyframes scanLaser {
+  0% {
+    top: 5%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 92%;
+    opacity: 1;
+  }
+  100% {
+    top: 5%;
+    opacity: 0.8;
+  }
+}
+
+.animate-scanLaser {
+  animation: scanLaser 2s ease-in-out infinite;
+}
+
+

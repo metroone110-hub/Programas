@@ -27,6 +27,7 @@ import {
   addMealTicket, 
   logoutUser 
 } from './services/studentAuth';
+import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
 import { DishCard } from './components/DishCard';
 import { DishDetailModal } from './components/DishDetailModal';
@@ -220,6 +221,7 @@ export const App: React.FC = () => {
     const finalUser = await addMealTicket(updatedUserBalance, newTicket);
     setUser(finalUser);
     setActiveTicket(newTicket);
+    await recordTicketsSaleInLedger(1, 200);
     showToast(`Ticket ${serialNumber} généré avec succès !`);
 
     try {
@@ -247,11 +249,12 @@ export const App: React.FC = () => {
   };
 
   // Payment success handler from Wave
-  const handlePaymentSuccess = (updatedUser: UserProfile, newTickets: MealTicket[]) => {
+  const handlePaymentSuccess = async (updatedUser: UserProfile, newTickets: MealTicket[]) => {
     setUser(updatedUser);
     setCart([]); // Clear cart after payment
     if (newTickets.length > 0) {
       setActiveTicket(newTickets[0]);
+      await recordTicketsSaleInLedger(newTickets.length, 200);
     }
     showToast(`Paiement réussi ! ${newTickets.length} ticket(s) ajoutés à votre compte.`);
   };
