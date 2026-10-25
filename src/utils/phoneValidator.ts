@@ -1,248 +1,121 @@
 /**
- * Cote d'Ivoire (CI) Phone Number Validator & Operator Detector
- * PNN 2021: 10-digit mobile numbering plan
- * - Moov Africa: Prefix 01 (01XXXXXXXX)
- * - MTN CI: Prefix 05 (05XXXXXXXX)
- * - Orange CI: Prefix 07 (07XXXXXXXX)
+ * Côte d'Ivoire Phone Validation & Formatting Utilities
+ * Standard CI numbers are 10 digits (since 2021 reform).
+ * Prefixes:
+ * - Orange: 07, 08, 09, etc.
+ * - MTN: 05, 06, 04, etc.
+ * - Moov: 01, 02, 03, etc.
+ * - Wave: operates across all mobile networks
+ *
+ * NOTE: NEVER pre-fill any phone input by default.
  */
 
-export type IvorianOperator = 'MOOV' | 'MTN' | 'ORANGE' | 'UNKNOWN';
+export type MobileOperator = 'Orange' | 'MTN' | 'Moov' | 'Wave' | 'Inconnu';
 
 export interface PhoneValidationResult {
-  valid: boolean;
-  operator: IvorianOperator;
-  cleanPhone: string; // 10 digits without spaces (e.g. 0102030405)
-  internationalPhone: string; // 225XXXXXXXXXX
-  formattedPhone: string; // 01 02 03 04 05
+  isValid: boolean;
+  cleanNumber: string;
+  formattedNumber: string;
+  operator: MobileOperator;
   error?: string;
-  suggestedMethod?: 'MOOV_MONEY' | 'MTN_MOMO';
 }
 
 /**
- * Normalizes input phone string by stripping spaces, hyphens, parentheses, etc.
+ * Normalizes phone numbers (strips spaces, dashes, +225 or 00225)
  */
-export function normalizeIvorianPhone(raw: string): string {
-  let digits = raw.trim().replace(/[^\d]/g, '');
-
-  // Handle +225 or 00225 or 225 prefix
-  if (digits.startsWith('00225')) {
-    digits = digits.slice(5);
-  } else if (digits.startsWith('225') && digits.length === 13) {
-    digits = digits.slice(3);
+export function cleanPhoneNumber(raw: string): string {
+  if (!raw) return '';
+  let cleaned = raw.replace(/\s+/g, '').replace(/[-().]/g, '');
+  if (cleaned.startsWith('+225')) {
+    cleaned = cleaned.substring(4);
+  } else if (cleaned.startsWith('00225')) {
+    cleaned = cleaned.substring(5);
+  } else if (cleaned.startsWith('225') && cleaned.length > 10) {
+    cleaned = cleaned.substring(3);
   }
-
-  return digits;
+  return cleaned;
 }
 
 /**
- * Formats a 10-digit Ivorian phone number as XX XX XX XX XX
+ * Detects the telecom operator from a 10-digit CI phone number
  */
-export function formatIvorianPhone(digits: string): string {
-  const clean = digits.replace(/[^\d]/g, '').slice(0, 10);
-  const parts: string[] = [];
-  for (let i = 0; i < clean.length; i += 2) {
-    parts.push(clean.slice(i, i + 2));
+export function detectOperator(phone: string): MobileOperator {
+  const cleaned = cleanPhoneNumber(phone);
+  if (cleaned.length < 2) return 'Inconnu';
+
+  const prefix = cleaned.substring(0, 2);
+
+  // Orange Côte d'Ivoire (07, 08, 09)
+  if (['07', '08', '09'].includes(prefix)) {
+    return 'Orange';
   }
-  return parts.join(' ');
+
+  // MTN Côte d'Ivoire (05, 04, 06)
+  if (['05', '04', '06'].includes(prefix)) {
+    return 'MTN';
+  }
+
+  // Moov Africa Côte d'Ivoire (01, 02, 03)
+  if (['01', '02', '03'].includes(prefix)) {
+    return 'Moov';
+  }
+
+  return 'Inconnu';
 }
 
 /**
- * Detects the telecom operator from the 2-digit prefix
+ * Validates a CI phone number
  */
-export function detectIvorianOperator(digits: string): IvorianOperator {
-  if (digits.length < 2) return 'UNKNOWN';
-  const prefix = digits.slice(0, 2);
-  if (prefix === '01') return 'MOOV';
-  if (prefix === '05') return 'MTN';
-  if (prefix === '07') return 'ORANGE';
-  return 'UNKNOWN';
-}
+export function validateCIPhoneNumber(phone: string): PhoneValidationResult {
+  const cleaned = cleanPhoneNumber(phone);
 
-/**
- * Validates an Ivorian mobile number against expected payment method (MOOV_MONEY, MTN_MOMO, or CINETPAY)
- */
-export function validateIvorianPhoneNumber(
-  rawPhone: string,
-  expectedMethod?: 'MOOV_MONEY' | 'MTN_MOMO' | 'CINETPAY' | 'JEKO' | 'DEMO'
-): PhoneValidationResult {
-  const digits = normalizeIvorianPhone(rawPhone);
-  const operator = detectIvorianOperator(digits);
-  const formatted = formatIvorianPhone(digits);
-  const international = `225${digits}`;
-
-  // Allow bypass in DEMO simulation mode if non-empty
-  if (expectedMethod === 'DEMO') {
-    if (!digits || digits.length < 4) {
-      return {
-        valid: false,
-        operator: 'UNKNOWN',
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: "Veuillez entrer un numéro de téléphone pour l'émission du ticket test.",
-      };
-    }
+  if (!cleaned) {
     return {
-      valid: true,
-      operator,
-      cleanPhone: digits,
-      internationalPhone: international,
-      formattedPhone: formatted,
+      isValid: false,
+      cleanNumber: '',
+      formattedNumber: '',
+      operator: 'Inconnu',
+      error: 'Le numéro de téléphone est requis'
     };
   }
 
-  // Validate for CinetPay or Jeko (all 3 operators accepted: Moov 01, MTN 05, Orange 07)
-  if (expectedMethod === 'CINETPAY' || expectedMethod === 'JEKO') {
-    if (digits && digits.length > 0 && digits.length !== 10) {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: `En Côte d'Ivoire, les numéros comportent exactement 10 chiffres (saisi : ${digits.length}).`,
-      };
-    }
-    if (digits.length === 10 && operator === 'UNKNOWN') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: "Préfixe non reconnu. CinetPay accepte Moov (01...), MTN (05...) et Orange (07...).",
-      };
-    }
+  // Check numeric only
+  if (!/^\d+$/.test(cleaned)) {
     return {
-      valid: true,
-      operator,
-      cleanPhone: digits,
-      internationalPhone: international,
-      formattedPhone: formatted,
+      isValid: false,
+      cleanNumber: cleaned,
+      formattedNumber: phone,
+      operator: 'Inconnu',
+      error: 'Le numéro ne doit contenir que des chiffres'
     };
   }
 
-
-  // Check 10-digit requirement
-  if (digits.length !== 10) {
+  // 10 digits required in CI
+  if (cleaned.length !== 10) {
     return {
-      valid: false,
-      operator,
-      cleanPhone: digits,
-      internationalPhone: international,
-      formattedPhone: formatted,
-      error: `En Côte d'Ivoire, les numéros de téléphone comportent exactement 10 chiffres (vous avez saisi ${digits.length} chiffre${digits.length > 1 ? 's' : ''}).`,
+      isValid: false,
+      cleanNumber: cleaned,
+      formattedNumber: cleaned,
+      operator: 'Inconnu',
+      error: `Numéro invalide: 10 chiffres requis (actuellement ${cleaned.length})`
     };
   }
 
-  // Validate specifically for Moov Money
-  if (expectedMethod === 'MOOV_MONEY') {
-    if (operator === 'MTN') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        suggestedMethod: 'MTN_MOMO',
-        error: `Le numéro ${formatted} est un numéro MTN (préfixe 05). Pour payer avec Moov Money, veuillez insérer un numéro Moov commençant par 01 (ex: 01 02 03 04 05), ou basculez sur l'option MTN MoMo.`,
-      };
-    }
-
-    if (operator === 'ORANGE') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: `Le numéro ${formatted} est un numéro Orange (préfixe 07). La cantine CROU-K accepte actuellement Moov Money (01...) et MTN MoMo (05...).`,
-      };
-    }
-
-    if (operator !== 'MOOV') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: `Numéro Moov non valide : les numéros Moov Côte d'Ivoire commencent obligatoirement par 01 (ex: 01 02 03 04 05).`,
-      };
-    }
-
-    return {
-      valid: true,
-      operator: 'MOOV',
-      cleanPhone: digits,
-      internationalPhone: international,
-      formattedPhone: formatted,
-    };
-  }
-
-  // Validate specifically for MTN MoMo
-  if (expectedMethod === 'MTN_MOMO') {
-    if (operator === 'MOOV') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        suggestedMethod: 'MOOV_MONEY',
-        error: `Le numéro ${formatted} est un numéro Moov (préfixe 01). Pour payer avec MTN MoMo, veuillez insérer un numéro MTN commençant par 05 (ex: 05 01 23 45 67), ou basculez sur l'option Moov Money.`,
-      };
-    }
-
-    if (operator === 'ORANGE') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: `Le numéro ${formatted} est un numéro Orange (préfixe 07). La cantine CROU-K accepte actuellement MTN MoMo (05...) et Moov Money (01...).`,
-      };
-    }
-
-    if (operator !== 'MTN') {
-      return {
-        valid: false,
-        operator,
-        cleanPhone: digits,
-        internationalPhone: international,
-        formattedPhone: formatted,
-        error: `Numéro MTN non valide : les numéros MTN Côte d'Ivoire commencent obligatoirement par 05 (ex: 05 01 23 45 67).`,
-      };
-    }
-
-    return {
-      valid: true,
-      operator: 'MTN',
-      cleanPhone: digits,
-      internationalPhone: international,
-      formattedPhone: formatted,
-    };
-  }
-
-  // Generic validation if no method specified
-  if (operator === 'UNKNOWN') {
-    return {
-      valid: false,
-      operator,
-      cleanPhone: digits,
-      internationalPhone: international,
-      formattedPhone: formatted,
-      error: `Préfixe non reconnu. Veuillez saisir un numéro Moov (01...) ou MTN (05...).`,
-    };
-  }
+  const operator = detectOperator(cleaned);
+  const formatted = formatCIPhoneNumber(cleaned);
 
   return {
-    valid: true,
-    operator,
-    cleanPhone: digits,
-    internationalPhone: international,
-    formattedPhone: formatted,
-    suggestedMethod: operator === 'MOOV' ? 'MOOV_MONEY' : (operator === 'MTN' ? 'MTN_MOMO' : undefined),
+    isValid: true,
+    cleanNumber: cleaned,
+    formattedNumber: formatted,
+    operator
   };
+}
+
+/**
+ * Formats a 10-digit CI number into +225 XX XX XX XX XX
+ */
+export function formatCIPhoneNumber(cleaned: string): string {
+  if (cleaned.length !== 10) return cleaned;
+  return `+225 ${cleaned.substring(0, 2)} ${cleaned.substring(2, 4)} ${cleaned.substring(4, 6)} ${cleaned.substring(6, 8)} ${cleaned.substring(8, 10)}`;
 }

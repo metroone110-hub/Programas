@@ -1,93 +1,87 @@
-// Client-side anonymous tracking for Developer Audience and Interactions
-// Respects user privacy: zero personal data, completely transparent and non-intrusive.
+/**
+ * CROU Resto U Analytics & Telemetry Tracking
+ * Stores local canteen metrics for management reporting and student stats.
+ */
 
-const VISITOR_ID_KEY = 'programas_anon_visitor_id';
-const SESSION_VISIT_KEY = 'programas_session_tracked';
+export interface DailyStats {
+  date: string;
+  totalTicketsIssued: number;
+  totalSubsidiesFCFA: number; // calculated at 1300 FCFA subsidy per meal (1500 regular - 200 student)
+  totalMealsServed: number;
+  popularDishes: Record<string, number>;
+  rechargesCount: number;
+  rechargesVolumeFCFA: number;
+}
 
-export function getOrGenerateVisitorId(): string {
+const STATS_KEY = 'crou_daily_stats_v1';
+
+export function getTodayStats(): DailyStats {
+  const todayStr = new Date().toISOString().split('T')[0];
   try {
-    let id = localStorage.getItem(VISITOR_ID_KEY);
-    if (!id) {
-      id = 'vis_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-      localStorage.setItem(VISITOR_ID_KEY, id);
+    const raw = localStorage.getItem(STATS_KEY);
+    if (raw) {
+      const parsed: DailyStats = JSON.parse(raw);
+      if (parsed.date === todayStr) {
+        return parsed;
+      }
     }
-    return id;
-  } catch {
-    return 'vis_temp_' + Math.random().toString(36).substring(2, 10);
+  } catch (err) {
+    console.warn('Analytics read error:', err);
   }
+
+  // Initial stats for today
+  const initial: DailyStats = {
+    date: todayStr,
+    totalTicketsIssued: 428,
+    totalSubsidiesFCFA: 428 * 1300, // 556,400 FCFA
+    totalMealsServed: 395,
+    popularDishes: {
+      'Attiéké Poisson Thon Braisé': 184,
+      'Sauce Graine & Foutou Banane': 142,
+      'Riz au Gras & Poulet Doré': 102
+    },
+    rechargesCount: 84,
+    rechargesVolumeFCFA: 245000
+  };
+
+  saveStats(initial);
+  return initial;
 }
 
-function detectDevice(): string {
-  if (typeof navigator === 'undefined') return 'unknown';
-  const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes('android')) return 'Android Mobile';
-  if (ua.includes('iphone')) return 'iPhone (iOS)';
-  if (ua.includes('ipad')) return 'iPad (iPadOS)';
-  if (ua.includes('macintosh') || ua.includes('mac os')) return 'Mac Desktop';
-  if (ua.includes('windows')) return 'Windows PC';
-  if (ua.includes('linux')) return 'Linux PC';
-  return 'Mobile / Web';
-}
-
-export function trackEvent(
-  type: 'visit' | 'interaction' | 'share',
-  action: string,
-  metadata?: Record<string, any>
-): void {
+function saveStats(stats: DailyStats): void {
   try {
-    const visitorId = getOrGenerateVisitorId();
-    const device = detectDevice();
-
-    const payload = {
-      visitorId,
-      type,
-      action,
-      device,
-      metadata: metadata || {},
-    };
-
-    // Use sendBeacon if supported, otherwise fetch with keepalive
-    const jsonStr = JSON.stringify(payload);
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const ok = navigator.sendBeacon('/api/analytics/track', blob);
-      if (ok) return;
-    }
-
-    // Fallback: standard asynchronous non-blocking fetch
-    fetch('/api/analytics/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: jsonStr,
-      keepalive: true,
-    }).catch(() => {
-      // Fail silently to never impact user experience
-    });
-  } catch {
-    // Fail silently
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch (err) {
+    console.warn('Analytics save error:', err);
   }
 }
 
 /**
- * Tracks the visit once per session so fast re-renders or page reloads don't inflate numbers
+ * Record a new meal ticket creation
  */
-export function trackVisit(): void {
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      const hasTracked = sessionStorage.getItem(SESSION_VISIT_KEY);
-      if (hasTracked) return;
-      sessionStorage.setItem(SESSION_VISIT_KEY, 'true');
-    }
-    trackEvent('visit', 'page_view');
-  } catch {
-    // Fail silently
-  }
+export function recordTicketIssued(dishName: string, studentPaid: number = 200, regularPrice: number = 1500): void {
+  const stats = getTodayStats();
+  stats.totalTicketsIssued += 1;
+  stats.totalSubsidiesFCFA += Math.max(0, regularPrice - studentPaid);
+  stats.popularDishes[dishName] = (stats.popularDishes[dishName] || 0) + 1;
+  saveStats(stats);
 }
 
-export function trackShare(action: 'whatsapp_share' | 'link_copied' | 'system_share', metadata?: Record<string, any>): void {
-  trackEvent('share', action, metadata);
+/**
+ * Record ticket validation at the turnstile / tourniquet
+ */
+export function recordMealServed(): void {
+  const stats = getTodayStats();
+  stats.totalMealsServed += 1;
+  saveStats(stats);
 }
 
-export function trackInteraction(action: string, metadata?: Record<string, any>): void {
-  trackEvent('interaction', action, metadata);
+/**
+ * Record a wallet recharge transaction
+ */
+export function recordRecharge(amount: number): void {
+  const stats = getTodayStats();
+  stats.rechargesCount += 1;
+  stats.rechargesVolumeFCFA += amount;
+  saveStats(stats);
 }

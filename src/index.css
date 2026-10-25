@@ -1,103 +1,43 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* 
- * Configuration de verrouillage et stabilité Native App 
- * Élimine le tiraillement élastique ("rubber-banding"), le flottement et les rebonds de fenêtre
- */
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  min-height: 100%;
-  overflow-x: hidden;
-  overscroll-behavior: none;
-  -webkit-overscroll-behavior: none;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
 }
 
-body {
-  background-color: #F8F9FA;
-  color: #111827;
-  touch-action: pan-y;
-  user-select: none;
-  -webkit-user-select: none;
+.font-cabinet {
+  font-family: 'Cabinet Grotesk', system-ui, -apple-system, sans-serif;
 }
 
-/* Permettre la sélection de texte seulement dans les champs de saisie */
-input, textarea {
-  user-select: text;
-  -webkit-user-select: text;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* Empêcher le glisser-déposer parasite des images */
-img, svg {
-  -webkit-user-drag: none;
-  user-drag: none;
-  pointer-events: auto;
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Conteneurs avec défilement interne propre */
-.overscroll-contain {
-  overscroll-behavior: contain;
-  -webkit-overscroll-behavior: contain;
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* Masquer les barres de défilement tout en préservant le défilement */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+.animate-scaleUp {
+  animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Micro-animations pour transition d'écran et retour tactile */
-@keyframes slideDownToast {
-  0% { transform: translate(-50%, -100%); opacity: 0; }
-  100% { transform: translate(-50%, 0); opacity: 1; }
-}
-
-@keyframes slideInRight {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(0); }
-}
-
-@keyframes slideUpSheet {
-  0% { transform: translateY(100%); }
-  100% { transform: translateY(0); }
-}
-
-@keyframes heartPop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.3); }
-  100% { transform: scale(1); }
-}
-
-.animate-toast {
-  animation: slideDownToast 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-slide-right {
-  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-slide-up {
-  animation: slideUpSheet 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-heart-pop {
-  animation: heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
-
-/* Classe tactile réactive : rétrécit au toucher, revient en place au relâchement */
-.touch-press {
-  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, filter 0.15s ease;
-}
-.touch-press:active {
-  transform: scale(0.95);
-  filter: brightness(0.96);
-}
-

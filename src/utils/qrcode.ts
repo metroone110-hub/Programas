@@ -1,78 +1,94 @@
 import QRCode from 'qrcode';
 
+export interface TicketQRPayload {
+  ticketNumber: string;
+  studentId: string;
+  studentMatricule: string;
+  canteenId: string;
+  dishName: string;
+  date: string;
+  price: number;
+  timestamp: number;
+}
+
 /**
- * Generate a crisp SVG string for a given QR text payload
+ * Generate a base64 Data URL for a ticket QR Code
  */
-export async function generateQRCodeSVG(text: string): Promise<string> {
+export async function generateTicketQRCodeDataURL(payload: TicketQRPayload | string): Promise<string> {
+  const content = typeof payload === 'string' ? payload : JSON.stringify({
+    app: 'CROUK_RESTO_U',
+    tkt: payload.ticketNumber,
+    mat: payload.studentMatricule,
+    cnt: payload.canteenId,
+    dish: payload.dishName,
+    date: payload.date,
+    prc: payload.price,
+    ts: payload.timestamp
+  });
+
   try {
-    const svgString = await QRCode.toString(text, {
+    return await QRCode.toDataURL(content, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 280,
+      color: {
+        dark: '#1e293b', // slate-800
+        light: '#ffffff'
+      }
+    });
+  } catch (err) {
+    console.error('QR code generation error:', err);
+    // Fallback QR API
+    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(content)}`;
+  }
+}
+
+/**
+ * Generate SVG string of the QR Code for crisp vector rendering
+ */
+export async function generateTicketQRCodeSVG(payload: TicketQRPayload | string): Promise<string> {
+  const content = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  try {
+    return await QRCode.toString(content, {
       type: 'svg',
+      errorCorrectionLevel: 'M',
       margin: 1,
       color: {
-        dark: '#000000',
-        light: '#ffffff',
-      },
-      errorCorrectionLevel: 'M',
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
     });
-    return svgString;
   } catch (err) {
-    console.error('QR code generation failed:', err);
+    console.error('Failed to generate SVG QR code:', err);
     return '';
   }
 }
 
 /**
- * Play subtle audio chime on successful scan or error (Web Audio API)
+ * Verify / Parse QR code string
  */
-export function playScanSound(type: 'success' | 'warning' | 'error') {
+export function parseTicketQRData(qrString: string): Partial<TicketQRPayload> | null {
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-
-    if (type === 'success') {
-      // Cheerful high double tone
-      const now = ctx.currentTime;
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(587.33, now); // D5
-      osc1.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
-      gain1.gain.setValueAtTime(0.2, now);
-      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.start(now);
-      osc1.stop(now + 0.25);
-    } else if (type === 'warning') {
-      // Lower double buzz for "Already used"
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.setValueAtTime(180, now + 0.12);
-      gain.gain.setValueAtTime(0.25, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.35);
-    } else {
-      // Low single thud for unknown
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(140, now);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.3);
+    const data = JSON.parse(qrString);
+    if (data.app === 'CROUK_RESTO_U' || data.ticketNumber || data.tkt) {
+      return {
+        ticketNumber: data.tkt || data.ticketNumber,
+        studentMatricule: data.mat || data.studentMatricule,
+        canteenId: data.cnt || data.canteenId,
+        dishName: data.dish || data.dishName,
+        price: data.prc || data.price,
+        date: data.date
+      };
     }
-  } catch (err) {
-    // Audio context may be restricted by autoplay policy
+    return null;
+  } catch {
+    // If simple ticket string e.g. "https://crou.ci/verify?tkt=CROU-2026-XXXXX"
+    if (qrString.includes('tkt=')) {
+      const match = qrString.match(/tkt=([A-Z0-9-]+)/);
+      if (match) {
+        return { ticketNumber: match[1] };
+      }
+    }
+    return null;
   }
 }
