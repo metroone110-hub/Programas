@@ -315,45 +315,37 @@ export const TicketVisual: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Actions */}
-          {showActions && (
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-              {!isUsed && onMarkAsUsed && (
-                <button
-                  type="button"
-                  onClick={() => onMarkAsUsed(ticket.id)}
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center space-x-1.5 active:scale-95"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Valider au tourniquet</span>
-                </button>
-              )}
+          {/* Status & Instructions - Validation is done ONLY by CROU turnstile/scanner */}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+            {!isUsed ? (
+              <div className="flex-1 py-2.5 px-3 bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 text-center">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>Ticket valide • Présentez au scanner du Restau U</span>
+              </div>
+            ) : (
+              <div className="flex-1 py-2.5 px-3 bg-slate-100 text-slate-500 text-xs font-bold rounded-xl text-center">
+                Consommé à {ticket.usedTime || 'ce service'}
+              </div>
+            )}
 
-              {isUsed && (
-                <div className="flex-1 py-2.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-xl text-center">
-                  Consommé à {ticket.usedTime || 'ce service'}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (navigator.share) {
-                    navigator.share({
-                      title: `Ticket Repas CROU - ${ticket.ticketNumber}`,
-                      text: `Ticket repas ${ticket.dishName} au ${ticket.canteenName}`
-                    }).catch(() => {});
-                  } else {
-                    handleCopyTicketNumber();
-                  }
-                }}
-                className="p-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 transition-colors"
-                title="Partager le ticket"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: `Ticket Repas CROU - ${ticket.ticketNumber}`,
+                    text: `Ticket repas ${ticket.dishName} au ${ticket.canteenName} - Code: ${ticket.ticketNumber}`
+                  }).catch(() => {});
+                } else {
+                  handleCopyTicketNumber();
+                }
+              }}
+              className="p-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 transition-colors"
+              title="Partager le ticket"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Footer Guarantee */}

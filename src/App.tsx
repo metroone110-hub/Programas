@@ -39,6 +39,8 @@ import { TicketModal } from './components/TicketModal';
 import { MyTicketsModal } from './components/MyTicketsModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ImageWithLoader } from './components/ImageWithLoader';
+import { DishesMarquee } from './components/DishesMarquee';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 export const App: React.FC = () => {
   // Canteens & Dishes State
@@ -79,12 +81,34 @@ export const App: React.FC = () => {
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
 
-  // Toast notification for lively feedback
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  const handleBottomTabChange = (tab: 'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile') => {
+    setActiveBottomTab(tab);
+    if (tab === 'home') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (tab === 'radar') {
+      const el = document.getElementById('radar-affluence-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    } else if (tab === 'search') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (tab === 'cart') {
+      setShowCartDrawer(true);
+    } else if (tab === 'tickets') {
+      setShowMyTicketsModal(true);
+    } else if (tab === 'profile') {
+      if (user) {
+        setShowWalletModal(true);
+      } else {
+        setShowBlackPortal(true);
+      }
+    }
   };
 
   // User Success from Black Gateway Portal
@@ -341,13 +365,16 @@ export const App: React.FC = () => {
         onLogout={handleLogout}
         cartCount={cartTotalItems}
         onOpenCart={() => setShowCartDrawer(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onOpenNotifications={() => setShowMyTicketsModal(true)}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6 pb-24">
         
         {/* Radar Affluence Resto U • Google Maps Card */}
-        <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between shadow-xs transition-all hover:shadow-sm">
+        <div id="radar-affluence-section" className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between shadow-xs transition-all hover:shadow-sm">
           <div className="flex items-center space-x-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-orange-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
               <MapPin className="w-5 h-5 text-white" />
@@ -618,6 +645,16 @@ export const App: React.FC = () => {
           )}
         </div>
 
+        {/* Galerie Défilante des 6 Plats & Ambiance Resto U (Demande Utilisateur) */}
+        <DishesMarquee
+          dishes={dishes}
+          onSelectDish={(d) => {
+            setDetailDish(d);
+            setShowDetailModal(true);
+          }}
+          onAddToCart={(d) => handleAddToCart(d, 1)}
+        />
+
         {/* Active Ticket Quick Access Banner if user has a valid ticket */}
         {user && user.savedTickets && user.savedTickets.some(t => t.status === 'valid') && (
           <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-20">
@@ -637,7 +674,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto bg-white border-t border-slate-200/80 py-6 text-center text-xs text-slate-500">
+      <footer className="mt-auto bg-white border-t border-slate-200/80 pt-6 pb-24 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <span>🍽️ <strong>CROU Resto U</strong></span>
@@ -718,6 +755,15 @@ export const App: React.FC = () => {
         ticket={activeTicket}
         onClose={() => setActiveTicket(null)}
         onMarkAsUsed={handleMarkTicketUsed}
+      />
+
+      {/* Mobile Floating Bottom Navigation Dock (matching IMG_1079) */}
+      <MobileBottomNav
+        activeTab={activeBottomTab}
+        onTabChange={handleBottomTabChange}
+        cartCount={cartTotalItems}
+        validTicketsCount={user?.savedTickets?.filter(t => t.status === 'valid').length || 0}
+        user={user}
       />
 
     </div>
