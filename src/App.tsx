@@ -32,7 +32,7 @@ import { Navbar } from './components/Navbar';
 import { DishCard } from './components/DishCard';
 import { DishDetailModal } from './components/DishDetailModal';
 import { CartDrawer, CartItem } from './components/CartDrawer';
-import { JekoWavePaymentModal } from './components/JekoWavePaymentModal';
+import { TikeramaPaymentModal } from './components/TikeramaPaymentModal';
 import { BlackGatewayPortal } from './components/BlackGatewayPortal';
 import { WalletModal } from './components/WalletModal';
 import { TicketModal } from './components/TicketModal';
@@ -248,15 +248,16 @@ export const App: React.FC = () => {
     }
   };
 
-  // Payment success handler from Wave
-  const handlePaymentSuccess = async (updatedUser: UserProfile, newTickets: MealTicket[]) => {
+  // Payment success handler from Tikerama
+  const handlePaymentSuccess = async (updatedUser: UserProfile, newTickets?: MealTicket[]) => {
     setUser(updatedUser);
     setCart([]); // Clear cart after payment
-    if (newTickets.length > 0) {
-      setActiveTicket(newTickets[0]);
+    if (newTickets && newTickets.length > 0) {
       await recordTicketsSaleInLedger(newTickets.length, 200);
+      showToast(`✅ Paiement validé ! ${newTickets.length} ticket(s) ajoutés à "Mes Tickets".`);
+    } else {
+      showToast('✅ Recharge effectuée avec succès !');
     }
-    showToast(`Paiement réussi ! ${newTickets.length} ticket(s) ajoutés à votre compte.`);
   };
 
   // Admin dish actions
@@ -308,7 +309,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative overflow-x-hidden w-full max-w-full">
       
       {/* INTERFACE 1: BLACK GATEWAY PORTAL (INSCRIPTION & CONNEXION) */}
       <BlackGatewayPortal
@@ -619,16 +620,16 @@ export const App: React.FC = () => {
 
         {/* Active Ticket Quick Access Banner if user has a valid ticket */}
         {user && user.savedTickets && user.savedTickets.some(t => t.status === 'valid') && (
-          <div className="fixed bottom-6 right-6 z-20 animate-bounce">
+          <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-20">
             <button
               onClick={() => {
                 const firstValid = user.savedTickets.find(t => t.status === 'valid');
                 if (firstValid) setActiveTicket(firstValid);
               }}
-              className="p-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-xl shadow-emerald-600/30 flex items-center space-x-2.5 font-bold text-xs cursor-pointer"
+              className="p-3 sm:p-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-xl shadow-emerald-600/30 flex items-center space-x-2 font-bold text-xs cursor-pointer active:scale-95 transition-transform"
             >
-              <QrCode className="w-5 h-5" />
-              <span>Afficher mon Vrai Ticket CROU</span>
+              <QrCode className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>Voir mon Ticket ({user.savedTickets.filter(t => t.status === 'valid').length})</span>
             </button>
           </div>
         )}
@@ -679,9 +680,9 @@ export const App: React.FC = () => {
         onInstantBuy={(dish, qty) => handleInstantBuy(dish, qty)}
       />
 
-      {/* Jeko / Wave Payment Modal matching IMG_1059.png */}
+      {/* Tikerama Mobile Money Payment Modal */}
       {user && (
-        <JekoWavePaymentModal
+        <TikeramaPaymentModal
           isOpen={showWaveModal}
           onClose={() => setShowWaveModal(false)}
           totalAmount={waveTotalAmount}

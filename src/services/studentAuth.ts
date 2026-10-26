@@ -170,7 +170,7 @@ export async function registerStudentWithMatricule(data: {
     email: `${cleanMatricule.toLowerCase()}@upgc.ci`,
     displayName: cleanName,
     role: 'student',
-    balance: 2000, // 2 000 FCFA offerts pour 10 tickets subventionnés
+    balance: 0, // Solde standard
     savedTickets: [],
     university: 'Université Peleforo Gbon Coulibaly (UPGC)',
     campus: data.ufr ? `UPGC Korhogo - ${data.ufr}` : 'Campus UPGC Korhogo',
@@ -298,7 +298,7 @@ export async function loginAdminDirect(username: string, password: string): Prom
   }
   return {
     success: false,
-    error: 'Identifiant ou mot de passe administrateur incorrect. (Pseudo requis : crouk_admin)'
+    error: 'Identifiant ou mot de passe administrateur incorrect.'
   };
 }
 

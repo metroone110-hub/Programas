@@ -116,7 +116,7 @@ export const Navbar: React.FC<Props> = ({
                 {user.role === 'admin' ? (
                   <>
                     <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-                    <span>crouk_admin</span>
+                    <span>Admin CROU</span>
                   </>
                 ) : (
                   <>

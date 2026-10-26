@@ -137,14 +137,14 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('Wave')}
-                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all ${
+                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all cursor-pointer ${
                       selectedMethod === 'Wave'
-                        ? 'border-sky-500 bg-sky-50 text-sky-900 ring-2 ring-sky-500/20'
+                        ? 'border-cyan-400 bg-cyan-50/80 text-cyan-900 ring-2 ring-cyan-500/20 font-bold'
                         : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="w-6 h-6 rounded-lg bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
-                      W
+                    <div className="w-7 h-7 rounded-full bg-[#1dc4ff] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                      🌊
                     </div>
                     <span>Wave (0% frais)</span>
                   </button>
@@ -152,14 +152,14 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('Orange')}
-                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all ${
+                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all cursor-pointer ${
                       selectedMethod === 'Orange'
-                        ? 'border-orange-500 bg-orange-50 text-orange-900 ring-2 ring-orange-500/20'
+                        ? 'border-orange-500 bg-orange-50/80 text-orange-950 ring-2 ring-orange-500/20 font-bold'
                         : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="w-6 h-6 rounded-lg bg-orange-600 text-white flex items-center justify-center font-bold text-[10px]">
-                      OM
+                    <div className="w-7 h-7 rounded-full bg-[#ff7900] text-black flex items-center justify-center font-black text-[10px] shadow-xs">
+                      <span className="text-white font-extrabold text-[10px]">OM</span>
                     </div>
                     <span>Orange Money</span>
                   </button>
@@ -167,14 +167,14 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('MTN')}
-                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all ${
+                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all cursor-pointer ${
                       selectedMethod === 'MTN'
-                        ? 'border-yellow-500 bg-yellow-50 text-yellow-900 ring-2 ring-yellow-500/20'
+                        ? 'border-yellow-400 bg-yellow-50/80 text-yellow-950 ring-2 ring-yellow-500/20 font-bold'
                         : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="w-6 h-6 rounded-lg bg-yellow-500 text-slate-900 flex items-center justify-center font-bold text-[10px]">
-                      M
+                    <div className="w-7 h-7 rounded-full bg-[#ffcc00] text-slate-900 flex items-center justify-center font-black text-[10px] shadow-xs">
+                      <span className="font-extrabold text-[10px]">MTN</span>
                     </div>
                     <span>MTN MoMo</span>
                   </button>
@@ -182,14 +182,14 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('Moov')}
-                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all ${
+                    className={`p-2.5 rounded-xl border flex items-center space-x-2.5 text-xs font-semibold transition-all cursor-pointer ${
                       selectedMethod === 'Moov'
-                        ? 'border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-600/20'
+                        ? 'border-blue-500 bg-blue-50/80 text-blue-950 ring-2 ring-blue-500/20 font-bold'
                         : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
-                      Mv
+                    <div className="w-7 h-7 rounded-full bg-[#0077c8] text-white flex items-center justify-center font-black text-[10px] shadow-xs">
+                      <span className="text-white font-extrabold text-[9px]">Moov</span>
                     </div>
                     <span>Moov Money</span>
                   </button>

@@ -111,7 +111,7 @@ export const AuthGatewayModal: React.FC<Props> = ({ isOpen, onSuccess, onClose }
       };
       onSuccess(adminProfile);
     } else {
-      setErrorMsg('Identifiant ou mot de passe incorrect. Pseudo requis: crouk_admin');
+      setErrorMsg('Identifiant ou mot de passe incorrect.');
     }
   };
 
@@ -364,7 +364,7 @@ export const AuthGatewayModal: React.FC<Props> = ({ isOpen, onSuccess, onClose }
                     required
                     value={adminUsername}
                     onChange={(e) => setAdminUsername(e.target.value)}
-                    placeholder="crouk_admin"
+                    placeholder="Identifiant administrateur"
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all font-mono"
                   />
                 </div>
@@ -381,7 +381,7 @@ export const AuthGatewayModal: React.FC<Props> = ({ isOpen, onSuccess, onClose }
                     required
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="upgc2026"
+                    placeholder="••••••••"
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all font-mono"
                   />
                 </div>

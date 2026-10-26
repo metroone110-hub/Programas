@@ -228,7 +228,7 @@ export const AdminDashboard: React.FC<Props> = ({
                   Administration Restau. U • CROU Korhogo
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  crouk_admin
+                  Compte Vérifié
                 </span>
               </div>
               <p className="text-xs text-slate-400">

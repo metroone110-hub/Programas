@@ -46,7 +46,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   const [regUfr, setRegUfr] = useState('UFR Sciences Sociales');
   
   // Admin Login State
-  const [adminUser, setAdminUser] = useState('crouk_admin');
+  const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
   
   // UI Helpers
@@ -90,7 +90,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       });
 
       if (res.success && res.user) {
-        setSuccessNotice('Compte étudiant créé avec succès ! Vos 2 000 FCFA de bienvenue sont activés.');
+        setSuccessNotice('Compte étudiant créé avec succès ! Votre pass repas est activé.');
         setTimeout(() => {
           onSuccess(res.user!);
         }, 800);
@@ -361,13 +361,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center space-x-2 text-xs text-amber-200">
-                <Ticket className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <span>
-                  <strong>2 000 FCFA</strong> offerts à l'inscription pour vos 10 premiers repas subventionnés.
-                </span>
-              </div>
-
               <button
                 type="submit"
                 disabled={isLoading}
@@ -379,7 +372,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
             </form>
           )}
 
-          {/* TAB 3: CONNEXION ADMINISTRATION (crouk_admin / upgc2026) */}
+          {/* TAB 3: CONNEXION ADMINISTRATION */}
           {activeTab === 'admin' && (
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div className="p-3 bg-slate-800/60 border border-amber-500/30 rounded-2xl flex items-center space-x-2 text-xs text-amber-300">
@@ -397,7 +390,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     type="text"
                     value={adminUser}
                     onChange={(e) => setAdminUser(e.target.value)}
-                    placeholder="crouk_admin"
+                    placeholder="Identifiant administrateur"
                     className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
                     required
                   />
@@ -414,7 +407,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     type={showPass ? 'text' : 'password'}
                     value={adminPass}
                     onChange={(e) => setAdminPass(e.target.value)}
-                    placeholder="upgc2026"
+                    placeholder="••••••••"
                     className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
                     required
                   />

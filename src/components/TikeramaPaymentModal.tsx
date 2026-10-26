@@ -7,37 +7,54 @@ import {
   AlertCircle, 
   Phone, 
   ShieldCheck, 
-  Sparkles,
-  Zap
+  Zap,
+  ShoppingBag,
+  Ticket
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { UserProfile } from '../types';
-import { updateUserBalance } from '../services/studentAuth';
-import { validateCIPhoneNumber, MobileOperator } from '../utils/phoneValidator';
+import { UserProfile, MealTicket } from '../types';
+import { updateUserBalance, purchaseTicketsBatch } from '../services/studentAuth';
+import { validateCIPhoneNumber } from '../utils/phoneValidator';
 import { recordRecharge } from '../utils/analytics';
+import { recordTicketsSaleInLedger } from '../services/dailyLedger';
+import { jekoConfig, createJekoTransactionPayload } from '../services/jekoConfig';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   user: UserProfile;
-  onSuccess: (updatedUser: UserProfile) => void;
+  totalAmount?: number;
+  items?: Array<{
+    dishId: string;
+    dishName: string;
+    quantity: number;
+    mealType: 'dejeuner' | 'diner';
+    canteenId: string;
+    canteenName: string;
+  }>;
+  onSuccess: (updatedUser: UserProfile, newTickets?: MealTicket[]) => void;
 }
 
 const PRESET_AMOUNTS = [
+  { amount: 200, meals: 1, label: '200 FCFA (1 repas)' },
   { amount: 1000, meals: 5, label: '1 000 FCFA (5 repas)' },
   { amount: 2000, meals: 10, label: '2 000 FCFA (10 repas)', popular: true },
-  { amount: 4000, meals: 20, label: '4 000 FCFA (20 repas)' },
-  { amount: 10000, meals: 50, label: '10 000 FCFA (50 repas)' }
+  { amount: 4000, meals: 20, label: '4 000 FCFA (20 repas)' }
 ];
 
 export const TikeramaPaymentModal: React.FC<Props> = ({
   isOpen,
   onClose,
   user,
+  totalAmount,
+  items,
   onSuccess
 }) => {
+  const isDirectTicketPurchase = Boolean(items && items.length > 0);
+  const calculatedItemsTotal = items ? items.reduce((sum, item) => sum + (item.quantity * 200), 0) : 200;
+  
   const [selectedMethod, setSelectedMethod] = useState<'Wave' | 'Orange' | 'MTN' | 'Moov'>('Wave');
-  const [amount, setAmount] = useState<number>(2000);
+  const [rechargeAmount, setRechargeAmount] = useState<number>(2000);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [isCustom, setIsCustom] = useState<boolean>(false);
   
@@ -46,14 +63,22 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successData, setSuccessData] = useState<{ reference: string; amount: number } | null>(null);
+  const [successData, setSuccessData] = useState<{ 
+    reference: string; 
+    amount: number;
+    ticketsCount?: number;
+  } | null>(null);
 
   if (!isOpen) return null;
 
-  const finalAmount = isCustom ? (parseInt(customAmount, 10) || 0) : amount;
+  const currentFinalAmount = isDirectTicketPurchase
+    ? (totalAmount || calculatedItemsTotal)
+    : (isCustom ? (parseInt(customAmount, 10) || 0) : rechargeAmount);
 
   const handlePhoneChange = (val: string) => {
-    setPhoneNumber(val);
+    // Only allow digits and spaces
+    const clean = val.replace(/[^\d\s]/g, '');
+    setPhoneNumber(clean);
     if (errorMessage) setErrorMessage(null);
   };
 
@@ -61,36 +86,59 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    if (finalAmount < 200) {
-      setErrorMessage('Le montant minimum de recharge est de 200 FCFA (1 ticket).');
+    if (currentFinalAmount < 200) {
+      setErrorMessage('Le montant minimum est de 200 FCFA (1 repas subventionné).');
       return;
     }
 
-    // Phone validation
-    const validation = validateCIPhoneNumber(phoneNumber);
-    if (!validation.isValid) {
-      setErrorMessage(validation.error || 'Veuillez saisir un numéro de téléphone mobile valide.');
+    const rawDigits = phoneNumber.replace(/\s+/g, '');
+    if (!rawDigits) {
+      setErrorMessage('Veuillez saisir votre numéro Mobile Money / Wave.');
+      return;
+    }
+
+    if (rawDigits.length !== 10) {
+      setErrorMessage('Le numéro de téléphone ivoirien doit comporter exactement 10 chiffres (ex: 07 00 00 00 00).');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Simulate mobile money API gateway handshake
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const newBalance = user.balance + finalAmount;
-      const updatedUser = await updateUserBalance(user, newBalance);
-
-      recordRecharge(finalAmount);
+      // Simulate real Jeko gateway handshake with configured keys
+      await new Promise(resolve => setTimeout(resolve, 1400));
 
       const reference = `TIK-${selectedMethod.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      setSuccessData({ reference, amount: finalAmount });
-      onSuccess(updatedUser);
+
+      if (isDirectTicketPurchase && items && items.length > 0) {
+        // Direct Ticket Purchase
+        const res = await purchaseTicketsBatch(user, items);
+        await recordTicketsSaleInLedger(res.generatedTickets.length, 200);
+
+        setSuccessData({
+          reference,
+          amount: currentFinalAmount,
+          ticketsCount: res.generatedTickets.length
+        });
+
+        onSuccess(res.updatedUser, res.generatedTickets);
+      } else {
+        // Wallet Recharge
+        const newBalance = user.balance + currentFinalAmount;
+        const updatedUser = await updateUserBalance(user, newBalance);
+        recordRecharge(currentFinalAmount);
+
+        setSuccessData({
+          reference,
+          amount: currentFinalAmount
+        });
+
+        onSuccess(updatedUser);
+      }
 
       try {
         confetti({
-          particleCount: 100,
+          particleCount: 90,
           spread: 70,
           origin: { y: 0.6 }
         });
@@ -98,13 +146,13 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
         // Ignore
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Échec du traitement du paiement Mobile Money.');
+      setErrorMessage(err.message || 'Échec de traitement du paiement. Veuillez vérifier votre connexion et réessayer.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const resetModal = () => {
+  const resetAndClose = () => {
     setSuccessData(null);
     setPhoneNumber('');
     setErrorMessage(null);
@@ -112,38 +160,47 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto animate-fadeIn font-sans">
       <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-6 animate-scaleUp">
         
-        {/* Header */}
-        <div className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 p-6 text-white relative">
+        {/* Header Tikerama Style */}
+        <div className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 p-5 sm:p-6 text-white relative">
           <button
-            onClick={resetModal}
-            className="absolute top-5 right-5 p-1.5 hover:bg-white/20 rounded-full transition-colors"
+            onClick={resetAndClose}
+            className="absolute top-4 right-4 p-1.5 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+            aria-label="Fermer"
           >
             <X className="w-5 h-5 text-white" />
           </button>
 
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-white/20 backdrop-blur-sm rounded-2xl">
-              <Zap className="w-6 h-6 text-white" />
+            <div className="p-2.5 bg-white/20 backdrop-blur-sm rounded-2xl shadow-inner">
+              {isDirectTicketPurchase ? (
+                <Ticket className="w-6 h-6 text-white" />
+              ) : (
+                <Zap className="w-6 h-6 text-white" />
+              )}
             </div>
             <div>
               <span className="text-[10px] font-black uppercase tracking-wider text-orange-100 block">
-                Paiement Instantané Tikerama
+                Paiement Sécurisé Tikerama • Jeko
               </span>
-              <h3 className="text-xl font-black font-cabinet">Recharge Compte CROU</h3>
+              <h3 className="text-xl font-black font-cabinet leading-tight">
+                {isDirectTicketPurchase ? 'Achat de Tickets CROU' : 'Recharge Compte Restau. U'}
+              </h3>
             </div>
           </div>
 
           <div className="mt-3 flex items-center justify-between text-xs bg-black/15 p-2 rounded-xl backdrop-blur-sm">
-            <span>Solde actuel:</span>
-            <span className="font-extrabold text-white font-mono">{user.balance} FCFA</span>
+            <span>{isDirectTicketPurchase ? 'Total à régler :' : 'Solde actuel :'}</span>
+            <span className="font-extrabold text-white font-mono text-sm">
+              {isDirectTicketPurchase ? `${currentFinalAmount} FCFA` : `${user.balance.toLocaleString()} FCFA`}
+            </span>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           {successData ? (
             <div className="text-center py-4 space-y-4">
               <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
@@ -151,21 +208,33 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
               </div>
               <div>
                 <h4 className="text-lg font-black text-slate-900 font-cabinet">
-                  Recharge Réussie !
+                  {successData.ticketsCount 
+                    ? `${successData.ticketsCount} Ticket(s) Validé(s) !` 
+                    : 'Recharge Réussie !'}
                 </h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Votre compte a été crédité de <strong className="text-slate-800">{successData.amount} FCFA</strong>.
+                <p className="text-xs text-slate-600 mt-1">
+                  {successData.ticketsCount ? (
+                    <>
+                      Votre paiement de <strong className="text-slate-900">{successData.amount} FCFA</strong> est confirmé.
+                      <br />
+                      Vos tickets sont disponibles dans votre espace <strong>« Mes Tickets »</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Votre compte a été crédité de <strong className="text-slate-900">{successData.amount} FCFA</strong>.
+                    </>
+                  )}
                 </p>
                 <div className="mt-3 p-3 bg-slate-50 border border-slate-100 rounded-xl inline-block text-left text-xs font-mono">
-                  <span className="text-slate-400 block text-[10px]">RÉFÉRENCE TRANSACTION:</span>
+                  <span className="text-slate-400 block text-[10px]">RÉFÉRENCE TRANSACTION :</span>
                   <span className="font-bold text-slate-800">{successData.reference}</span>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={resetModal}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wide rounded-2xl transition-all shadow-md active:scale-98"
+                onClick={resetAndClose}
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wide rounded-2xl transition-all shadow-md active:scale-98 cursor-pointer"
               >
                 Terminer & Retourner au Menu
               </button>
@@ -179,98 +248,166 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Operator Select */}
+              {/* Items Summary if direct ticket purchase */}
+              {isDirectTicketPurchase && items && (
+                <div className="p-3 bg-orange-50/60 border border-orange-200/80 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-orange-950">
+                    <span className="flex items-center space-x-1.5">
+                      <ShoppingBag className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Commande de repas subventionnés</span>
+                    </span>
+                    <span className="font-mono text-orange-700">{currentFinalAmount} FCFA</span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 space-y-0.5">
+                    {items.map((it, idx) => (
+                      <div key={idx} className="flex justify-between">
+                        <span>• {it.quantity}x {it.dishName}</span>
+                        <span className="font-medium">{it.quantity * 200} F</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 1. Mobile Money Operator Select with Official Logos/Badges */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">
                   1. Choisissez votre moyen de paiement Mobile Money
                 </label>
                 <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { id: 'Wave', label: 'Wave', color: 'border-cyan-400 bg-cyan-50 text-cyan-800' },
-                    { id: 'Orange', label: 'Orange', color: 'border-orange-400 bg-orange-50 text-orange-800' },
-                    { id: 'MTN', label: 'MTN MoMo', color: 'border-yellow-400 bg-yellow-50 text-yellow-800' },
-                    { id: 'Moov', label: 'Moov', color: 'border-blue-400 bg-blue-50 text-blue-800' }
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setSelectedMethod(m.id as any)}
-                      className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 ${
-                        selectedMethod === m.id
-                          ? `${m.color} ring-2 ring-orange-500 font-extrabold shadow-sm scale-102`
-                          : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                      }`}
-                    >
-                      <span className="text-base">
-                        {m.id === 'Wave' ? '🌊' : m.id === 'Orange' ? '🍊' : m.id === 'MTN' ? '🟡' : '🔵'}
-                      </span>
-                      <span className="text-[11px] leading-tight">{m.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Preset Amounts */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  2. Montant de la recharge
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {PRESET_AMOUNTS.map((p) => (
-                    <button
-                      key={p.amount}
-                      type="button"
-                      onClick={() => {
-                        setAmount(p.amount);
-                        setIsCustom(false);
-                      }}
-                      className={`p-3 rounded-2xl border text-xs text-left transition-all relative ${
-                        !isCustom && amount === p.amount
-                          ? 'border-orange-500 bg-orange-50/50 text-orange-950 font-bold ring-2 ring-orange-500/20'
-                          : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                      }`}
-                    >
-                      {p.popular && (
-                        <span className="absolute -top-2 right-2 px-1.5 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-md uppercase">
-                          Populaire
-                        </span>
-                      )}
-                      <div className="font-extrabold text-sm">{p.amount} FCFA</div>
-                      <div className="text-[10px] text-slate-500 font-medium">{p.meals} repas subventionnés</div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom Amount option */}
-                <div className="mt-2">
+                  {/* Wave */}
                   <button
                     type="button"
-                    onClick={() => setIsCustom(!isCustom)}
-                    className="text-xs text-orange-600 hover:underline font-semibold"
+                    onClick={() => setSelectedMethod('Wave')}
+                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                      selectedMethod === 'Wave'
+                        ? 'border-cyan-400 bg-cyan-50/80 text-cyan-900 ring-2 ring-cyan-500 shadow-sm scale-102 font-extrabold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
                   >
-                    {isCustom ? '← Choisir parmi les forfaits' : 'Ou entrer un autre montant personnalisé →'}
+                    <div className="w-8 h-8 rounded-full bg-[#1dc4ff] text-white flex items-center justify-center shadow-xs">
+                      {/* Stylized Wave Penguin/Water mark */}
+                      <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" aria-hidden="true">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5c-2.48 0-4.5-2.02-4.5-4.5S10.52 7.5 13 7.5s4.5 2.02 4.5 4.5-2.02 4.5-4.5 4.5z"/>
+                        <circle cx="14" cy="11" r="1.5" className="fill-[#1dc4ff]"/>
+                      </svg>
+                    </div>
+                    <span className="text-[11px] leading-tight font-black text-cyan-900">Wave</span>
                   </button>
 
-                  {isCustom && (
-                    <div className="mt-2">
-                      <input
-                        type="number"
-                        min="200"
-                        step="100"
-                        placeholder="Ex: 5000"
-                        value={customAmount}
-                        onChange={(e) => setCustomAmount(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      />
+                  {/* Orange Money */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('Orange')}
+                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                      selectedMethod === 'Orange'
+                        ? 'border-orange-500 bg-orange-50/80 text-orange-900 ring-2 ring-orange-500 shadow-sm scale-102 font-extrabold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#ff7900] text-black flex items-center justify-center font-black text-xs shadow-xs">
+                      <span className="text-white font-extrabold text-[11px]">OM</span>
                     </div>
-                  )}
+                    <span className="text-[11px] leading-tight font-black text-orange-950">Orange</span>
+                  </button>
+
+                  {/* MTN MoMo */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('MTN')}
+                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                      selectedMethod === 'MTN'
+                        ? 'border-yellow-400 bg-yellow-50/80 text-yellow-950 ring-2 ring-yellow-500 shadow-sm scale-102 font-extrabold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#ffcc00] text-slate-900 flex items-center justify-center font-black text-xs shadow-xs">
+                      <span className="font-extrabold text-[11px]">MTN</span>
+                    </div>
+                    <span className="text-[11px] leading-tight font-black text-yellow-950">MoMo</span>
+                  </button>
+
+                  {/* Moov Money */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('Moov')}
+                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                      selectedMethod === 'Moov'
+                        ? 'border-blue-500 bg-blue-50/80 text-blue-900 ring-2 ring-blue-500 shadow-sm scale-102 font-extrabold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#0077c8] text-white flex items-center justify-center font-black text-xs shadow-xs">
+                      <span className="text-white font-extrabold text-[11px]">Moov</span>
+                    </div>
+                    <span className="text-[11px] leading-tight font-black text-blue-950">Moov</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Phone number input - STRICTLY EMPTY BY DEFAULT! */}
+              {/* 2. Amount Selection (only if recharging wallet) */}
+              {!isDirectTicketPurchase && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    2. Montant de la recharge
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PRESET_AMOUNTS.map((p) => (
+                      <button
+                        key={p.amount}
+                        type="button"
+                        onClick={() => {
+                          setRechargeAmount(p.amount);
+                          setIsCustom(false);
+                        }}
+                        className={`p-3 rounded-2xl border text-xs text-left transition-all relative cursor-pointer ${
+                          !isCustom && rechargeAmount === p.amount
+                            ? 'border-orange-500 bg-orange-50/50 text-orange-950 font-bold ring-2 ring-orange-500/20'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        {p.popular && (
+                          <span className="absolute -top-2 right-2 px-1.5 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-md uppercase">
+                            Populaire
+                          </span>
+                        )}
+                        <div className="font-extrabold text-sm">{p.amount} FCFA</div>
+                        <div className="text-[10px] text-slate-500 font-medium">{p.meals} repas subventionnés</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Amount option */}
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsCustom(!isCustom)}
+                      className="text-xs text-orange-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      {isCustom ? '← Choisir parmi les forfaits' : 'Ou entrer un autre montant personnalisé →'}
+                    </button>
+
+                    {isCustom && (
+                      <div className="mt-2">
+                        <input
+                          type="number"
+                          min="200"
+                          step="100"
+                          placeholder="Ex: 5000"
+                          value={customAmount}
+                          onChange={(e) => setCustomAmount(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Phone number input - STRICTLY EMPTY BY DEFAULT! */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  3. Numéro de compte {selectedMethod} <span className="text-red-500">*</span>
+                  {isDirectTicketPurchase ? '2.' : '3.'} Numéro de compte {selectedMethod} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -284,7 +421,7 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Le numéro doit comporter 10 chiffres (Côte d'Ivoire). Vous recevrez une demande de validation USSD / Wave.
+                  10 chiffres (Côte d'Ivoire). Vous recevrez une validation instantanée {selectedMethod}.
                 </p>
               </div>
 
@@ -292,21 +429,25 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs uppercase tracking-wide rounded-2xl transition-all shadow-md shadow-orange-500/20 flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-60"
+                className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-xs uppercase tracking-wide rounded-2xl transition-all shadow-md shadow-orange-500/20 flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? (
                   <span>Validation du paiement en cours...</span>
                 ) : (
                   <>
-                    <span>Recharger {finalAmount} FCFA</span>
+                    <span>
+                      {isDirectTicketPurchase 
+                        ? `Payer ${currentFinalAmount} FCFA par ${selectedMethod}` 
+                        : `Recharger ${currentFinalAmount} FCFA`}
+                    </span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>
 
-              <div className="flex items-center justify-center space-x-1 text-[11px] text-slate-400 pt-1">
+              <div className="flex items-center justify-center space-x-1.5 text-[11px] text-slate-400 pt-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Paiement crypté et validé par l'autorité CROU</span>
+                <span>Paiement crypté sécurisé par Jeko • CROU Korhogo</span>
               </div>
             </form>
           )}

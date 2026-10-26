@@ -265,7 +265,7 @@ export const TicketVisual: React.FC<Props> = ({
         )}
 
         {/* Ticket Perforation Notch (Left & Right) */}
-        <div className="relative h-6 bg-slate-100 flex items-center justify-between px-3">
+        <div className="relative h-6 bg-slate-100 flex items-center justify-between px-3 overflow-hidden">
           <div className="w-5 h-5 bg-slate-900/20 -ml-5 rounded-full"></div>
           <div className="flex-1 border-b-2 border-dashed border-slate-300 mx-2"></div>
           <div className="w-5 h-5 bg-slate-900/20 -mr-5 rounded-full"></div>

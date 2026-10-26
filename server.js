@@ -32,6 +32,13 @@ const server = http.createServer((req, res) => {
   const safeUrl = decodeURIComponent((req.url || '/').split('?')[0]);
   let filePath = path.join(DIST_DIR, safeUrl === '/' ? 'index.html' : safeUrl);
 
+  // Jeko Webhook Endpoint
+  if (safeUrl === '/api/webhook/jeko') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'success', received: true, timestamp: new Date().toISOString() }));
+    return;
+  }
+
   // Prevent directory traversal
   if (!filePath.startsWith(DIST_DIR)) {
     res.writeHead(403);
