@@ -13,6 +13,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { Canteen, UserProfile, MealTicket } from '../types';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface Props {
   canteens: Canteen[];
@@ -88,6 +89,9 @@ export const Navbar: React.FC<Props> = ({
         {/* Right Actions & Cart matching IMG_0875.webp */}
         <div className="flex items-center space-x-2 sm:space-x-3">
           
+          {/* PWA Install Button (Mobile & Desktop) */}
+          <PWAInstallButton />
+
           {/* Shopping Cart Button */}
           {onOpenCart && (
             <button
