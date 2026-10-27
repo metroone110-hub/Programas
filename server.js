@@ -32,6 +32,83 @@ const server = http.createServer((req, res) => {
   const safeUrl = decodeURIComponent((req.url || '/').split('?')[0]);
   let filePath = path.join(DIST_DIR, safeUrl === '/' ? 'index.html' : safeUrl);
 
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-KEY, X-API-KEY-ID');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Jeko Partner API Payment Requests Proxy
+  if (safeUrl === '/api/jeko/payment_requests' && req.method === 'POST') {
+    let bodyData = '';
+    req.on('data', chunk => { bodyData += chunk; });
+    req.on('end', async () => {
+      try {
+        const clientBody = JSON.parse(bodyData || '{}');
+        const partnerPayload = {
+          storeId: clientBody.storeId || process.env.JEKO_STORE_ID || '32d9d6ef-d182-47bc-82ba-9c92c41510f3',
+          amountCents: clientBody.amountCents || (clientBody.amount ? clientBody.amount * 100 : 20000),
+          currency: clientBody.currency || 'XOF',
+          reference: clientBody.reference || `CROUK-${Date.now()}`,
+          paymentDetails: clientBody.paymentDetails || {
+            type: 'redirect',
+            data: {
+              paymentMethod: clientBody.paymentMethod || 'wave',
+              forceProviderDirect: clientBody.forceProviderDirect ?? true,
+              ...(clientBody.payerPhone ? { payerPhone: clientBody.payerPhone } : {}),
+              successUrl: clientBody.successUrl || `http://${req.headers.host}/payment/success`,
+              errorUrl: clientBody.errorUrl || `http://${req.headers.host}/payment/error`
+            }
+          }
+        };
+
+        const jekoFetch = await fetch('https://api.jeko.africa/partner_api/payment_requests', {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': process.env.JEKO_API_KEY || 'jeko_76053a559816e40d1db0edcf7976413a7aed85fdcc27cc6aadc0f0de9a9a85ec',
+            'X-API-KEY-ID': process.env.JEKO_API_KEY_ID || '32d9d6ef-d182-47bc-82ba-9c92c41510f3',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(partnerPayload)
+        });
+
+        const jekoJson = await jekoFetch.json();
+        res.writeHead(jekoFetch.status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(jekoJson));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'error', message: err.message }));
+      }
+    });
+    return;
+  }
+
+  // Jeko Partner API Status Check Proxy
+  if (safeUrl.startsWith('/api/jeko/payment_requests/') && req.method === 'GET') {
+    const paymentRequestId = safeUrl.replace('/api/jeko/payment_requests/', '').trim();
+    try {
+      const jekoFetch = await fetch(`https://api.jeko.africa/partner_api/payment_requests/${encodeURIComponent(paymentRequestId)}`, {
+        method: 'GET',
+        headers: {
+          'X-API-KEY': process.env.JEKO_API_KEY || 'jeko_76053a559816e40d1db0edcf7976413a7aed85fdcc27cc6aadc0f0de9a9a85ec',
+          'X-API-KEY-ID': process.env.JEKO_API_KEY_ID || '32d9d6ef-d182-47bc-82ba-9c92c41510f3'
+        }
+      });
+      const jekoJson = await jekoFetch.json();
+      res.writeHead(jekoFetch.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(jekoJson));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'error', message: err.message }));
+    }
+    return;
+  }
+
   // Jeko Webhook Endpoint
   if (safeUrl === '/api/webhook/jeko') {
     res.writeHead(200, { 'Content-Type': 'application/json' });

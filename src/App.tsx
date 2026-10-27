@@ -42,6 +42,7 @@ import { ImageWithLoader } from './components/ImageWithLoader';
 import { DishesMarquee } from './components/DishesMarquee';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { RadarAffluenceMap } from './components/RadarAffluenceMap';
+import { checkPaymentStatus } from './services/jekoPayment';
 
 export const App: React.FC = () => {
   // Canteens & Dishes State
@@ -89,6 +90,36 @@ export const App: React.FC = () => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
   };
+
+  // Official Jeko Partner API Callback Handler (/payment/success & /payment/error)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const reference = searchParams.get('reference') || searchParams.get('order');
+    const path = window.location.pathname;
+
+    const isSuccess = path.includes('/payment/success') || searchParams.get('status') === 'success';
+    const isError = path.includes('/payment/error') || searchParams.get('status') === 'error';
+
+    if (reference && (isSuccess || isError)) {
+      if (isSuccess) {
+        checkPaymentStatus(reference).then(status => {
+          if (status === 'success' || status === 'pending') {
+            showToast('Paiement Jeko confirmé avec succès ! Vos tickets sont prêts.');
+            setShowMyTicketsModal(true);
+            try {
+              confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+            } catch {}
+          }
+        });
+      } else if (isError) {
+        showToast('Le paiement a échoué ou a été interrompu. Vous pouvez réessayer.');
+      }
+
+      // Clean the URL cleanly without page reload
+      const cleanPath = window.location.pathname.replace(/\/payment\/(success|error)/, '') || '/';
+      window.history.replaceState({}, document.title, cleanPath);
+    }
+  }, []);
 
   const handleBottomTabChange = (tab: 'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile') => {
     setActiveBottomTab(tab);

@@ -9,7 +9,8 @@ import {
   ShieldCheck, 
   Zap,
   ShoppingBag,
-  Ticket
+  Ticket,
+  ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { UserProfile, MealTicket } from '../types';
@@ -54,7 +55,7 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
   const isDirectTicketPurchase = Boolean(items && items.length > 0);
   const calculatedItemsTotal = items ? items.reduce((sum, item) => sum + (item.quantity * 200), 0) : 200;
   
-  const [selectedMethod, setSelectedMethod] = useState<'Wave' | 'Orange' | 'MTN' | 'Moov'>('Wave');
+  const [selectedMethod, setSelectedMethod] = useState<'Wave' | 'Orange' | 'MTN' | 'Moov' | 'Djamo' | 'Jeko'>('Wave');
   const [rechargeAmount, setRechargeAmount] = useState<number>(2000);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [isCustom, setIsCustom] = useState<boolean>(false);
@@ -68,6 +69,7 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
     reference: string; 
     amount: number;
     ticketsCount?: number;
+    redirectUrl?: string;
   } | null>(null);
 
   if (!isOpen) return null;
@@ -127,7 +129,8 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
         setSuccessData({
           reference,
           amount: currentFinalAmount,
-          ticketsCount: res.generatedTickets.length
+          ticketsCount: res.generatedTickets.length,
+          redirectUrl: paymentRes.redirectUrl
         });
 
         onSuccess(res.updatedUser, res.generatedTickets);
@@ -139,7 +142,8 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
 
         setSuccessData({
           reference,
-          amount: currentFinalAmount
+          amount: currentFinalAmount,
+          redirectUrl: paymentRes.redirectUrl
         });
 
         onSuccess(updatedUser);
@@ -240,6 +244,18 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
                 </div>
               </div>
 
+              {successData.redirectUrl && (
+                <a
+                  href={successData.redirectUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs uppercase tracking-wide rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md active:scale-98"
+                >
+                  <span>Ouvrir la Page de Paiement Sécurisé Jeko</span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+
               <button
                 type="button"
                 onClick={resetAndClose}
@@ -283,73 +299,104 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-2">
                   1. Choisissez votre moyen de paiement Mobile Money
                 </label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {/* Wave */}
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('Wave')}
-                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                    className={`p-2 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
                       selectedMethod === 'Wave'
                         ? 'border-cyan-400 bg-cyan-50/80 text-cyan-900 ring-2 ring-cyan-500 shadow-sm scale-102 font-extrabold'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
                     }`}
                   >
                     <div className="w-8 h-8 rounded-full bg-[#1dc4ff] text-white flex items-center justify-center shadow-xs">
-                      {/* Stylized Wave Penguin/Water mark */}
                       <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" aria-hidden="true">
                         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5c-2.48 0-4.5-2.02-4.5-4.5S10.52 7.5 13 7.5s4.5 2.02 4.5 4.5-2.02 4.5-4.5 4.5z"/>
                         <circle cx="14" cy="11" r="1.5" className="fill-[#1dc4ff]"/>
                       </svg>
                     </div>
-                    <span className="text-[11px] leading-tight font-black text-cyan-900">Wave</span>
+                    <span className="text-[10px] leading-tight font-black text-cyan-900">Wave</span>
                   </button>
 
                   {/* Orange Money */}
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('Orange')}
-                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                    className={`p-2 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
                       selectedMethod === 'Orange'
                         ? 'border-orange-500 bg-orange-50/80 text-orange-900 ring-2 ring-orange-500 shadow-sm scale-102 font-extrabold'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
                     }`}
                   >
                     <div className="w-8 h-8 rounded-full bg-[#ff7900] text-black flex items-center justify-center font-black text-xs shadow-xs">
-                      <span className="text-white font-extrabold text-[11px]">OM</span>
+                      <span className="text-white font-extrabold text-[10px]">OM</span>
                     </div>
-                    <span className="text-[11px] leading-tight font-black text-orange-950">Orange</span>
+                    <span className="text-[10px] leading-tight font-black text-orange-950">Orange</span>
                   </button>
 
                   {/* MTN MoMo */}
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('MTN')}
-                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                    className={`p-2 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
                       selectedMethod === 'MTN'
                         ? 'border-yellow-400 bg-yellow-50/80 text-yellow-950 ring-2 ring-yellow-500 shadow-sm scale-102 font-extrabold'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
                     }`}
                   >
                     <div className="w-8 h-8 rounded-full bg-[#ffcc00] text-slate-900 flex items-center justify-center font-black text-xs shadow-xs">
-                      <span className="font-extrabold text-[11px]">MTN</span>
+                      <span className="font-extrabold text-[10px]">MTN</span>
                     </div>
-                    <span className="text-[11px] leading-tight font-black text-yellow-950">MoMo</span>
+                    <span className="text-[10px] leading-tight font-black text-yellow-950">MoMo</span>
                   </button>
 
                   {/* Moov Money */}
                   <button
                     type="button"
                     onClick={() => setSelectedMethod('Moov')}
-                    className={`p-2.5 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                    className={`p-2 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
                       selectedMethod === 'Moov'
                         ? 'border-blue-500 bg-blue-50/80 text-blue-900 ring-2 ring-blue-500 shadow-sm scale-102 font-extrabold'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
                     }`}
                   >
                     <div className="w-8 h-8 rounded-full bg-[#0077c8] text-white flex items-center justify-center font-black text-xs shadow-xs">
-                      <span className="text-white font-extrabold text-[11px]">Moov</span>
+                      <span className="text-white font-extrabold text-[10px]">Moov</span>
                     </div>
-                    <span className="text-[11px] leading-tight font-black text-blue-950">Moov</span>
+                    <span className="text-[10px] leading-tight font-black text-blue-950">Moov</span>
+                  </button>
+
+                  {/* Djamo */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('Djamo')}
+                    className={`p-2 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                      selectedMethod === 'Djamo'
+                        ? 'border-purple-500 bg-purple-50/80 text-purple-900 ring-2 ring-purple-500 shadow-sm scale-102 font-extrabold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#6d28d9] text-white flex items-center justify-center font-black text-xs shadow-xs">
+                      <span className="text-white font-extrabold text-[10px]">DJ</span>
+                    </div>
+                    <span className="text-[10px] leading-tight font-black text-purple-950">Djamo</span>
+                  </button>
+
+                  {/* Jeko */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('Jeko')}
+                    className={`p-2 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center space-y-1 cursor-pointer ${
+                      selectedMethod === 'Jeko'
+                        ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500 shadow-sm scale-102 font-extrabold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#059669] text-white flex items-center justify-center font-black text-xs shadow-xs">
+                      <span className="text-white font-extrabold text-[10px]">JK</span>
+                    </div>
+                    <span className="text-[10px] leading-tight font-black text-emerald-950">Jeko</span>
                   </button>
                 </div>
               </div>
