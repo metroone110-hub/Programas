@@ -32,7 +32,7 @@ import { Navbar } from './components/Navbar';
 import { DishCard } from './components/DishCard';
 import { DishDetailModal } from './components/DishDetailModal';
 import { CartDrawer, CartItem } from './components/CartDrawer';
-import { TikeramaPaymentModal } from './components/TikeramaPaymentModal';
+import { PaymentCheckoutModal } from './components/PaymentCheckoutModal';
 import { BlackGatewayPortal } from './components/BlackGatewayPortal';
 import { WalletModal } from './components/WalletModal';
 import { TicketModal } from './components/TicketModal';
@@ -304,7 +304,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Payment success handler from Tikerama
+  // Payment success handler from Jeko
   const handlePaymentSuccess = async (updatedUser: UserProfile, newTickets?: MealTicket[]) => {
     setUser(updatedUser);
     setCart([]); // Clear cart after payment
@@ -715,9 +715,9 @@ export const App: React.FC = () => {
         onInstantBuy={(dish, qty) => handleInstantBuy(dish, qty)}
       />
 
-      {/* Tikerama Mobile Money Payment Modal */}
+      {/* Jeko Secure Payment Modal (IMG_1194 style) */}
       {user && (
-        <TikeramaPaymentModal
+        <PaymentCheckoutModal
           isOpen={showWaveModal}
           onClose={() => setShowWaveModal(false)}
           totalAmount={waveTotalAmount}

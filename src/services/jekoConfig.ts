@@ -16,12 +16,12 @@ export interface JekoConfig {
 const env = (import.meta as any).env || {};
 
 export const jekoConfig: JekoConfig = {
-  merchantId: env.VITE_JEKO_MERCHANT_ID || '32d9d6ef-d182-47bc-82ba-9c92c41510f3',
+  merchantId: env.VITE_JEKO_STORE_ID || '895f3110-845b-4d11-a291-f28dc954c0cd',
   apiKey: env.VITE_JEKO_API_KEY || 'jeko_76053a559816e40d1db0edcf7976413a7aed85fdcc27cc6aadc0f0de9a9a85ec',
   webhookSecret: env.JEKO_WEBHOOK_SECRET || '2b685054e12f163038602111f54a7d4bc3b9dc3e64df899761f50088c1d1e6e0',
   environment: (env.VITE_JEKO_ENVIRONMENT as 'sandbox' | 'live') || 'live',
   currency: 'XOF',
-  webhookUrl: 'https://programas-upgc.metroone110.workers.dev/api/webhook/jeko'
+  webhookUrl: 'https://crou.ci/api/webhook/jeko'
 };
 
 /**

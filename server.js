@@ -28,7 +28,7 @@ const MIME_TYPES = {
   '.ttf': 'font/ttf',
 };
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const safeUrl = decodeURIComponent((req.url || '/').split('?')[0]);
   let filePath = path.join(DIST_DIR, safeUrl === '/' ? 'index.html' : safeUrl);
 
@@ -51,7 +51,7 @@ const server = http.createServer((req, res) => {
       try {
         const clientBody = JSON.parse(bodyData || '{}');
         const partnerPayload = {
-          storeId: clientBody.storeId || process.env.JEKO_STORE_ID || '32d9d6ef-d182-47bc-82ba-9c92c41510f3',
+          storeId: clientBody.storeId || process.env.JEKO_STORE_ID || '895f3110-845b-4d11-a291-f28dc954c0cd',
           amountCents: clientBody.amountCents || (clientBody.amount ? clientBody.amount * 100 : 20000),
           currency: clientBody.currency || 'XOF',
           reference: clientBody.reference || `CROUK-${Date.now()}`,
