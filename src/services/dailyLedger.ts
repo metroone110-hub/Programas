@@ -218,19 +218,11 @@ export async function getAllDailyArchives(): Promise<DailyLedgerStats[]> {
 }
 
 /**
- * Reset all sales caches completely to zero as explicitly requested by user!
+ * Immutable Audit Protection:
+ * Vendor/cashier tampering is strictly prevented by locking the active sales ledger.
+ * No reset or deletion of recorded sales is permitted.
  */
-export async function resetAllSalesAndCountersToZero(): Promise<DailyLedgerStats> {
-  const todayStr = getTodayDateString();
-  const freshStats = createFreshDayStats(todayStr);
-
-  localStorage.setItem(ACTIVE_DAY_KEY, JSON.stringify(freshStats));
-
-  try {
-    await syncStatsToFirestore(freshStats);
-  } catch {
-    // Ignore
-  }
-
-  return freshStats;
+export function isLedgerAuditLocked(): boolean {
+  return true;
 }
+

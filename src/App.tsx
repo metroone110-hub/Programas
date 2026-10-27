@@ -41,6 +41,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { ImageWithLoader } from './components/ImageWithLoader';
 import { DishesMarquee } from './components/DishesMarquee';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { RadarAffluenceMap } from './components/RadarAffluenceMap';
 
 export const App: React.FC = () => {
   // Canteens & Dishes State
@@ -373,46 +374,19 @@ export const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6 pb-24">
         
-        {/* Radar Affluence Resto U • Google Maps Card */}
-        <div id="radar-affluence-section" className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between shadow-xs transition-all hover:shadow-sm">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-orange-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <MapPin className="w-5 h-5 text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center space-x-2">
-                <span className="font-black text-xs sm:text-sm text-slate-900 tracking-tight">
-                  Radar Affluence Resto U
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 flex-shrink-0">
-                  Google Maps
-                </span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-slate-600 truncate mt-0.5">
-                Savoir s'il y a du monde au Resto U en direct • Périmètre 65m
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
-            <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-[11px] font-bold text-slate-800">
-              <span className={`w-2 h-2 rounded-full animate-pulse ${
-                selectedCanteen.crowdLevel === 'faible' ? 'bg-emerald-500' : selectedCanteen.crowdLevel === 'moyen' ? 'bg-amber-500' : 'bg-red-500'
-              }`}></span>
-              <span>{selectedCanteen.crowdLevel === 'faible' ? 'Fluide' : selectedCanteen.crowdLevel === 'moyen' ? 'Moyenne' : 'Forte'}</span>
-              <span className="text-slate-400">(~{selectedCanteen.waitingTimeMinutes} min)</span>
-            </div>
-            <a 
-              href="https://maps.google.com/?q=Universite+Peleforo+Gbon+Coulibaly+Korhogo" 
-              target="_blank" 
-              rel="noreferrer"
-              className="inline-flex items-center space-x-1 text-xs font-bold text-orange-600 hover:text-orange-700 transition-colors"
-            >
-              <span className="hidden xs:inline">Voir la carte</span>
-              <ChevronRight className="w-4 h-4" />
-            </a>
-          </div>
-        </div>
+        {/* Radar Affluence Resto U • Google Maps Interactive Geofence Map (65m) */}
+        <section id="radar-affluence-section" className="scroll-mt-20">
+          <RadarAffluenceMap 
+            canteen={selectedCanteen}
+            onUpdateCrowdLevel={(level, waitMin) => {
+              setSelectedCanteen(prev => ({
+                ...prev,
+                crowdLevel: level,
+                waitingTimeMinutes: waitMin
+              }));
+            }}
+          />
+        </section>
 
         {/* Dashboard Hero Banner with Lady Background & Text Transition */}
         <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-slate-900 bg-slate-950 text-white min-h-[300px] flex flex-col justify-between">
@@ -645,15 +619,8 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Galerie Défilante des 6 Plats & Ambiance Resto U (Demande Utilisateur) */}
-        <DishesMarquee
-          dishes={dishes}
-          onSelectDish={(d) => {
-            setDetailDish(d);
-            setShowDetailModal(true);
-          }}
-          onAddToCart={(d) => handleAddToCart(d, 1)}
-        />
+        {/* Galerie Défilante des 6 Photos : Ambiance & Vie au Resto U UPGC */}
+        <DishesMarquee />
 
         {/* Active Ticket Quick Access Banner if user has a valid ticket */}
         {user && user.savedTickets && user.savedTickets.some(t => t.status === 'valid') && (

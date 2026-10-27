@@ -1,104 +1,200 @@
-import React from 'react';
-import { Sparkles, Utensils, Eye, Plus } from 'lucide-react';
-import { Dish } from '../types';
+import React, { useState } from 'react';
+import { Users, Camera, MapPin, Sparkles, X, ChevronRight, Eye } from 'lucide-react';
 
-interface Props {
-  dishes: Dish[];
-  onSelectDish: (dish: Dish) => void;
-  onAddToCart?: (dish: Dish) => void;
+export interface CanteenPhotoItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+  tag: string;
+  highlight?: boolean;
 }
 
-export const DishesMarquee: React.FC<Props> = ({ dishes, onSelectDish, onAddToCart }) => {
-  // Use first 6 dishes for the 6 photos carousel
-  const marqueeDishes = dishes.slice(0, 6);
-  
-  if (marqueeDishes.length === 0) return null;
+const CANTEEN_ATMOSPHERE_PHOTOS: CanteenPhotoItem[] = [
+  {
+    id: 'photo_crouk_queue_1',
+    title: 'File d\'attente & Accueil Resto U',
+    subtitle: 'La Direction du CROU Korhogo et les étudiants en rang devant le restaurant',
+    imageUrl: '/assets/aistudio/IMG_1017_cbecc94a.jpeg',
+    tag: 'CROU-K UPGC Officiel',
+    highlight: true
+  },
+  {
+    id: 'photo_crouk_dining_2',
+    title: 'Déjeuner en Salle Resto U',
+    subtitle: 'Étudiants réunis autour des tables lors du service de midi',
+    imageUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=800&q=80',
+    tag: 'Salle de Restauration'
+  },
+  {
+    id: 'photo_crouk_service_3',
+    title: 'Distribution des Plateaux Repas',
+    subtitle: 'Passage au self et service des rations subventionnées 200 FCFA',
+    imageUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
+    tag: 'Comptoir de Service'
+  },
+  {
+    id: 'photo_crouk_courtyard_4',
+    title: 'Espaces & Allées du Campus UPGC',
+    subtitle: 'Arrivée des promotions étudiantes pour le déjeuner',
+    imageUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=800&q=80',
+    tag: 'Campus UPGC'
+  },
+  {
+    id: 'photo_crouk_team_5',
+    title: 'Équipe CROU & Contrôle Guichet',
+    subtitle: 'Agents de restauration et surveillants de service à Korhogo',
+    imageUrl: 'https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&w=800&q=80',
+    tag: 'Personnel CROU'
+  },
+  {
+    id: 'photo_crouk_friends_6',
+    title: 'Convivialité & Pause Repas',
+    subtitle: 'Moment d\'échange entre camarades après les cours d\'amphithéâtre',
+    imageUrl: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=800&q=80',
+    tag: 'Vie Étudiante'
+  }
+];
 
-  // Duplicate for smooth infinite loop
-  const duplicatedList = [...marqueeDishes, ...marqueeDishes];
+interface Props {
+  onPhotoClick?: (photo: CanteenPhotoItem) => void;
+}
+
+export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
+  const [selectedPhoto, setSelectedPhoto] = useState<CanteenPhotoItem | null>(null);
+
+  // Duplicate for smooth seamless loop
+  const duplicatedList = [...CANTEEN_ATMOSPHERE_PHOTOS, ...CANTEEN_ATMOSPHERE_PHOTOS];
+
+  const handleCardClick = (photo: CanteenPhotoItem) => {
+    setSelectedPhoto(photo);
+    if (onPhotoClick) onPhotoClick(photo);
+  };
 
   return (
-    <section className="space-y-3 pt-4 pb-2 w-full max-w-full overflow-hidden">
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-orange-500 animate-ping"></div>
-          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 font-cabinet">
-            Galerie & Spécialités du Restau. U
+    <section className="space-y-3 pt-6 pb-2 w-full max-w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-1 gap-2">
+        <div className="flex items-center space-x-2.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-orange-600 animate-ping"></div>
+          <h3 className="text-sm sm:text-base font-black text-slate-900 font-cabinet">
+            Ambiance & Visites du Resto U (UPGC)
           </h3>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800">
-            6 Plats du Jour
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-100 text-orange-900 border border-orange-200">
+            6 Photos Officielles
           </span>
         </div>
-        <span className="text-xs text-slate-400 font-medium hidden sm:inline">
-          Défilement automatique • Cliquez pour commander
+        <span className="text-xs text-slate-500 font-medium">
+          Défilement continu • Étudiants & Restaurant Universitaire
         </span>
       </div>
 
       {/* Marquee viewport with gradient mask on edges */}
-      <div className="relative w-full overflow-hidden rounded-2xl py-1">
-        <div className="absolute left-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-r from-slate-50 to-transparent z-10 pointer-events-none"></div>
-        <div className="absolute right-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-l from-slate-50 to-transparent z-10 pointer-events-none"></div>
+      <div className="relative w-full overflow-hidden rounded-3xl py-1">
+        <div className="absolute left-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-r from-slate-100 to-transparent z-10 pointer-events-none"></div>
+        <div className="absolute right-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-l from-slate-100 to-transparent z-10 pointer-events-none"></div>
 
-        <div className="animate-marquee space-x-3.5 flex items-center">
-          {duplicatedList.map((dish, idx) => (
+        <div className="animate-marquee space-x-4 flex items-center">
+          {duplicatedList.map((photo, idx) => (
             <div
-              key={`${dish.id}-${idx}`}
-              onClick={() => onSelectDish(dish)}
-              className="group relative w-48 sm:w-56 h-36 sm:h-40 rounded-2xl overflow-hidden bg-slate-900 shadow-md border border-slate-200/80 cursor-pointer flex-shrink-0 transition-transform hover:scale-103 active:scale-98"
+              key={`${photo.id}-${idx}`}
+              onClick={() => handleCardClick(photo)}
+              className="group relative w-64 sm:w-72 h-44 sm:h-48 rounded-2xl overflow-hidden bg-slate-950 shadow-md border border-slate-200/90 cursor-pointer flex-shrink-0 transition-transform hover:scale-103 active:scale-98"
             >
               <img
-                src={dish.imageUrl}
-                alt={dish.name}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                src={photo.imageUrl}
+                alt={photo.title}
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 loading="lazy"
               />
               
-              {/* Gradient Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+              {/* Dark Gradient Overlay for optimal readability */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/20"></div>
 
-              {/* Price Badge */}
-              <div className="absolute top-2.5 left-2.5">
-                <span className="px-2 py-0.5 rounded-lg bg-orange-600/90 text-white font-black text-[10px] shadow-sm backdrop-blur-xs font-mono">
-                  {dish.price} FCFA
+              {/* Tag Badge */}
+              <div className="absolute top-2.5 left-2.5 flex items-center space-x-1.5">
+                <span className={`px-2 py-0.5 rounded-lg text-white font-extrabold text-[10px] shadow-sm backdrop-blur-xs font-mono flex items-center space-x-1 ${
+                  photo.highlight ? 'bg-orange-600 border border-amber-300/40' : 'bg-black/60 border border-white/20'
+                }`}>
+                  <Camera className="w-3 h-3" />
+                  <span>{photo.tag}</span>
                 </span>
               </div>
 
-              {/* Meal Tag */}
-              <div className="absolute top-2.5 right-2.5">
-                <span className="px-1.5 py-0.5 rounded-md bg-black/60 text-white font-semibold text-[9px] backdrop-blur-xs">
-                  {dish.mealType === 'dejeuner' ? '☀️ Midi' : '🌙 Soir'}
-                </span>
-              </div>
-
-              {/* Dish Info at Bottom */}
-              <div className="absolute bottom-2.5 inset-x-2.5 flex items-end justify-between">
-                <div className="min-w-0 pr-2">
-                  <h4 className="font-extrabold text-xs text-white leading-snug truncate group-hover:text-amber-300 transition-colors">
-                    {dish.name}
-                  </h4>
-                  <p className="text-[10px] text-slate-300 truncate">
-                    {dish.tags[0] || 'Spécialité UPGC'}
-                  </p>
+              {/* Zoom Icon indicator */}
+              <div className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-7 h-7 rounded-full bg-white/30 backdrop-blur-md flex items-center justify-center text-white shadow-sm">
+                  <Eye className="w-3.5 h-3.5" />
                 </div>
+              </div>
 
-                {onAddToCart && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddToCart(dish);
-                    }}
-                    className="p-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white shadow-sm flex items-center justify-center transition-transform active:scale-90 flex-shrink-0"
-                    title="Ajouter au panier"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                )}
+              {/* Photo Title & Caption at Bottom */}
+              <div className="absolute bottom-2.5 inset-x-3 space-y-0.5">
+                <h4 className="font-black text-xs text-white leading-tight truncate group-hover:text-amber-300 transition-colors">
+                  {photo.title}
+                </h4>
+                <p className="text-[10px] text-slate-300 line-clamp-2 leading-relaxed">
+                  {photo.subtitle}
+                </p>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* LIGHTBOX MODAL TO VIEW FULL PHOTO */}
+      {selectedPhoto && (
+        <div 
+          onClick={() => setSelectedPhoto(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl overflow-hidden max-w-lg w-full shadow-2xl border border-slate-100 space-y-0 animate-scaleUp flex flex-col"
+          >
+            <div className="relative aspect-4/3 w-full bg-slate-950 overflow-hidden">
+              <img
+                src={selectedPhoto.imageUrl}
+                alt={selectedPhoto.title}
+                className="w-full h-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => setSelectedPhoto(null)}
+                className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors backdrop-blur-xs"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="absolute bottom-3 left-3">
+                <span className="px-2.5 py-1 rounded-full bg-orange-600 text-white text-xs font-bold shadow-sm">
+                  {selectedPhoto.tag}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-2">
+              <h3 className="text-base font-black text-slate-900 font-cabinet">
+                {selectedPhoto.title}
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {selectedPhoto.subtitle}
+              </p>
+              <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-[11px] text-slate-400">
+                <span className="flex items-center space-x-1">
+                  <MapPin className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Campus UPGC Korhogo (Côte d'Ivoire)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPhoto(null)}
+                  className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-xs transition-colors"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

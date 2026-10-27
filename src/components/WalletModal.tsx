@@ -3,6 +3,7 @@ import { X, CreditCard, Wallet, ArrowUpRight, Check, AlertCircle, Sparkles, Smar
 import confetti from 'canvas-confetti';
 import { UserProfile } from '../types';
 import { updateUserBalance } from '../services/studentAuth';
+import { initiateJekoPayment } from '../services/jekoPayment';
 
 interface Props {
   isOpen: boolean;
@@ -31,15 +32,23 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
     }
 
     setIsProcessing(true);
-    // Simulate instantaneous mobile money payment
-    setTimeout(async () => {
+    try {
+      await initiateJekoPayment({
+        amount: amountToCharge,
+        studentMatricule: user.matricule || user.uid,
+        studentName: user.displayName || 'Étudiant UPGC',
+        studentPhone: phoneForPayment || user.phone || '0700000000',
+        orderDescription: `Recharge CROU Pass ${amountToCharge} FCFA`,
+        ticketQuantity: Math.floor(amountToCharge / 200),
+        paymentMethod: selectedMethod
+      });
+
       const newBalance = user.balance + amountToCharge;
       const updatedUser = await updateUserBalance(user, newBalance);
       onBalanceUpdated(updatedUser);
       setIsProcessing(false);
       setSuccessMsg(true);
 
-      // Trigger celebratory confetti
       try {
         confetti({
           particleCount: 70,
@@ -54,7 +63,9 @@ export const WalletModal: React.FC<Props> = ({ isOpen, onClose, user, onBalanceU
         setSuccessMsg(false);
         onClose();
       }, 1800);
-    }, 900);
+    } catch {
+      setIsProcessing(false);
+    }
   };
 
   return (

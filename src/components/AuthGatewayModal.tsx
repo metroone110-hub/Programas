@@ -121,7 +121,7 @@ export const AuthGatewayModal: React.FC<Props> = ({ isOpen, onSuccess, onClose }
       email: 'etudiant.invite@crou.ci',
       displayName: 'Étudiant Invité',
       role: 'student',
-      balance: 1000,
+      balance: 0,
       savedTickets: [],
       campus: 'Campus Cocody (FHB)'
     };

@@ -41,7 +41,6 @@ import {
 import { 
   DailyLedgerStats,
   getActiveDailyLedger,
-  resetAllSalesAndCountersToZero,
   getAllDailyArchives,
   archivePastDay,
   getTodayDateString,
@@ -80,8 +79,7 @@ export const AdminDashboard: React.FC<Props> = ({
     servedTickets: []
   });
 
-  // Modals for Reset & Archives
-  const [showConfirmResetModal, setShowConfirmResetModal] = useState<boolean>(false);
+  // Modals for Archives
   const [showArchivesModal, setShowArchivesModal] = useState<boolean>(false);
   const [archivesList, setArchivesList] = useState<DailyLedgerStats[]>([]);
   const [actionSuccessNotice, setActionSuccessNotice] = useState<string | null>(null);
@@ -127,18 +125,8 @@ export const AdminDashboard: React.FC<Props> = ({
     setShowArchivesModal(true);
   };
 
-  const handleResetCacheToZero = async () => {
-    const fresh = await resetAllSalesAndCountersToZero();
-    setDailyLedger(fresh);
-    setShowConfirmResetModal(false);
-    setActionSuccessNotice('Le cache des ventes a été entièrement vidé. Tous les compteurs sont remis à 0 !');
-    setTimeout(() => setActionSuccessNotice(null), 4000);
-  };
-
   const handleManualArchiveDay = async () => {
     await archivePastDay(dailyLedger);
-    const fresh = await resetAllSalesAndCountersToZero();
-    setDailyLedger(fresh);
     const updatedArchives = await getAllDailyArchives();
     setArchivesList(updatedArchives);
     setActionSuccessNotice('La journée a été archivée avec succès dans l\'historique permanent.');
@@ -340,15 +328,13 @@ export const AdminDashboard: React.FC<Props> = ({
                     <span>Archives Quotidiennes</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmResetModal(true)}
-                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold rounded-xl transition-colors flex items-center space-x-1.5 shadow-xs"
-                    title="Vider la cache et reprendre à zéro"
+                  <div
+                    className="px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl flex items-center space-x-1.5 shadow-xs"
+                    title="Sécurité CROU : Registre inaltérable et infalsifiable par le personnel de caisse"
                   >
-                    <RotateCcw className="w-4 h-4 text-red-600" />
-                    <span>Vider le Cache (Zéro)</span>
-                  </button>
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>Registre Inaltérable (Anti-Fraude)</span>
+                  </div>
                 </div>
               </div>
 
@@ -943,54 +929,7 @@ export const AdminDashboard: React.FC<Props> = ({
 
       </main>
 
-      {/* CONFIRMATION MODAL: RESET SALES CACHE TO ZERO */}
-      {showConfirmResetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-scaleUp">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="p-3 bg-red-100 rounded-2xl">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
-              </div>
-              <div>
-                <h3 className="font-black text-base text-slate-900 font-cabinet">
-                  Vider le Cache des Ventes ?
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Remise à zéro officielle des compteurs
-                </p>
-              </div>
-            </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Cette opération va réinitialiser les compteurs de vente actuels (Total tickets vendus, Repas servis, Recettes) à <strong>strictement 0</strong> pour démarrer les activités du restaurant sur une page blanche.
-            </p>
-
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 flex items-start space-x-2">
-              <ShieldCheck className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
-              <span>
-                <strong>Zéro perte :</strong> Les comptes étudiants, matricules, et soldes personnels restent intégralement conservés et protégés.
-              </span>
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowConfirmResetModal(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={handleResetCacheToZero}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider shadow-md transition-all active:scale-95 cursor-pointer"
-              >
-                Oui, Remettre à Zéro
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ARCHIVES MODAL: HISTORICAL JOURNALS (NEVER LOST) */}
       {showArchivesModal && (

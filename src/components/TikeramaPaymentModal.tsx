@@ -18,6 +18,7 @@ import { validateCIPhoneNumber } from '../utils/phoneValidator';
 import { recordRecharge } from '../utils/analytics';
 import { recordTicketsSaleInLedger } from '../services/dailyLedger';
 import { jekoConfig, createJekoTransactionPayload } from '../services/jekoConfig';
+import { initiateJekoPayment } from '../services/jekoPayment';
 
 interface Props {
   isOpen: boolean;
@@ -105,10 +106,18 @@ export const TikeramaPaymentModal: React.FC<Props> = ({
     setIsLoading(true);
 
     try {
-      // Simulate real Jeko gateway handshake with configured keys
-      await new Promise(resolve => setTimeout(resolve, 1400));
+      // Process transaction via Jeko Live Payment Service
+      const paymentRes = await initiateJekoPayment({
+        amount: currentFinalAmount,
+        studentMatricule: user.matricule || user.uid,
+        studentName: user.displayName || 'Étudiant UPGC',
+        studentPhone: rawDigits,
+        orderDescription: isDirectTicketPurchase ? `Achat tickets Resto U CROU` : `Recharge compte CROU Pass`,
+        ticketQuantity: isDirectTicketPurchase && items ? items.reduce((s, i) => s + i.quantity, 0) : Math.max(1, Math.floor(currentFinalAmount / 200)),
+        paymentMethod: selectedMethod
+      });
 
-      const reference = `TIK-${selectedMethod.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const reference = paymentRes.reference;
 
       if (isDirectTicketPurchase && items && items.length > 0) {
         // Direct Ticket Purchase
