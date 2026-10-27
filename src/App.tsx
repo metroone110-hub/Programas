@@ -34,7 +34,6 @@ import { DishDetailModal } from './components/DishDetailModal';
 import { CartDrawer, CartItem } from './components/CartDrawer';
 import { PaymentCheckoutModal } from './components/PaymentCheckoutModal';
 import { BlackGatewayPortal } from './components/BlackGatewayPortal';
-import { WalletModal } from './components/WalletModal';
 import { TicketModal } from './components/TicketModal';
 import { MyTicketsModal } from './components/MyTicketsModal';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -78,7 +77,7 @@ export const App: React.FC = () => {
   const [waveTotalAmount, setWaveTotalAmount] = useState<number>(200);
 
   // Other Modals
-  const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
+  const [showRadarModal, setShowRadarModal] = useState<boolean>(false);
   const [showMyTicketsModal, setShowMyTicketsModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
@@ -126,8 +125,7 @@ export const App: React.FC = () => {
     if (tab === 'home') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (tab === 'radar') {
-      const el = document.getElementById('radar-affluence-section');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
+      setShowRadarModal(true);
     } else if (tab === 'search') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (tab === 'cart') {
@@ -136,7 +134,7 @@ export const App: React.FC = () => {
       setShowMyTicketsModal(true);
     } else if (tab === 'profile') {
       if (user) {
-        setShowWalletModal(true);
+        setShowMyTicketsModal(true);
       } else {
         setShowBlackPortal(true);
       }
@@ -391,7 +389,6 @@ export const App: React.FC = () => {
         onSelectCanteen={setSelectedCanteen}
         user={user}
         onOpenAuth={() => setShowBlackPortal(true)}
-        onOpenWallet={() => setShowWalletModal(true)}
         onOpenMyTickets={() => setShowMyTicketsModal(true)}
         onOpenAdmin={() => setIsAdminView(true)}
         onLogout={handleLogout}
@@ -403,21 +400,35 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6 pb-24">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24">
         
-        {/* Radar Affluence Resto U • Google Maps Interactive Geofence Map (65m) */}
-        <section id="radar-affluence-section" className="scroll-mt-20">
-          <RadarAffluenceMap 
-            canteen={selectedCanteen}
-            onUpdateCrowdLevel={(level, waitMin) => {
-              setSelectedCanteen(prev => ({
-                ...prev,
-                crowdLevel: level,
-                waitingTimeMinutes: waitMin
-              }));
-            }}
-          />
-        </section>
+        {/* Radar Affluence Resto U - Compact Header Card (matching IMG_1079) */}
+        <div 
+          onClick={() => setShowRadarModal(true)}
+          className="bg-amber-50/80 hover:bg-amber-100/80 border border-orange-200/90 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between shadow-xs cursor-pointer transition-all active:scale-98"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+              <MapPin className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-1.5 flex-wrap">
+                <span className="font-extrabold text-xs sm:text-sm text-slate-900">Radar Affluence Resto U</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-100 text-rose-700">Google Maps</span>
+              </div>
+              <p className="text-[11px] text-slate-500 line-clamp-1">
+                Savoir s'il y a du monde au Resto U en direct • Périmètre 65m
+              </p>
+            </div>
+          </div>
+          <button 
+            type="button"
+            className="text-xs font-bold text-orange-600 flex items-center space-x-1 hover:underline flex-shrink-0 ml-2 cursor-pointer"
+          >
+            <span>Voir la carte</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Dashboard Hero Banner with Lady Background & Text Transition */}
         <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-slate-900 bg-slate-950 text-white min-h-[300px] flex flex-col justify-between">
@@ -588,21 +599,21 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Pills matching IMG_0875.webp Screen 1 */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
+        {/* Category Pills matching IMG_1199 */}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
           {[
-            { id: 'all', label: 'Tous les mets' },
-            { id: 'plat_principal', label: 'Plats Chauds & Sauces' },
-            { id: 'entree', label: 'Entrées & Alloco' },
-            { id: 'dessert', label: 'Desserts & Dêguê' },
-            { id: 'boisson', label: 'Jus & Boissons' },
+            { id: 'all', label: 'Tous' },
+            { id: 'plat_principal', label: '🍛 Plats Chauds CROU' },
+            { id: 'dejeuner', label: '☀️ Déjeuner (11h30 - 14h30)' },
+            { id: 'diner', label: '🌙 Dîner (18h30 - 21h30)' },
+            { id: 'dessert', label: '🍧 Desserts & Fruits' },
           ].map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                 selectedCategory === cat.id
-                  ? 'bg-orange-600 text-white shadow-md shadow-orange-500/20'
+                  ? 'bg-slate-900 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
@@ -611,29 +622,46 @@ export const App: React.FC = () => {
           ))}
         </div>
 
-        {/* Dish Grid */}
+        {/* Dish Grid matching IMG_1199 */}
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-extrabold text-slate-900 font-cabinet">
-              Recommandés Pour Vous (200 FCFA)
+              Recommandés Pour Vous
             </h3>
-            <span className="text-xs text-orange-600 font-bold hover:underline cursor-pointer">
+            <span 
+              onClick={() => setSelectedCategory('all')}
+              className="text-xs text-orange-600 font-bold hover:underline cursor-pointer"
+            >
               Tout voir
             </span>
           </div>
 
           {filteredDishes.length === 0 ? (
-            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 space-y-3">
-              <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto">
-                <Utensils className="w-8 h-8" />
+            <div className="bg-amber-50/60 border border-orange-200/80 rounded-3xl p-6 sm:p-8 text-center space-y-3 shadow-xs">
+              <div className="w-14 h-14 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mx-auto text-2xl shadow-inner">
+                👨‍🍳
               </div>
-              <h3 className="font-bold text-slate-800 text-base">Aucun plat disponible pour ce filtre</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Modifiez vos filtres ou contactez l'administration pour la programmation des menus.
-              </p>
+              <div className="space-y-1">
+                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base font-cabinet">
+                  Menu en attente de programmation CROU-K
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                  L'administration du Restaurant Universitaire publie les menus et rations subventionnées (200 FCFA) du jour.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (user?.role === 'admin') setIsAdminView(true);
+                  else setShowBlackPortal(true);
+                }}
+                className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
+              >
+                <span>👨‍🍳 Programmer le menu</span>
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
               {filteredDishes.map((dish) => (
                 <DishCard
                   key={dish.id}
@@ -727,25 +755,57 @@ export const App: React.FC = () => {
         />
       )}
 
-      {user && (
-        <>
-          <WalletModal
-            isOpen={showWalletModal}
-            onClose={() => setShowWalletModal(false)}
-            user={user}
-            onBalanceUpdated={(updated) => setUser(updated)}
-          />
+      {/* Interactive Radar Affluence Modal (Accessible on click without taking page space) */}
+      {showRadarModal && (
+        <div 
+          onClick={() => setShowRadarModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl overflow-hidden max-w-xl w-full max-h-[90vh] shadow-2xl border border-slate-100 flex flex-col animate-scaleUp"
+          >
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center space-x-2">
+                <MapPin className="w-5 h-5 text-orange-600" />
+                <h3 className="text-sm font-black text-slate-900 font-cabinet">
+                  Radar Affluence Resto U • Google Maps
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRadarModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-800 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <RadarAffluenceMap 
+                canteen={selectedCanteen}
+                onUpdateCrowdLevel={(level, waitMin) => {
+                  setSelectedCanteen(prev => ({
+                    ...prev,
+                    crowdLevel: level,
+                    waitingTimeMinutes: waitMin
+                  }));
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
-          <MyTicketsModal
-            isOpen={showMyTicketsModal}
-            onClose={() => setShowMyTicketsModal(false)}
-            user={user}
-            onSelectTicket={(ticket) => {
-              setShowMyTicketsModal(false);
-              setActiveTicket(ticket);
-            }}
-          />
-        </>
+      {user && (
+        <MyTicketsModal
+          isOpen={showMyTicketsModal}
+          onClose={() => setShowMyTicketsModal(false)}
+          user={user}
+          onSelectTicket={(ticket) => {
+            setShowMyTicketsModal(false);
+            setActiveTicket(ticket);
+          }}
+        />
       )}
 
       {/* Real Ticket Display Modal with authentic CROU Korhogo photo */}

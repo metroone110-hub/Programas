@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Camera, MapPin, Sparkles, X, ChevronRight, Eye } from 'lucide-react';
+import { Camera, MapPin, X, Eye } from 'lucide-react';
 
 export interface CanteenPhotoItem {
   id: string;
@@ -10,48 +10,49 @@ export interface CanteenPhotoItem {
   highlight?: boolean;
 }
 
-const CANTEEN_ATMOSPHERE_PHOTOS: CanteenPhotoItem[] = [
+export const CANTEEN_ATMOSPHERE_PHOTOS: CanteenPhotoItem[] = [
   {
-    id: 'photo_crouk_queue_1',
-    title: 'File d\'attente & Accueil Resto U',
-    subtitle: 'La Direction du CROU Korhogo et les étudiants en rang devant le restaurant',
-    imageUrl: '/assets/aistudio/IMG_1017_cbecc94a.jpeg',
+    id: 'photo_crouk_1',
+    title: 'Visite de la Direction & Accueil Étudiants',
+    subtitle: 'La Direction du CROU Korhogo sur le terrain avec les étudiants au Resto U',
+    imageUrl: '/assets/crouk/photo_1_directrice_queue.jpeg',
     tag: 'CROU-K UPGC Officiel',
     highlight: true
   },
   {
-    id: 'photo_crouk_dining_2',
-    title: 'Déjeuner en Salle Resto U',
-    subtitle: 'Étudiants réunis autour des tables lors du service de midi',
-    imageUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=800&q=80',
-    tag: 'Salle de Restauration'
+    id: 'photo_crouk_2',
+    title: 'File d\'Attente sous les Arcades',
+    subtitle: 'Étudiants en rang ordonné devant l\'entrée du restaurant universitaire',
+    imageUrl: '/assets/crouk/photo_2_corridor_queue.jpg',
+    tag: 'Accès Resto U'
   },
   {
-    id: 'photo_crouk_service_3',
-    title: 'Distribution des Plateaux Repas',
-    subtitle: 'Passage au self et service des rations subventionnées 200 FCFA',
-    imageUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
-    tag: 'Comptoir de Service'
+    id: 'photo_crouk_3',
+    title: 'Grande Salle de Restauration',
+    subtitle: 'Service de midi au réfectoire et dégustation des repas subventionnés',
+    imageUrl: '/assets/crouk/photo_3_refectoire_salle.jpg',
+    tag: 'Salle & Réfectoire'
   },
   {
-    id: 'photo_crouk_courtyard_4',
-    title: 'Espaces & Allées du Campus UPGC',
-    subtitle: 'Arrivée des promotions étudiantes pour le déjeuner',
-    imageUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=800&q=80',
-    tag: 'Campus UPGC'
+    id: 'photo_crouk_4',
+    title: 'Restaurant Univ. Peleforo Gon Coulibaly',
+    subtitle: 'Façade officielle et allées principales du campus universitaire de Korhogo',
+    imageUrl: '/assets/crouk/photo_4_facade_resto_u.jpg',
+    tag: 'Entrée Principale',
+    highlight: true
   },
   {
-    id: 'photo_crouk_team_5',
-    title: 'Équipe CROU & Contrôle Guichet',
-    subtitle: 'Agents de restauration et surveillants de service à Korhogo',
-    imageUrl: 'https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&w=800&q=80',
-    tag: 'Personnel CROU'
+    id: 'photo_crouk_5',
+    title: 'Ambiance Nocturne & Dîner au Resto U',
+    subtitle: 'Couloirs illuminés et dîner des étudiants après les cours du soir',
+    imageUrl: '/assets/crouk/photo_5_campus_nuit.jpg',
+    tag: 'Service du Soir'
   },
   {
-    id: 'photo_crouk_friends_6',
-    title: 'Convivialité & Pause Repas',
-    subtitle: 'Moment d\'échange entre camarades après les cours d\'amphithéâtre',
-    imageUrl: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=800&q=80',
+    id: 'photo_crouk_6',
+    title: 'Satisfaction & Convivialité au Repas',
+    subtitle: 'Un étudiant savoure son plat chaud complet au Restaurant Universitaire',
+    imageUrl: '/assets/crouk/photo_6_etudiant_repas.jpg',
     tag: 'Vie Étudiante'
   }
 ];
@@ -63,7 +64,7 @@ interface Props {
 export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
   const [selectedPhoto, setSelectedPhoto] = useState<CanteenPhotoItem | null>(null);
 
-  // Duplicate for smooth seamless loop
+  // Duplicate for smooth seamless infinite scroll
   const duplicatedList = [...CANTEEN_ATMOSPHERE_PHOTOS, ...CANTEEN_ATMOSPHERE_PHOTOS];
 
   const handleCardClick = (photo: CanteenPhotoItem) => {
@@ -77,7 +78,7 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
         <div className="flex items-center space-x-2.5">
           <div className="w-2.5 h-2.5 rounded-full bg-orange-600 animate-ping"></div>
           <h3 className="text-sm sm:text-base font-black text-slate-900 font-cabinet">
-            Ambiance & Visites du Resto U (UPGC)
+            Ambiance & Vie au Resto U (UPGC)
           </h3>
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-100 text-orange-900 border border-orange-200">
             6 Photos Officielles
@@ -108,7 +109,7 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
               />
               
               {/* Dark Gradient Overlay for optimal readability */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/20"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/10"></div>
 
               {/* Tag Badge */}
               <div className="absolute top-2.5 left-2.5 flex items-center space-x-1.5">
@@ -160,7 +161,7 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
               <button
                 type="button"
                 onClick={() => setSelectedPhoto(null)}
-                className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors backdrop-blur-xs"
+                className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors backdrop-blur-xs cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -186,7 +187,7 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
                 <button
                   type="button"
                   onClick={() => setSelectedPhoto(null)}
-                  className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-xs transition-colors"
+                  className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-xs transition-colors cursor-pointer"
                 >
                   Fermer
                 </button>

@@ -23,7 +23,6 @@ interface Props {
   onSelectCanteen: (canteen: Canteen) => void;
   user: UserProfile | null;
   onOpenAuth: () => void;
-  onOpenWallet: () => void;
   onOpenMyTickets: () => void;
   onOpenAdmin: () => void;
   onLogout: () => void;
@@ -40,7 +39,6 @@ export const Navbar: React.FC<Props> = ({
   onSelectCanteen,
   user,
   onOpenAuth,
-  onOpenWallet,
   onOpenMyTickets,
   onOpenAdmin,
   onLogout,
@@ -155,16 +153,16 @@ export const Navbar: React.FC<Props> = ({
             />
           </div>
 
-          {/* Wallet Balance Pill if user is logged in */}
-          {user && (
+          {/* Direct Ticket Quick Access Pill */}
+          {user && activeTicketsCount > 0 && (
             <button
               type="button"
-              onClick={onOpenWallet}
-              className="hidden xs:flex items-center space-x-1 px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-950 rounded-full text-xs font-bold transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Porte-monnaie étudiant"
+              onClick={onOpenMyTickets}
+              className="hidden xs:flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-950 rounded-full text-xs font-bold transition-all shadow-xs flex-shrink-0 cursor-pointer"
+              title="Mes tickets CROU valides"
             >
-              <Wallet className="w-3.5 h-3.5 text-orange-600" />
-              <span>{user.balance} F</span>
+              <span>🎟️</span>
+              <span>{activeTicketsCount} ticket{activeTicketsCount > 1 ? 's' : ''}</span>
             </button>
           )}
 
