@@ -25,7 +25,8 @@ import {
   updateUserBalance, 
   addMealTicket, 
   logoutUser,
-  purchaseTicketsBatch
+  purchaseTicketsBatch,
+  syncStudentTicketsWithFirestore
 } from './services/studentAuth';
 import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
@@ -42,6 +43,7 @@ import { DishesMarquee } from './components/DishesMarquee';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { RadarAffluenceMap } from './components/RadarAffluenceMap';
 import { TicketCounterBox } from './components/TicketCounterBox';
+import { ProgramasPochetteSplash } from './components/ProgramasPochetteSplash';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
@@ -93,10 +95,35 @@ export const App: React.FC = () => {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
 
+  // Animated "Pochette Programas" Splash Screen on entry
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    return !sessionStorage.getItem('programas_splash_shown_session');
+  });
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
   };
+
+  // Sync tickets with Firestore for seamless multi-device persistence
+  useEffect(() => {
+    if (user && user.matricule) {
+      syncStudentTicketsWithFirestore(user).then((synced) => {
+        if (synced && synced.savedTickets) {
+          setUser(prev => {
+            if (!prev) return synced;
+            // update if different
+            if (JSON.stringify(prev.savedTickets) !== JSON.stringify(synced.savedTickets)) {
+              return synced;
+            }
+            return prev;
+          });
+        }
+      }).catch(err => {
+        console.warn('Sync student tickets notice:', err);
+      });
+    }
+  }, [user?.matricule]);
 
   // Official Jeko Partner API Callback Handler (/payment/success & /payment/error)
   useEffect(() => {
@@ -426,6 +453,16 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative overflow-x-hidden w-full max-w-full">
       
+      {/* 3D Holographic Animated Programas Pochette Splash Screen */}
+      {showSplash && (
+        <ProgramasPochetteSplash
+          onComplete={() => {
+            sessionStorage.setItem('programas_splash_shown_session', 'true');
+            setShowSplash(false);
+          }}
+        />
+      )}
+
       {/* INTERFACE 1: BLACK GATEWAY PORTAL (INSCRIPTION & CONNEXION) */}
       <BlackGatewayPortal
         isOpen={showBlackPortal}

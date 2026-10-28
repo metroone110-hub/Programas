@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "CROU Resto U - UPGC Korhogo",
-  "short_name": "CROU Resto",
-  "description": "Menu officiel, tickets subventionnés à 200 FCFA et contrôle tourniquet du CROU Korhogo.",
+  "name": "Programas - CROU Korhogo",
+  "short_name": "Programas",
+  "description": "Billetterie officielle Programas, tickets subventionnés à 200 FCFA et contrôle tourniquet du CROU Korhogo.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

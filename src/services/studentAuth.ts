@@ -135,10 +135,14 @@ function updateStudentInLocalRegistry(profile: UserProfile, password?: string): 
   localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
 }
 
+export function sanitizeMatriculeId(matricule: string): string {
+  return (matricule || '').trim().toUpperCase().replace(/[\/\s.#$\[\]]/g, '_');
+}
+
 /**
  * Inscription Simple Étudiant sans Google :
  * Numéro de Matricule + Mot de passe + Nom
- * Les tickets et données sont garantis stockés intégralement !
+ * Les tickets et données sont garantis stockés intégralement dans Firestore !
  */
 export async function registerStudentWithMatricule(data: {
   matricule: string;
@@ -185,14 +189,16 @@ export async function registerStudentWithMatricule(data: {
   updateStudentInLocalRegistry(newProfile, cleanPass);
   saveLocalUserProfile(newProfile);
 
-  // 2. Store in Firestore database
+  // 2. Store in Firestore database with sanitized safe document ID
+  const safeId = sanitizeMatriculeId(cleanMatricule);
   try {
-    const studentRef = doc(db, 'students', cleanMatricule);
+    const studentRef = doc(db, 'students', safeId);
     await setDoc(studentRef, {
       ...newProfile,
+      matricule: cleanMatricule,
       passwordHash: cleanPass, // For student portal auth
       lastLogin: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (err) {
     console.warn('Firestore backup note (working with local storage guarantee):', err);
   }
@@ -201,7 +207,8 @@ export async function registerStudentWithMatricule(data: {
 }
 
 /**
- * Connexion Simple Étudiant par Matricule & Mot de passe
+ * Connexion Multi-Appareils Étudiant par Matricule & Mot de passe
+ * Récupère TOUS les tickets depuis Firestore même depuis un nouveau téléphone !
  */
 export async function loginStudentWithMatricule(
   matricule: string,
@@ -217,17 +224,26 @@ export async function loginStudentWithMatricule(
     return { success: false, error: 'Veuillez saisir votre mot de passe.' };
   }
 
-  // Check Local Registry first
+  // 1. Check Local Registry first
   const registry = getLocalStudentsRegistry();
   const localStudent = registry[cleanMatricule];
 
-  // Try Firestore lookup as well
+  // 2. Look up in Firestore (Multi-device primary source)
+  const safeId = sanitizeMatriculeId(cleanMatricule);
   let firestoreStudent: (UserProfile & { passwordHash?: string }) | null = null;
+  
   try {
-    const studentRef = doc(db, 'students', cleanMatricule);
+    const studentRef = doc(db, 'students', safeId);
     const snap = await getDoc(studentRef);
     if (snap.exists()) {
       firestoreStudent = snap.data() as any;
+    } else {
+      // Fallback query by matricule field
+      const q = query(collection(db, 'students'), where('matricule', '==', cleanMatricule), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        firestoreStudent = qSnap.docs[0].data() as any;
+      }
     }
   } catch (err) {
     console.warn('Firestore lookup note:', err);
@@ -247,15 +263,29 @@ export async function loginStudentWithMatricule(
     return { success: false, error: 'Mot de passe incorrect pour ce matricule.' };
   }
 
-  // Re-fetch and merge all saved tickets for this matricule to ensure 0 lost tickets
+  // 3. MULTI-DEVICE SYNC: Query ALL tickets directly from Firestore 'tickets' collection!
+  const firestoreTickets: MealTicket[] = [];
+  try {
+    const tQuery = query(collection(db, 'tickets'), where('studentMatricule', '==', cleanMatricule));
+    const tSnap = await getDocs(tQuery);
+    tSnap.forEach(d => {
+      firestoreTickets.push(d.data() as MealTicket);
+    });
+  } catch (err) {
+    console.warn('Firestore tickets query note:', err);
+  }
+
+  // 4. Retrieve local device vault tickets
   let vaultTickets: MealTicket[] = [];
   try {
     const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
     if (rawVault) vaultTickets = JSON.parse(rawVault);
   } catch {}
 
+  // 5. Merge all sources without duplicates
   const mergedMap = new Map<string, MealTicket>();
   (target.savedTickets || []).forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
+  firestoreTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
   vaultTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
   const mergedTickets = Array.from(mergedMap.values());
   
@@ -273,7 +303,12 @@ export async function loginStudentWithMatricule(
     createdAt: target.createdAt || new Date().toISOString()
   };
 
+  // Cache locally on this device
   saveLocalUserProfile(studentProfile);
+  try {
+    localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedTickets));
+  } catch {}
+
   return { success: true, user: studentProfile };
 }
 
@@ -316,6 +351,7 @@ export async function loginAdminDirect(username: string, password: string): Prom
 
 /**
  * Achat par lot ou panier de tickets (Garanti à 200 FCFA par ticket !)
+ * Synchronisation instantanée Firestore Multi-Appareils
  */
 export async function purchaseTicketsBatch(
   student: UserProfile,
@@ -325,6 +361,7 @@ export async function purchaseTicketsBatch(
   const now = new Date();
   const dateStr = now.toLocaleDateString('fr-FR');
   const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const cleanMatricule = student.matricule || student.uid || 'UPGC-2026';
 
   items.forEach(item => {
     for (let i = 0; i < item.quantity; i++) {
@@ -334,7 +371,7 @@ export async function purchaseTicketsBatch(
         ticketNumber: serial,
         studentId: student.uid,
         studentName: student.displayName,
-        studentMatricule: student.matricule || 'UPGC-2026',
+        studentMatricule: cleanMatricule,
         canteenId: item.canteenId,
         canteenName: item.canteenName,
         dishName: item.dishName,
@@ -342,7 +379,7 @@ export async function purchaseTicketsBatch(
         date: dateStr,
         price: 200, // Toujours 200 FCFA !
         status: 'valid',
-        qrCodeData: `https://crou.ci/verify?tkt=${serial}&mat=${student.matricule}`,
+        qrCodeData: `https://crou.ci/verify?tkt=${serial}&mat=${cleanMatricule}`,
         purchaseTime: timeStr
       };
       generatedTickets.push(newTicket);
@@ -356,24 +393,68 @@ export async function purchaseTicketsBatch(
   };
 
   saveLocalUserProfile(updatedUser);
+  try {
+    localStorage.setItem(`crou_student_vault_${cleanMatricule.toUpperCase()}`, JSON.stringify(allTickets));
+  } catch {}
 
-  // Sync to Firestore
+  // Sync to Firestore Multi-Appareils
   try {
     for (const t of generatedTickets) {
-      await setDoc(doc(db, 'tickets', t.id), t);
+      // 1. Save by internal ID
+      await setDoc(doc(db, 'tickets', t.id), t, { merge: true });
+      // 2. Also save directly by ticketNumber so turnstile scanner direct lookup is instant!
+      await setDoc(doc(db, 'tickets', t.ticketNumber), t, { merge: true });
     }
-    if (student.matricule) {
-      await setDoc(doc(db, 'students', student.matricule), {
-        ...updatedUser,
-        savedTickets: allTickets,
-        lastOrder: new Date().toISOString()
-      }, { merge: true });
-    }
+
+    const safeId = sanitizeMatriculeId(cleanMatricule);
+    await setDoc(doc(db, 'students', safeId), {
+      ...updatedUser,
+      matricule: cleanMatricule,
+      savedTickets: allTickets,
+      lastOrder: new Date().toISOString()
+    }, { merge: true });
   } catch (err) {
     console.warn('Firestore sync batch note:', err);
   }
 
   return { success: true, updatedUser, generatedTickets };
+}
+
+/**
+ * Synchronisation en arrière-plan des tickets depuis Firestore
+ * Permet de récupérer les nouveaux tickets achetés sur un autre appareil
+ */
+export async function syncStudentTicketsWithFirestore(user: UserProfile): Promise<UserProfile> {
+  if (!user.matricule) return user;
+  const cleanMatricule = user.matricule.toUpperCase();
+
+  try {
+    const tq = query(collection(db, 'tickets'), where('studentMatricule', '==', cleanMatricule));
+    const snap = await getDocs(tq);
+    const firestoreTickets: MealTicket[] = [];
+    snap.forEach(d => firestoreTickets.push(d.data() as MealTicket));
+
+    if (firestoreTickets.length > 0) {
+      const mergedMap = new Map<string, MealTicket>();
+      (user.savedTickets || []).forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
+      firestoreTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
+      const mergedList = Array.from(mergedMap.values());
+
+      const updatedUser: UserProfile = {
+        ...user,
+        savedTickets: mergedList
+      };
+      saveLocalUserProfile(updatedUser);
+      try {
+        localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedList));
+      } catch {}
+      return updatedUser;
+    }
+  } catch (err) {
+    console.warn('Sync tickets note:', err);
+  }
+
+  return user;
 }
 
 /**
@@ -388,7 +469,8 @@ export async function updateUserBalance(profile: UserProfile, newBalance: number
 
   try {
     if (profile.matricule) {
-      const studentRef = doc(db, 'students', profile.matricule);
+      const safeId = sanitizeMatriculeId(profile.matricule);
+      const studentRef = doc(db, 'students', safeId);
       await updateDoc(studentRef, { balance: newBalance });
     }
   } catch (err) {
@@ -410,11 +492,12 @@ export async function addMealTicket(profile: UserProfile, ticket: MealTicket): P
   saveLocalUserProfile(updated);
 
   try {
-    const ticketRef = doc(db, 'tickets', ticket.id);
-    await setDoc(ticketRef, ticket);
+    await setDoc(doc(db, 'tickets', ticket.id), ticket, { merge: true });
+    await setDoc(doc(db, 'tickets', ticket.ticketNumber), ticket, { merge: true });
 
     if (profile.matricule) {
-      const studentRef = doc(db, 'students', profile.matricule);
+      const safeId = sanitizeMatriculeId(profile.matricule);
+      const studentRef = doc(db, 'students', safeId);
       await updateDoc(studentRef, { savedTickets: updatedTickets });
     }
   } catch (err) {
@@ -447,30 +530,114 @@ export async function getAllRegisteredStudents(): Promise<UserProfile[]> {
 }
 
 /**
- * Audit Anti-Fraude : Contrôler un ticket au tourniquet
+ * Audit Anti-Fraude & Scanner Tourniquet Multi-Appareils
+ * Identifie TOUS les tickets réels (caméra, JSON, URL, numéro de série ou saisie manuelle)
  */
 export async function verifyTurnstileTicket(
   ticketNumber: string,
   matricule?: string
 ): Promise<{ status: 'valid' | 'used' | 'invalid' | 'fraud_detected'; ticket?: MealTicket; message: string }> {
-  const cleanTicketNo = (ticketNumber || '').trim();
-  const cleanMat = (matricule || '').trim().toUpperCase();
+  let cleanTicketNo = (ticketNumber || '').trim();
+  let cleanMat = (matricule || '').trim().toUpperCase();
 
-  const allStudents = await getAllRegisteredStudents();
-  let foundTicket: MealTicket | null = null;
-  let ownerStudent: UserProfile | null = null;
-
-  for (const s of allStudents) {
-    const match = (s.savedTickets || []).find(t => t.ticketNumber === cleanTicketNo);
-    if (match) {
-      foundTicket = match;
-      ownerStudent = s;
-      break;
+  // 1. Décodage robuste si le scanner transmet du JSON brut (généré par qrcode.ts)
+  if (cleanTicketNo.startsWith('{') || cleanTicketNo.includes('"tkt"') || cleanTicketNo.includes('"app"')) {
+    try {
+      const parsed = JSON.parse(cleanTicketNo);
+      if (parsed.tkt || parsed.ticketNumber) cleanTicketNo = parsed.tkt || parsed.ticketNumber;
+      if (parsed.mat || parsed.studentMatricule) cleanMat = (parsed.mat || parsed.studentMatricule).toUpperCase();
+    } catch {
+      const matchTkt = cleanTicketNo.match(/"tkt"\s*:\s*"([^"]+)"/);
+      if (matchTkt) cleanTicketNo = matchTkt[1];
+      const matchMat = cleanTicketNo.match(/"mat"\s*:\s*"([^"]+)"/);
+      if (matchMat) cleanMat = matchMat[1].toUpperCase();
     }
   }
 
+  // 2. Décodage si c'est une URL de vérification (ex: https://crou.ci/verify?tkt=CROUK-2026-XXXXXX&mat=...)
+  if (cleanTicketNo.includes('tkt=')) {
+    const matchTkt = cleanTicketNo.match(/tkt=([A-Za-z0-9-_]+)/);
+    if (matchTkt) cleanTicketNo = matchTkt[1];
+    const matchMat = cleanTicketNo.match(/mat=([A-Za-z0-9-_]+)/);
+    if (matchMat && !cleanMat) cleanMat = matchMat[1].toUpperCase();
+  }
+
+  // 3. Extraction d'un numéro de série CROUK-2026-XXXXXX s'il est inclus dans du texte
+  const serialMatch = cleanTicketNo.match(/CROUK-\d{4}-\d{6}/i);
+  if (serialMatch) {
+    cleanTicketNo = serialMatch[0].toUpperCase();
+  } else if (/^\d{6}$/.test(cleanTicketNo)) {
+    // Si l'opérateur a tapé uniquement les 6 chiffres (ex: 162787)
+    cleanTicketNo = `CROUK-2026-${cleanTicketNo}`;
+  }
+
+  let foundTicket: MealTicket | null = null;
+  let ownerStudent: UserProfile | null = null;
+
+  // A. Recherche directe O(1) dans Firestore collection 'tickets' par numéro de série
+  try {
+    const tSnap = await getDoc(doc(db, 'tickets', cleanTicketNo));
+    if (tSnap.exists()) {
+      foundTicket = tSnap.data() as MealTicket;
+    }
+  } catch (err) {
+    console.warn('Firestore ticket direct lookup note:', err);
+  }
+
+  // B. Recherche par query Firestore 'ticketNumber'
   if (!foundTicket) {
-    // Ticket inconnu ou faux
+    try {
+      const q = query(collection(db, 'tickets'), where('ticketNumber', '==', cleanTicketNo), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        foundTicket = qSnap.docs[0].data() as MealTicket;
+      }
+    } catch (err) {
+      console.warn('Firestore ticket query note:', err);
+    }
+  }
+
+  // C. Recherche par query Firestore 'id'
+  if (!foundTicket) {
+    try {
+      const q2 = query(collection(db, 'tickets'), where('id', '==', cleanTicketNo), limit(1));
+      const q2Snap = await getDocs(q2);
+      if (!q2Snap.empty) {
+        foundTicket = q2Snap.docs[0].data() as MealTicket;
+      }
+    } catch (err) {}
+  }
+
+  // D. Recherche dans les comptes étudiants (Firestore + Registry Local)
+  if (!foundTicket) {
+    const allStudents = await getAllRegisteredStudents();
+    for (const s of allStudents) {
+      const match = (s.savedTickets || []).find(t => 
+        t.ticketNumber === cleanTicketNo || 
+        t.id === cleanTicketNo ||
+        t.ticketNumber.endsWith(cleanTicketNo.replace('CROUK-2026-', ''))
+      );
+      if (match) {
+        foundTicket = match;
+        ownerStudent = s;
+        break;
+      }
+    }
+  }
+
+  // Récupérer le propriétaire du ticket si non encore trouvé
+  if (foundTicket && !ownerStudent && foundTicket.studentMatricule) {
+    try {
+      const sSafeId = sanitizeMatriculeId(foundTicket.studentMatricule);
+      const sSnap = await getDoc(doc(db, 'students', sSafeId));
+      if (sSnap.exists()) {
+        ownerStudent = sSnap.data() as UserProfile;
+      }
+    } catch {}
+  }
+
+  // Ticket introuvable
+  if (!foundTicket) {
     recordFraudLog({
       matricule: cleanMat || 'INCONNU',
       studentName: 'Non répertorié',
@@ -481,11 +648,11 @@ export async function verifyTurnstileTicket(
 
     return {
       status: 'invalid',
-      message: '🚨 TICKET INTROUVABLE : Ce numéro n\'a jamais été émis par le CROU Korhogo !'
+      message: `🚨 TICKET INTROUVABLE (${cleanTicketNo}) : Ce numéro n'a jamais été émis par le CROU Korhogo !`
     };
   }
 
-  // Matricule mismatch fraud check
+  // Contrôle d'usurpation de matricule si fourni
   if (cleanMat && foundTicket.studentMatricule && cleanMat !== foundTicket.studentMatricule.toUpperCase()) {
     recordFraudLog({
       matricule: cleanMat,
@@ -502,7 +669,7 @@ export async function verifyTurnstileTicket(
     };
   }
 
-  // Already used fraud check
+  // Contrôle de ticket déjà consommé
   if (foundTicket.status === 'used') {
     recordFraudLog({
       matricule: foundTicket.studentMatricule,
@@ -519,11 +686,35 @@ export async function verifyTurnstileTicket(
     };
   }
 
-  // Mark as used
+  // Validation du ticket : passer le statut à 'used'
   foundTicket.status = 'used';
   foundTicket.usedTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
+  // Mise à jour synchrone dans Firestore
+  try {
+    await setDoc(doc(db, 'tickets', foundTicket.id), foundTicket, { merge: true });
+    await setDoc(doc(db, 'tickets', foundTicket.ticketNumber), foundTicket, { merge: true });
+
+    if (foundTicket.studentMatricule) {
+      const sSafeId = sanitizeMatriculeId(foundTicket.studentMatricule);
+      const sRef = doc(db, 'students', sSafeId);
+      const sSnap = await getDoc(sRef);
+      if (sSnap.exists()) {
+        const studentData = sSnap.data() as UserProfile;
+        const updatedList = (studentData.savedTickets || []).map(t => 
+          (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+        );
+        await updateDoc(sRef, { savedTickets: updatedList });
+      }
+    }
+  } catch (err) {
+    console.warn('Firestore ticket usage update note:', err);
+  }
+
   if (ownerStudent) {
+    ownerStudent.savedTickets = (ownerStudent.savedTickets || []).map(t => 
+      (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+    );
     saveLocalUserProfile(ownerStudent);
   }
 

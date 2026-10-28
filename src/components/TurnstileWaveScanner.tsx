@@ -129,23 +129,37 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
     if (!rawText || scanCooldown) return;
 
     setScanCooldown(true);
-    setLastScannedText(rawText);
 
-    // Extract ticket number & matricule from URL or raw text
-    // Examples: https://crou.ci/verify?tkt=CROUK-2026-016278&mat=UPGC-2026-0842 or CROUK-2026-016278
+    // Extract ticket number & matricule from JSON payload, URL, or raw text
+    // Examples: {"app":"CROUK_RESTO_U","tkt":"CROUK-2026-016278",...} or https://crou.ci/verify?tkt=CROUK-2026-016278
     let ticketNum = rawText.trim();
     let mat = '';
 
-    if (rawText.includes('tkt=')) {
+    if (ticketNum.startsWith('{') || ticketNum.includes('"tkt"')) {
       try {
-        const url = new URL(rawText.startsWith('http') ? rawText : `https://${rawText}`);
+        const parsed = JSON.parse(ticketNum);
+        if (parsed.tkt || parsed.ticketNumber) ticketNum = parsed.tkt || parsed.ticketNumber;
+        if (parsed.mat || parsed.studentMatricule) mat = parsed.mat || parsed.studentMatricule;
+      } catch {
+        const match = ticketNum.match(/"tkt"\s*:\s*"([^"]+)"/);
+        if (match) ticketNum = match[1];
+        const matchMat = ticketNum.match(/"mat"\s*:\s*"([^"]+)"/);
+        if (matchMat) mat = matchMat[1];
+      }
+    } else if (ticketNum.includes('tkt=')) {
+      try {
+        const url = new URL(ticketNum.startsWith('http') ? ticketNum : `https://${ticketNum}`);
         ticketNum = url.searchParams.get('tkt') || ticketNum;
         mat = url.searchParams.get('mat') || '';
       } catch {
-        const match = rawText.match(/tkt=([A-Za-z0-9-_]+)/);
+        const match = ticketNum.match(/tkt=([A-Za-z0-9-_]+)/);
         if (match) ticketNum = match[1];
       }
+    } else if (/^\d{6}$/.test(ticketNum)) {
+      ticketNum = `CROUK-2026-${ticketNum}`;
     }
+
+    setLastScannedText(ticketNum);
 
     // Call validation against database & fraud check
     const res = await verifyTurnstileTicket(ticketNum, mat);
@@ -216,14 +230,22 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
           // Focus scan on central square viewfinder for maximum speed
-          const size = Math.min(canvas.width, canvas.height) * 0.7;
+          const size = Math.min(canvas.width, canvas.height) * 0.85;
           const startX = (canvas.width - size) / 2;
           const startY = (canvas.height - size) / 2;
 
           const imageData = ctx.getImageData(startX, startY, size, size);
-          const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+          let qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
             inversionAttempts: 'dontInvert'
           });
+
+          // Fallback to full canvas with inversion if slightly off-center or high contrast
+          if (!qrCode || !qrCode.data) {
+            const fullImg = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            qrCode = jsQR(fullImg.data, fullImg.width, fullImg.height, {
+              inversionAttempts: 'attemptBoth'
+            });
+          }
 
           if (qrCode && qrCode.data) {
             processDecodedTicket(qrCode.data);
