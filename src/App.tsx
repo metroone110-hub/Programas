@@ -9,7 +9,6 @@ import {
   ShieldCheck, 
   AlertCircle, 
   QrCode, 
-  Wallet, 
   TrendingUp, 
   ChevronRight,
   ShoppingBag,
@@ -25,7 +24,8 @@ import {
   saveLocalUserProfile, 
   updateUserBalance, 
   addMealTicket, 
-  logoutUser 
+  logoutUser,
+  purchaseTicketsBatch
 } from './services/studentAuth';
 import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
@@ -41,7 +41,7 @@ import { ImageWithLoader } from './components/ImageWithLoader';
 import { DishesMarquee } from './components/DishesMarquee';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { RadarAffluenceMap } from './components/RadarAffluenceMap';
-import { checkPaymentStatus } from './services/jekoPayment';
+import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
   // Canteens & Dishes State
@@ -96,13 +96,29 @@ export const App: React.FC = () => {
     const reference = searchParams.get('reference') || searchParams.get('order');
     const path = window.location.pathname;
 
-    const isSuccess = path.includes('/payment/success') || searchParams.get('status') === 'success';
-    const isError = path.includes('/payment/error') || searchParams.get('status') === 'error';
+    const isSuccess = path.includes('/payment/success') || 
+                      searchParams.get('payment_status') === 'success' || 
+                      searchParams.get('status') === 'success';
+    const isError = path.includes('/payment/error') || 
+                    searchParams.get('payment_status') === 'error' || 
+                    searchParams.get('status') === 'error';
 
     if (reference && (isSuccess || isError)) {
       if (isSuccess) {
-        checkPaymentStatus(reference).then(status => {
+        checkPaymentStatus(reference).then(async (status) => {
           if (status === 'success' || status === 'pending') {
+            const pending = getPendingPayment();
+            const currentUser = getLocalUserProfile() || user;
+            if (pending && pending.items && pending.items.length > 0 && currentUser) {
+              try {
+                const res = await purchaseTicketsBatch(currentUser, pending.items);
+                await recordTicketsSaleInLedger(res.generatedTickets.length, 200);
+                setUser(res.updatedUser);
+              } catch (err) {
+                console.error('Failed to issue tickets on payment return:', err);
+              }
+            }
+            clearPendingPayment();
             showToast('Paiement Jeko confirmé avec succès ! Vos tickets sont prêts.');
             setShowMyTicketsModal(true);
             try {
@@ -111,7 +127,8 @@ export const App: React.FC = () => {
           }
         });
       } else if (isError) {
-        showToast('Le paiement a échoué ou a été interrompu. Vous pouvez réessayer.');
+        clearPendingPayment();
+        showToast('Le paiement a été interrompu ou refusé sur Jeko. Vous pouvez réessayer.');
       }
 
       // Clean the URL cleanly without page reload

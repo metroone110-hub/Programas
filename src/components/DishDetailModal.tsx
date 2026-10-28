@@ -48,7 +48,7 @@ export const DishDetailModal: React.FC<Props> = ({
   };
 
   const totalMealPrice = quantity * 200; // Exact: 200 FCFA per meal!
-  const normalPrice = quantity * (dish.regularPrice || 2000);
+  const normalPrice = quantity * (dish.regularPrice || 500);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn font-sans">
@@ -84,7 +84,7 @@ export const DishDetailModal: React.FC<Props> = ({
               200 FCFA
             </span>
             <span className="text-xs text-white/70 line-through">
-              {dish.regularPrice || 2000} FCFA
+              {dish.regularPrice || 500} FCFA
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white">
               -90% Subventionné

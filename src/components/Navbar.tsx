@@ -2,7 +2,6 @@ import React from 'react';
 import { 
   UtensilsCrossed, 
   MapPin, 
-  Wallet, 
   QrCode, 
   User, 
   LogOut, 

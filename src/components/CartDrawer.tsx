@@ -43,7 +43,7 @@ export const CartDrawer: React.FC<Props> = ({
 
   const totalMealCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const totalAmount = totalMealCount * 200; // Strict: 200 FCFA per ticket!
-  const totalSubsidizedValue = totalMealCount * 2000; // Real value
+  const totalSubsidizedValue = totalMealCount * 500; // Val. standard repas
   const totalSavings = totalSubsidizedValue - totalAmount;
 
   return (
@@ -134,7 +134,7 @@ export const CartDrawer: React.FC<Props> = ({
                         200 FCFA
                       </span>
                       <span className="text-[10px] text-slate-400 line-through">
-                        {item.dish.regularPrice || 2000} FCFA
+                        {item.dish.regularPrice || 500} FCFA
                       </span>
                     </div>
                   </div>

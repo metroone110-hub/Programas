@@ -253,7 +253,7 @@ export async function loginStudentWithMatricule(
     email: target.email || `${cleanMatricule.toLowerCase()}@upgc.ci`,
     displayName: target.displayName || 'Étudiant UPGC',
     role: 'student',
-    balance: typeof target.balance === 'number' ? target.balance : 2000,
+    balance: typeof target.balance === 'number' ? target.balance : 0,
     savedTickets: mergedTickets,
     university: target.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
     campus: target.campus || 'Campus UPGC Korhogo',
@@ -599,7 +599,7 @@ export async function signInStudentDirect(data: {
     email: `${cleanId.toLowerCase()}@upgc.ci`,
     displayName: data.name || 'Étudiant UPGC',
     role: 'student',
-    balance: 2000,
+    balance: 0,
     savedTickets: [],
     campus: 'Campus UPGC Korhogo'
   };

@@ -352,7 +352,7 @@ export const AdminDashboard: React.FC<Props> = ({
                     </span>
                   </div>
                   <span className="text-[11px] font-bold text-amber-600">
-                    Tarif 200 F / 2000 F
+                    Tarif subventionné 200 FCFA
                   </span>
                 </div>
 

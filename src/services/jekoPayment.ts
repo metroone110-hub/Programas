@@ -140,8 +140,8 @@ export async function createDirectPayment(
 
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const origin = isHttps ? window.location.origin : 'https://crou.ci';
-  const successUrl = `${origin}/?payment_status=success&reference=${reference}&order=${orderId}`;
-  const errorUrl = `${origin}/?payment_status=error&reference=${reference}&order=${orderId}`;
+  const successUrl = `${origin}/payment/success?reference=${reference}&order=${orderId}&status=success`;
+  const errorUrl = `${origin}/payment/error?reference=${reference}&order=${orderId}&status=error`;
 
   const requestBody = {
     storeId: JEKO_CONFIG.storeId,
@@ -338,4 +338,46 @@ export async function initiateJekoPayment(
     paymentMethod: params.paymentMethod || 'wave',
     timestamp: new Date().toISOString()
   };
+}
+
+export interface PendingPaymentData {
+  reference: string;
+  orderId: string;
+  amount: number;
+  items?: Array<{
+    dishId: string;
+    dishName: string;
+    quantity: number;
+    mealType: 'dejeuner' | 'diner';
+    canteenId: string;
+    canteenName: string;
+  }>;
+  paymentMethod: string;
+  timestamp: number;
+}
+
+const PENDING_PAYMENT_KEY = 'crouk_pending_jeko_payment';
+
+export function savePendingPayment(data: PendingPaymentData): void {
+  try {
+    localStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(data));
+  } catch (err) {
+    console.warn('Unable to save pending payment to localStorage:', err);
+  }
+}
+
+export function getPendingPayment(): PendingPaymentData | null {
+  try {
+    const raw = localStorage.getItem(PENDING_PAYMENT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingPayment(): void {
+  try {
+    localStorage.removeItem(PENDING_PAYMENT_KEY);
+  } catch {}
 }

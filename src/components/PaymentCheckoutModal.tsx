@@ -17,7 +17,13 @@ import { UserProfile, MealTicket } from '../types';
 import { updateUserBalance, purchaseTicketsBatch, getLocalUserProfile } from '../services/studentAuth';
 import { recordTicketsSaleInLedger } from '../services/dailyLedger';
 import { recordRecharge } from '../utils/analytics';
-import { initiateJekoPayment, pollPaymentStatus, checkPaymentStatus } from '../services/jekoPayment';
+import { 
+  initiateJekoPayment, 
+  pollPaymentStatus, 
+  checkPaymentStatus, 
+  savePendingPayment, 
+  clearPendingPayment 
+} from '../services/jekoPayment';
 
 interface Props {
   isOpen: boolean;
@@ -47,8 +53,8 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   onSuccess
 }) => {
   const isDirectTicketPurchase = Boolean(items && items.length > 0);
-  const calculatedItemsTotal = items ? items.reduce((sum, item) => sum + (item.quantity * 200), 0) : 200;
-  const currentFinalAmount = isDirectTicketPurchase ? (totalAmount || calculatedItemsTotal) : 2000;
+  const calculatedItemsTotal = items ? items.reduce((sum, item) => sum + (item.quantity * 200), 0) : (totalAmount || 200);
+  const currentFinalAmount = totalAmount || calculatedItemsTotal || 200;
 
   // Selected payment method matching IMG_1194_0c2de57a.png
   const [selectedMethod, setSelectedMethod] = useState<MainPaymentMethod>('wave');
@@ -120,6 +126,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
         // Direct ticket purchase
         const res = await purchaseTicketsBatch(currentUser, items);
         await recordTicketsSaleInLedger(res.generatedTickets.length, 200);
+        clearPendingPayment();
         setConfirmedTickets(res.generatedTickets);
         setFlowState('success');
         onSuccess(res.updatedUser, res.generatedTickets);
@@ -128,6 +135,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
         const newBalance = currentUser.balance + currentFinalAmount;
         const updated = await updateUserBalance(currentUser, newBalance);
         recordRecharge(currentFinalAmount);
+        clearPendingPayment();
         setFlowState('success');
         onSuccess(updated);
       }
@@ -187,6 +195,16 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       if (!result.success || !result.redirectUrl) {
         throw new Error(result.message || "Erreur lors de l'initialisation du paiement Jeko.");
       }
+
+      // Persist order in local storage in case the browser redirects
+      savePendingPayment({
+        reference: result.reference,
+        orderId: customReference,
+        amount: currentFinalAmount,
+        items,
+        paymentMethod: jekoMethod,
+        timestamp: Date.now()
+      });
 
       const activeReq = {
         id: result.transactionId || result.reference,
@@ -494,6 +512,21 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                         className="w-full pl-10 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#e11d48]"
                       />
                     </div>
+                    {selectedOperator === 'orange' && (
+                      <p className="text-[10px] text-orange-700 bg-orange-50 border border-orange-200/70 rounded-lg p-2 mt-2 leading-relaxed">
+                        💡 <strong>Orange Money CI :</strong> Vous devrez entrer le code d'autorisation <strong>#144*82#</strong> sur la page Jeko.
+                      </p>
+                    )}
+                    {selectedOperator === 'mtn' && (
+                      <p className="text-[10px] text-yellow-800 bg-yellow-50 border border-yellow-200/70 rounded-lg p-2 mt-2 leading-relaxed">
+                        💡 <strong>MTN MoMo CI :</strong> Validez la notification sur votre mobile ou composez <strong>*133#</strong> (Approbations).
+                      </p>
+                    )}
+                    {selectedOperator === 'moov' && (
+                      <p className="text-[10px] text-blue-800 bg-blue-50 border border-blue-200/70 rounded-lg p-2 mt-2 leading-relaxed">
+                        💡 <strong>Moov Money CI :</strong> Validez la notification sur votre écran ou composez <strong>*155#</strong>.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -580,6 +613,45 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                 </p>
               </div>
 
+              {/* Specific Operator Instructions for Côte d'Ivoire */}
+              {selectedMethod === 'mobile_money' && selectedOperator === 'orange' && (
+                <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-2xl text-left space-y-1.5 text-xs text-orange-950">
+                  <div className="flex items-center space-x-1.5 font-bold">
+                    <span>📱</span>
+                    <span>Instruction Orange Money Côte d'Ivoire :</span>
+                  </div>
+                  <ol className="list-decimal list-inside text-[11px] text-orange-900 space-y-1 leading-relaxed">
+                    <li>Composez <strong>#144*82#</strong> sur votre mobile Orange pour générer votre <strong>code de paiement</strong> (valable 15 min).</li>
+                    <li>Cliquez ci-dessous sur <strong>« Ouvrir la page Jeko »</strong> et entrez ce code d'autorisation.</li>
+                    <li>Votre ticket repas CROU sera instantanément validé !</li>
+                  </ol>
+                </div>
+              )}
+
+              {selectedMethod === 'mobile_money' && selectedOperator === 'mtn' && (
+                <div className="p-3.5 bg-yellow-50 border border-yellow-200 rounded-2xl text-left space-y-1.5 text-xs text-yellow-950">
+                  <div className="flex items-center space-x-1.5 font-bold">
+                    <span>📱</span>
+                    <span>Instruction MTN Mobile Money :</span>
+                  </div>
+                  <p className="text-[11px] text-yellow-900 leading-relaxed">
+                    Acceptez la notification push sur votre téléphone. Si elle n'apparaît pas, composez <strong>*133#</strong> puis entrez votre code PIN dans le menu « Approbations ».
+                  </p>
+                </div>
+              )}
+
+              {selectedMethod === 'mobile_money' && selectedOperator === 'moov' && (
+                <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-left space-y-1.5 text-xs text-blue-950">
+                  <div className="flex items-center space-x-1.5 font-bold">
+                    <span>📱</span>
+                    <span>Instruction Moov Money :</span>
+                  </div>
+                  <p className="text-[11px] text-blue-900 leading-relaxed">
+                    Validez la notification USSD sur votre écran ou composez <strong>*155#</strong> pour confirmer le débit.
+                  </p>
+                </div>
+              )}
+
               {/* Jeko Direct Link Button */}
               {activePaymentRequest.redirectUrl && (
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-left">
@@ -594,7 +666,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                     rel="noopener noreferrer"
                     className="w-full py-3.5 bg-[#e11d48] hover:bg-[#be123c] text-white font-bold text-xs uppercase tracking-wide rounded-full flex items-center justify-center space-x-2 transition-all shadow-md active:scale-98"
                   >
-                    <span>Ouvrir la page de paiement Jeko</span>
+                    <span>Ouvrir la page de paiement Jeko ({activePaymentRequest.method})</span>
                     <ExternalLink className="w-4 h-4" />
                   </a>
 
