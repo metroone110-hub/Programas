@@ -95,9 +95,12 @@ export function saveLocalUserProfile(profile: UserProfile | null): void {
     localStorage.removeItem(STORAGE_KEY);
   } else {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    // Also sync into student registry if it's a student
+    // Also sync into student registry & permanent vault if it's a student
     if (profile.role === 'student' && profile.matricule) {
       updateStudentInLocalRegistry(profile);
+      try {
+        localStorage.setItem(`crou_student_vault_${profile.matricule.toUpperCase()}`, JSON.stringify(profile.savedTickets || []));
+      } catch {}
     }
   }
 }
@@ -244,8 +247,17 @@ export async function loginStudentWithMatricule(
     return { success: false, error: 'Mot de passe incorrect pour ce matricule.' };
   }
 
-  // Re-fetch all saved tickets for this matricule to ensure 0 lost tickets
-  const mergedTickets = target.savedTickets || [];
+  // Re-fetch and merge all saved tickets for this matricule to ensure 0 lost tickets
+  let vaultTickets: MealTicket[] = [];
+  try {
+    const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
+    if (rawVault) vaultTickets = JSON.parse(rawVault);
+  } catch {}
+
+  const mergedMap = new Map<string, MealTicket>();
+  (target.savedTickets || []).forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
+  vaultTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
+  const mergedTickets = Array.from(mergedMap.values());
   
   const studentProfile: UserProfile = {
     uid: target.uid || cleanMatricule,

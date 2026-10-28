@@ -41,13 +41,21 @@ import { ImageWithLoader } from './components/ImageWithLoader';
 import { DishesMarquee } from './components/DishesMarquee';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { RadarAffluenceMap } from './components/RadarAffluenceMap';
+import { TicketCounterBox } from './components/TicketCounterBox';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
   // Canteens & Dishes State
   const [canteens, setCanteens] = useState<Canteen[]>(INITIAL_CANTEENS);
   const [selectedCanteen, setSelectedCanteen] = useState<Canteen>(INITIAL_CANTEENS[0]);
-  const [dishes, setDishes] = useState<Dish[]>(INITIAL_DISHES);
+  const [dishes, setDishes] = useState<Dish[]>(() => {
+    try {
+      const saved = localStorage.getItem('crou_published_dishes');
+      return saved ? JSON.parse(saved) : INITIAL_DISHES;
+    } catch {
+      return INITIAL_DISHES;
+    }
+  });
   const [selectedMealType, setSelectedMealType] = useState<MealType>('dejeuner');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -233,17 +241,17 @@ export const App: React.FC = () => {
     setShowWaveModal(true);
   };
 
-  // Instant buy a specific dish
+  // Instant buy a meal ticket
   const handleInstantBuy = (dish: Dish, quantity: number = 1) => {
     if (!user) {
       setShowBlackPortal(true);
       return;
     }
 
-    const totalAmount = quantity * 200; // Strict: 200 FCFA per meal!
+    const totalAmount = quantity * 200; // Strict: 200 FCFA per ticket!
     setWavePaymentItems([{
-      dishId: dish.id,
-      dishName: dish.name,
+      dishId: 'ticket-crou-repas',
+      dishName: `${quantity} Ticket(s) Repas CROU`,
       quantity,
       mealType: dish.mealType,
       canteenId: selectedCanteen.id,
@@ -331,18 +339,54 @@ export const App: React.FC = () => {
     }
   };
 
-  // Admin dish actions
+  // Dedicated Ticket Purchasing Handler (CROU Subvention 200 FCFA/ticket)
+  const handleBuyTickets = (quantity: number, totalAmount: number) => {
+    if (!user) {
+      setShowBlackPortal(true);
+      return;
+    }
+    setWaveTotalAmount(totalAmount);
+    setWavePaymentItems([{
+      dishId: 'ticket-crou-repas',
+      dishName: `${quantity} Ticket(s) Repas CROU`,
+      quantity,
+      mealType: selectedMealType,
+      canteenId: selectedCanteen.id,
+      canteenName: selectedCanteen.name
+    }]);
+    setShowWaveModal(true);
+  };
+
+  // Admin dish actions (persisted in localStorage)
   const handleAddDish = (newDish: Dish) => {
-    setDishes(prev => [newDish, ...prev]);
+    setDishes(prev => {
+      const updated = [newDish, ...prev];
+      try {
+        localStorage.setItem('crou_published_dishes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     showToast(`Plat "${newDish.name}" publié au menu.`);
   };
 
   const handleToggleDishAvailability = (dishId: string) => {
-    setDishes(prev => prev.map(d => d.id === dishId ? { ...d, isAvailable: !d.isAvailable } : d));
+    setDishes(prev => {
+      const updated = prev.map(d => d.id === dishId ? { ...d, isAvailable: !d.isAvailable } : d);
+      try {
+        localStorage.setItem('crou_published_dishes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const handleDeleteDish = (dishId: string) => {
-    setDishes(prev => prev.filter(d => d.id !== dishId));
+    setDishes(prev => {
+      const updated = prev.filter(d => d.id !== dishId);
+      try {
+        localStorage.setItem('crou_published_dishes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const handleUpdateCanteen = (updated: Canteen) => {
@@ -447,223 +491,115 @@ export const App: React.FC = () => {
           </button>
         </div>
 
-        {/* Dashboard Hero Banner with Lady Background & Text Transition */}
-        <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-slate-900 bg-slate-950 text-white min-h-[300px] flex flex-col justify-between">
-          {/* Animated Background Image: The lady with students in university corridor */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <img
-              src="/assets/aistudio/IMG_1017_cbecc94a.jpeg"
-              alt="Restaurant Universitaire CROU Korhogo - Direction et Étudiants"
-              className="w-full h-full object-cover object-center animate-kenburns transition-all duration-1000 filter brightness-90 contrast-115"
-            />
-            {/* Multi-layered dark gradient overlay for crystal clear text readability */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/85 to-black/60 sm:to-black/35"></div>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent"></div>
-          </div>
+        {/* DEDICATED TICKET PURCHASING GUICHET (CROU-K SUBVENTION 200 FCFA) */}
+        <TicketCounterBox
+          user={user}
+          onBuyTickets={handleBuyTickets}
+          onOpenAuth={() => setShowBlackPortal(true)}
+          onOpenMyTickets={() => setShowMyTicketsModal(true)}
+        />
 
-          {/* Banner Text Content */}
-          <div className="relative z-10 p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            {/* Left Column */}
-            <div className="space-y-3 max-w-xl">
-              <div className="inline-flex items-center space-x-2 px-3 py-1 bg-amber-500/20 border border-amber-400/30 rounded-full text-[11px] font-black uppercase tracking-wider text-amber-300 backdrop-blur-md shadow-xs">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-                <span>MENU OFFICIEL • CROU KORHOGO</span>
+        {/* CONSULTATIVE DAILY MENU DISPLAYED BY CROU-K ADMINISTRATION (WITH DATE & HOURS) */}
+        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-900 text-[10px] font-black uppercase tracking-wider mb-1">
+                <span>🍽️ Restauration Universitaire • UPGC</span>
               </div>
-
-              <h1 className="text-2xl sm:text-4xl font-black text-white font-cabinet tracking-tight leading-tight drop-shadow-md">
-                Plats & Menus Programmés
-              </h1>
-
-              <div className="space-y-1.5">
-                <p className="text-xs sm:text-sm text-slate-200 font-semibold flex items-center space-x-2 flex-wrap drop-shadow-xs">
-                  <span>☀️ Déjeuner : <strong className="text-amber-300 font-bold">11h30 - 14h30</strong></span>
-                  <span>•</span>
-                  <span>🌙 Dîner : <strong className="text-amber-300 font-bold">18h30 - 21h30</strong></span>
-                </p>
-                <p className="text-xs text-orange-200/90 font-medium drop-shadow-xs">
-                  Plats subventionnés à <strong className="text-white font-bold">200 FCFA</strong> • Billetterie Programas
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user) {
-                      setShowBlackPortal(true);
-                    } else if (cart.length > 0) {
-                      setShowCartDrawer(true);
-                    } else if (dishes.length > 0) {
-                      handleInstantBuy(dishes[0], 1);
-                    }
-                  }}
-                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs sm:text-sm rounded-full shadow-lg shadow-orange-500/30 flex items-center space-x-2 transform active:scale-95 transition-all cursor-pointer"
-                >
-                  <span className="text-base">🎟️</span>
-                  <span>Acheter Tickets (200 F)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (user?.role === 'admin') {
-                      setIsAdminView(true);
-                    } else {
-                      setShowBlackPortal(true);
-                    }
-                  }}
-                  className="px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm rounded-full backdrop-blur-md border border-white/25 flex items-center space-x-2 transition-all cursor-pointer"
-                >
-                  <span className="text-base">👨‍🍳</span>
-                  <span>Programmer Menu</span>
-                </button>
-              </div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 font-cabinet">
+                Menu du Jour Affiché par l'Administration
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Affichage consultatif • Les repas se retirent au guichet sur présentation de votre Ticket Repas CROU (200 FCFA).
+              </p>
             </div>
 
-            {/* Right Featured Dish Card Preview */}
-            {dishes.length > 0 && (
-              <div 
-                onClick={() => {
-                  setDetailDish(dishes[0]);
-                  setShowDetailModal(true);
-                }}
-                className="cursor-pointer group bg-black/50 hover:bg-black/70 border border-white/20 hover:border-orange-400/60 rounded-2xl p-3 backdrop-blur-md transition-all shadow-xl flex items-center sm:flex-col sm:items-start gap-3 w-full sm:w-56 flex-shrink-0"
+            {/* Service hours schedule badge */}
+            <div className="flex items-center space-x-2 text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80 self-start sm:self-auto">
+              <span>☀️ Déjeuner : <strong className="text-orange-600">11h30 - 14h30</strong></span>
+              <span>•</span>
+              <span>🌙 Dîner : <strong className="text-orange-600">18h30 - 21h00</strong></span>
+            </div>
+          </div>
+
+          {/* Meal Type Switcher & Search */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="inline-flex p-1 bg-slate-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setSelectedMealType('dejeuner')}
+                className={`px-5 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                  selectedMealType === 'dejeuner'
+                    ? 'bg-white text-orange-600 shadow-sm font-cabinet'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <div className="relative w-20 h-20 sm:w-full sm:h-32 rounded-xl overflow-hidden bg-slate-900 flex-shrink-0">
-                  <ImageWithLoader
-                    src={dishes[0].imageUrl}
-                    alt={dishes[0].name}
-                    className="w-full h-full"
-                    imgClassName="group-hover:scale-105 transition-transform duration-500 object-cover"
-                    spiralLabel="Chargement..."
-                  />
-                  <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[10px] font-black bg-orange-600 text-white shadow-md">
-                    200 FCFA
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-amber-300 block">
-                    Spécialité du Jour
-                  </span>
-                  <h4 className="font-bold text-xs sm:text-sm text-white group-hover:text-orange-300 transition-colors line-clamp-1">
-                    {dishes[0].name}
-                  </h4>
-                  <p className="text-[11px] text-slate-300 line-clamp-1 mt-0.5">
-                    {dishes[0].description}
-                  </p>
-                </div>
-              </div>
-            )}
+                <span>☀️</span>
+                <span>Déjeuner (11h30 - 14h30)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedMealType('diner')}
+                className={`px-5 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                  selectedMealType === 'diner'
+                    ? 'bg-white text-orange-600 shadow-sm font-cabinet'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🌙</span>
+                <span>Dîner (18h30 - 21h00)</span>
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative flex-1 sm:max-w-xs">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filtrer un plat au menu..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+              />
+            </div>
           </div>
 
-          {/* Slider Pagination Dots */}
-          <div className="relative z-10 pb-4 flex items-center justify-center space-x-2">
-            <span className="w-6 h-2 bg-orange-500 rounded-full shadow-xs"></span>
-            <span className="w-2 h-2 bg-white/40 rounded-full"></span>
-            <span className="w-2 h-2 bg-white/40 rounded-full"></span>
-          </div>
-        </div>
-
-        {/* Rayons & Catégories Section Header */}
-        <div className="flex items-center justify-between pt-2">
-          <h2 className="text-base font-extrabold text-slate-900 font-cabinet">
-            Rayons & Catégories
-          </h2>
-          <span className="text-xs font-semibold text-slate-500">
-            {filteredDishes.length} article{filteredDishes.length > 1 ? 's' : ''}
-          </span>
-        </div>
-
-        {/* Meal Type Switcher (Déjeuner vs Dîner) & Search */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-          <div className="inline-flex p-1.5 bg-slate-200/80 rounded-2xl shadow-inner">
-            <button
-              onClick={() => setSelectedMealType('dejeuner')}
-              className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-2 ${
-                selectedMealType === 'dejeuner'
-                  ? 'bg-white text-orange-600 shadow-md font-cabinet'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span className="text-base">☀️</span>
-              <span>Déjeuner (11h30 - 14h30)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedMealType('diner')}
-              className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-2 ${
-                selectedMealType === 'diner'
-                  ? 'bg-white text-orange-600 shadow-md font-cabinet'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span className="text-base">🌙</span>
-              <span>Dîner (18h30 - 21h00)</span>
-            </button>
+          {/* Category Filter Pills */}
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'all', label: 'Tous les plats' },
+              { id: 'plat_principal', label: '🍛 Plats Chauds' },
+              { id: 'entree', label: '🥗 Entrées / Accompagnements' },
+              { id: 'dessert', label: '🍧 Desserts & Fruits' },
+              { id: 'boisson', label: '🥤 Boissons Locales' },
+            ].map(cat => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedCategory === cat.id
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
           </div>
 
-          {/* Search bar */}
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un plat, sauce, alloco..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
-            />
-          </div>
-        </div>
-
-        {/* Category Pills matching IMG_1199 */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
-          {[
-            { id: 'all', label: 'Tous' },
-            { id: 'plat_principal', label: '🍛 Plats Chauds CROU' },
-            { id: 'dejeuner', label: '☀️ Déjeuner (11h30 - 14h30)' },
-            { id: 'diner', label: '🌙 Dîner (18h30 - 21h30)' },
-            { id: 'dessert', label: '🍧 Desserts & Fruits' },
-          ].map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                selectedCategory === cat.id
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Dish Grid matching IMG_1199 */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-extrabold text-slate-900 font-cabinet">
-              Recommandés Pour Vous
-            </h3>
-            <span 
-              onClick={() => setSelectedCategory('all')}
-              className="text-xs text-orange-600 font-bold hover:underline cursor-pointer"
-            >
-              Tout voir
-            </span>
-          </div>
-
+          {/* Dishes Grid or Admin Publication Banner */}
           {filteredDishes.length === 0 ? (
-            <div className="bg-amber-50/60 border border-orange-200/80 rounded-3xl p-6 sm:p-8 text-center space-y-3 shadow-xs">
-              <div className="w-14 h-14 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mx-auto text-2xl shadow-inner">
+            <div className="bg-amber-50/70 border border-orange-200/80 rounded-2xl p-6 sm:p-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mx-auto text-2xl shadow-inner">
                 👨‍🍳
               </div>
               <div className="space-y-1">
                 <h3 className="font-extrabold text-slate-900 text-sm sm:text-base font-cabinet">
-                  Menu en attente de programmation CROU-K
+                  Aucun plat publié pour ce service ({selectedMealType === 'dejeuner' ? 'Déjeuner 11h30-14h30' : 'Dîner 18h30-21h00'})
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  L'administration du Restaurant Universitaire publie les menus et rations subventionnées (200 FCFA) du jour.
+                  L'administration de la restauration universitaire publie le menu du jour avec les heures exactes de passage.
                 </p>
               </div>
               <button
@@ -674,7 +610,7 @@ export const App: React.FC = () => {
                 }}
                 className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
               >
-                <span>👨‍🍳 Programmer le menu</span>
+                <span>👨‍🍳 Programmer le menu du jour (Admin)</span>
               </button>
             </div>
           ) : (
@@ -683,8 +619,6 @@ export const App: React.FC = () => {
                 <DishCard
                   key={dish.id}
                   dish={dish}
-                  onOrder={handleOrderMeal}
-                  onAddToCart={(d) => handleAddToCart(d, 1)}
                   onSelectDetail={(d) => {
                     setDetailDish(d);
                     setShowDetailModal(true);

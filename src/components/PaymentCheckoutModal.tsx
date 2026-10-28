@@ -63,8 +63,9 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
 
-  // Flow State: 'form' -> 'awaiting_payment' -> 'success'
-  const [flowState, setFlowState] = useState<'form' | 'awaiting_payment' | 'success'>('form');
+  // Flow State: 'form' -> 'processing' -> 'awaiting_payment' -> 'success'
+  const [flowState, setFlowState] = useState<'form' | 'processing' | 'awaiting_payment' | 'success'>('form');
+  const [processingStep, setProcessingStep] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -177,20 +178,32 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
     }
 
     setIsLoading(true);
+    setFlowState('processing');
+    setProcessingStep(1);
 
     try {
       const jekoMethod = getJekoApiMethod();
       const customReference = `${Date.now()}`;
 
-      // Initiate payment with real Jeko Partner API
-      const result = await initiateJekoPayment({
-        amount: currentFinalAmount,
-        studentMatricule: user.matricule || user.uid,
-        studentName: user.displayName || 'Étudiant UPGC',
-        studentPhone: cleanPhone || undefined,
-        paymentMethod: jekoMethod,
-        customReference
-      });
+      // Progressive step timers for extraordinary smooth transition (matching IMG_1214)
+      const t1 = setTimeout(() => setProcessingStep(2), 650);
+      const t2 = setTimeout(() => setProcessingStep(3), 1300);
+
+      // Initiate payment with real Jeko Partner API with natural smooth duration
+      const [result] = await Promise.all([
+        initiateJekoPayment({
+          amount: currentFinalAmount,
+          studentMatricule: user.matricule || user.uid,
+          studentName: user.displayName || 'Étudiant UPGC',
+          studentPhone: cleanPhone || undefined,
+          paymentMethod: jekoMethod,
+          customReference
+        }),
+        new Promise(resolve => setTimeout(resolve, 1800))
+      ]);
+
+      clearTimeout(t1);
+      clearTimeout(t2);
 
       if (!result.success || !result.redirectUrl) {
         throw new Error(result.message || "Erreur lors de l'initialisation du paiement Jeko.");
@@ -346,20 +359,13 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                         : 'border-slate-200 hover:border-slate-300 bg-white'
                     }`}
                   >
-                    {/* Official Wave Cyan Square Icon with Penguin */}
-                    <div className="w-14 h-14 rounded-2xl bg-[#1dc4ff] flex flex-col items-center justify-center shadow-xs mb-2 relative overflow-hidden">
-                      {/* Penguin silhouette */}
-                      <svg viewBox="0 0 48 48" className="w-8 h-8" fill="none">
-                        <ellipse cx="24" cy="23" rx="11" ry="14" fill="#0b1b3d" />
-                        <ellipse cx="24" cy="25" rx="7" ry="10" fill="#ffffff" />
-                        <ellipse cx="24" cy="27" rx="5" ry="7" fill="#fde047" />
-                        <circle cx="21" cy="18" r="1.5" fill="#0b1b3d" />
-                        <circle cx="27" cy="18" r="1.5" fill="#0b1b3d" />
-                        <path d="M22 21 L26 21 L24 24 Z" fill="#f97316" />
-                      </svg>
-                      <span className="text-[9px] font-black tracking-tight text-white uppercase leading-none mt-0.5">
-                        wave
-                      </span>
+                    {/* Official Wave Cyan Square Icon with Penguin from IMG_1213 */}
+                    <div className="w-14 h-14 rounded-2xl bg-[#00c2ff] flex items-center justify-center shadow-xs mb-2 overflow-hidden border border-sky-300/40">
+                      <img 
+                        src="/assets/aistudio/IMG_1213_589dc8ca.png" 
+                        alt="Wave" 
+                        className="w-full h-full object-cover" 
+                      />
                     </div>
                     <span className="text-xs font-bold text-slate-900">
                       Wave
@@ -597,7 +603,116 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
             </form>
           )}
 
-          {/* STATE 2: AWAITING PAYMENT ON JEKO (NO PREMATURE TICKETS) */}
+          {/* STATE 2: EXTRAORDINARY FLUID ANIMATED LOADING TRANSITION (Matching IMG_1214) */}
+          {flowState === 'processing' && (
+            <div className="py-10 px-4 flex flex-col items-center justify-center text-center space-y-6 animate-fadeIn select-none">
+              
+              {/* High-tech Concentric Circular Spinner matching the user's circle in IMG_1214 */}
+              <div className="relative w-36 h-36 flex items-center justify-center">
+                {/* Outer pulsing color aura */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-rose-500/25 via-sky-500/20 to-amber-500/25 blur-2xl animate-pulse"></div>
+
+                {/* Primary SVG Rotating Gradient Ring */}
+                <svg className="w-full h-full animate-spin text-[#e11d48]" viewBox="0 0 100 100" style={{ animationDuration: '1.8s' }}>
+                  <defs>
+                    <linearGradient id="crou-spinner-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#e11d48" />
+                      <stop offset="60%" stopColor="#00b2fe" />
+                      <stop offset="100%" stopColor="#f59e0b" />
+                    </linearGradient>
+                  </defs>
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="43"
+                    stroke="url(#crou-spinner-grad)"
+                    strokeWidth="5.5"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray="175 80"
+                  />
+                </svg>
+
+                {/* Secondary reverse dashed decorative ring */}
+                <svg 
+                  className="absolute inset-2 w-32 h-32 animate-spin text-slate-300/80" 
+                  style={{ animationDirection: 'reverse', animationDuration: '5s' }} 
+                  viewBox="0 0 100 100"
+                >
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeDasharray="5 7"
+                    fill="none"
+                  />
+                </svg>
+
+                {/* Center Method Badge with Soft Floating Pulse */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {selectedMethod === 'wave' ? (
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-xl border-2 border-white animate-pulse">
+                      <img 
+                        src="/assets/aistudio/IMG_1213_589dc8ca.png" 
+                        alt="Wave" 
+                        className="w-full h-full object-cover" 
+                      />
+                    </div>
+                  ) : selectedMethod === 'mobile_money' ? (
+                    <div className="w-16 h-16 rounded-2xl bg-[#0e1726] flex flex-col items-center justify-center p-1 shadow-xl border-2 border-white animate-pulse">
+                      <span className="uppercase text-[9px] font-black text-white">{selectedOperator}</span>
+                      <span className="text-[7px] text-amber-400 font-bold">MONEY</span>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-black flex items-center justify-center text-white italic font-serif font-black shadow-xl border-2 border-white animate-pulse">
+                      djamo
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dynamic Status Text with Sequential Steps */}
+              <div className="space-y-2 max-w-xs">
+                <div className="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-rose-50 border border-rose-200/80 text-[#e11d48] text-xs font-bold shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-[#e11d48] animate-ping"></span>
+                  <span>
+                    {processingStep === 1 && "Étape 1/3 • Sécurisation du protocole"}
+                    {processingStep === 2 && `Étape 2/3 • Préparation flux ${getMethodDisplayName()}`}
+                    {processingStep === 3 && "Étape 3/3 • Génération de la passerelle..."}
+                  </span>
+                </div>
+
+                <h4 className="text-base sm:text-lg font-black text-slate-900 tracking-tight font-cabinet">
+                  {processingStep === 1 && "Initialisation sécurisée Jeko..."}
+                  {processingStep === 2 && `Connexion à l'opérateur ${getMethodDisplayName()}...`}
+                  {processingStep === 3 && "Ouverture de votre session de paiement..."}
+                </h4>
+
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {currentFinalAmount.toLocaleString('fr-FR')} F CFA • Tickets Repas CROU Korhogo
+                </p>
+              </div>
+
+              {/* Fluid Progress Bar */}
+              <div className="w-52 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200/60">
+                <div 
+                  className="h-full bg-gradient-to-r from-rose-500 via-sky-500 to-amber-500 transition-all duration-700 ease-out rounded-full"
+                  style={{
+                    width: processingStep === 1 ? '38%' : processingStep === 2 ? '74%' : '98%'
+                  }}
+                ></div>
+              </div>
+
+              <div className="flex items-center space-x-1.5 text-[11px] text-slate-400 pt-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Chiffrement 256-bit certifié Jeko Partner API</span>
+              </div>
+            </div>
+          )}
+
+          {/* STATE 3: AWAITING PAYMENT ON JEKO (NO PREMATURE TICKETS) */}
           {flowState === 'awaiting_payment' && activePaymentRequest && (
             <div className="text-center py-4 space-y-5">
               <div className="w-16 h-16 bg-rose-50 border border-rose-100 rounded-full flex items-center justify-center mx-auto text-[#e11d48]">
