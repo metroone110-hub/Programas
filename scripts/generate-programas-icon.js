@@ -1,0 +1,143 @@
+import sharp from 'sharp';
+import fs from 'fs';
+
+const programasSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient (Orange to Forest Green) -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff6a00" />
+      <stop offset="48%" stop-color="#f57c00" />
+      <stop offset="78%" stop-color="#4c7c1a" />
+      <stop offset="100%" stop-color="#1b5e20" />
+    </linearGradient>
+
+    <!-- Golden Rim Gradient -->
+    <linearGradient id="goldRim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="50%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+
+    <!-- Bulb Finial Gradient -->
+    <radialGradient id="bulbGrad" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="60%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </radialGradient>
+
+    <!-- Cloche Drop Shadow -->
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3" />
+    </filter>
+
+    <!-- Cutlery Shadow -->
+    <filter id="cutleryGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Outer App Icon Squircle Background -->
+  <rect x="8" y="8" width="496" height="496" rx="108" fill="url(#bgGrad)" stroke="#1a3b11" stroke-width="3" />
+
+  <!-- Top Tricolor Bar (Côte d'Ivoire Flag: Orange, White, Green) -->
+  <g transform="translate(146, 38)">
+    <clipPath id="flagClip">
+      <rect x="0" y="0" width="220" height="12" rx="6" />
+    </clipPath>
+    <g clip-path="url(#flagClip)">
+      <rect x="0" y="0" width="73.3" height="12" fill="#ff6a00" />
+      <rect x="73.3" y="0" width="73.3" height="12" fill="#ffffff" />
+      <rect x="146.6" y="0" width="73.4" height="12" fill="#16a34a" />
+    </g>
+    <rect x="0" y="0" width="220" height="12" rx="6" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.4" />
+  </g>
+
+  <!-- Left Fork -->
+  <g filter="url(#cutleryGlow)" transform="translate(90, 255) rotate(-14)">
+    <!-- Fork Handle -->
+    <path d="M 0,0 L 4,80 L 1,82 L -3,0 Z" fill="#ffffff" />
+    <!-- Fork Prongs Base -->
+    <path d="M -12,-20 C -12,-8 10,-8 10,-20 L 10,-42 L 6,-42 L 6,-22 C 6,-14 -8,-14 -8,-22 L -8,-42 L -12,-42 Z" fill="#ffffff" />
+    <rect x="-4" y="-42" width="3" height="24" rx="1.5" fill="#ffffff" />
+    <rect x="2" y="-42" width="3" height="24" rx="1.5" fill="#ffffff" />
+  </g>
+
+  <!-- Right Knife -->
+  <g filter="url(#cutleryGlow)" transform="translate(416, 255) rotate(14)">
+    <!-- Knife Handle -->
+    <path d="M -1,0 L -3,80 L 1,82 L 3,0 Z" fill="#ffffff" />
+    <!-- Knife Blade -->
+    <path d="M -2,0 L -2,-48 C -2,-56 8,-44 8,-28 C 8,-12 4,0 -2,0 Z" fill="#ffffff" />
+  </g>
+
+  <!-- Serving Cloche (Dish Dome) -->
+  <g filter="url(#softShadow)">
+    <!-- Golden Bulb / Lightbulb Finial on top -->
+    <g transform="translate(256, 172)">
+      <!-- Bulb Socket/Neck -->
+      <rect x="-7" y="10" width="14" height="10" rx="3" fill="#d97706" />
+      <line x1="-6" y1="13" x2="6" y2="13" stroke="#b45309" stroke-width="1.5" />
+      <line x1="-6" y1="16" x2="6" y2="16" stroke="#b45309" stroke-width="1.5" />
+      <!-- Round Golden Bulb -->
+      <circle cx="0" cy="0" r="22" fill="url(#bulbGrad)" stroke="#f59e0b" stroke-width="1" />
+      <!-- Bulb highlight -->
+      <ellipse cx="-6" cy="-7" rx="5" ry="3" fill="#ffffff" opacity="0.6" transform="rotate(-30 -6 -7)" />
+    </g>
+
+    <!-- White Cloche Dome -->
+    <path d="M 124,312 C 126,204 386,204 388,312 Z" fill="#ffffff" stroke="#f1f5f9" stroke-width="1.5" />
+
+    <!-- Orange Letter 'P' inside the Cloche Dome -->
+    <!-- Authentic bold rounded P for Programas -->
+    <g transform="translate(228, 218)">
+      <path d="M 0,0 L 32,0 C 48,0 58,8 58,22 C 58,36 48,44 32,44 L 18,44 L 18,66 L 0,66 Z M 18,15 L 18,29 L 30,29 C 36,29 40,26 40,22 C 40,18 36,15 30,15 Z" fill="#e65100" />
+    </g>
+
+    <!-- Serving Platter / Golden Rim at Base of Cloche -->
+    <path d="M 98,322 L 126,308 L 386,308 L 414,322 C 418,336 94,336 98,322 Z" fill="url(#goldRim)" stroke="#d97706" stroke-width="1.5" />
+    <!-- Bevel highlight on rim -->
+    <path d="M 124,310 L 388,310 C 370,314 142,314 124,310 Z" fill="#fef08a" opacity="0.8" />
+  </g>
+
+  <!-- Bottom White Pill Button with 'PROGRAMAS' -->
+  <g transform="translate(142, 388)">
+    <!-- White Pill Background -->
+    <rect x="0" y="0" width="228" height="46" rx="23" fill="#ffffff" filter="url(#cutleryGlow)" />
+    <!-- Bold 'PROGRAMAS' Text in Terra-Cotta Orange -->
+    <text x="114" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cabinet Grotesk', sans-serif" font-size="20" font-weight="900" fill="#c2410c" text-anchor="middle" letter-spacing="3.5">PROGRAMAS</text>
+  </g>
+
+  <!-- University & CROU Subtitle: 'UPGC KORHOGO - CROU-K' -->
+  <text x="256" y="452" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Plus Jakarta Sans', sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="1.5" opacity="0.95">UPGC KORHOGO - CROU-K</text>
+</svg>`;
+
+async function generateAppIcons() {
+  fs.writeFileSync('public/icon.svg', programasSvg);
+  fs.writeFileSync('public/programas-logo.svg', programasSvg);
+
+  const svgBuffer = Buffer.from(programasSvg);
+
+  await sharp(svgBuffer)
+    .resize(512, 512)
+    .png()
+    .toFile('public/pwa-512x512.png');
+
+  await sharp(svgBuffer)
+    .resize(192, 192)
+    .png()
+    .toFile('public/pwa-192x192.png');
+
+  await sharp(svgBuffer)
+    .resize(180, 180)
+    .png()
+    .toFile('public/apple-touch-icon.png');
+
+  await sharp(svgBuffer)
+    .resize(256, 256)
+    .png()
+    .toFile('public/programas-logo.png');
+
+  console.log('✅ Generated official Programas icons and logos successfully!');
+}
+
+generateAppIcons().catch(console.error);

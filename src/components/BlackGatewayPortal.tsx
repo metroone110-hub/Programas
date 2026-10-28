@@ -136,8 +136,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       {/* Top Header */}
       <header className="relative z-10 w-full max-w-4xl mx-auto px-6 pt-8 pb-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-white/10">
         <div className="flex items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-2xl shadow-lg shadow-orange-500/20 border border-amber-400/30">
-            🍽️
+          <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-orange-500/20 border border-amber-400/30 flex-shrink-0">
+            <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
           </div>
           <div>
             <div className="flex items-center space-x-2">

@@ -58,8 +58,8 @@ export const Navbar: React.FC<Props> = ({
           
           {/* Brand & Canteen Switcher */}
           <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20 flex-shrink-0">
-              <span className="text-lg">🍽️</span>
+            <div className="w-9 h-9 rounded-xl overflow-hidden shadow-md shadow-orange-500/20 flex-shrink-0 ring-1 ring-orange-500/30">
+              <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
             </div>
 
             <div className="min-w-0">
