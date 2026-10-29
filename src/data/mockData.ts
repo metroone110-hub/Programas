@@ -63,5 +63,7 @@ export const INITIAL_CANTEENS: Canteen[] = [
   }
 ];
 
-// Par défaut, aucun plat pré-rempli : l'administration CROU publie le menu du jour avec date et heure
-export const INITIAL_DISHES: Dish[] = [];
+import { DEFAULT_UPGC_DISHES } from '../services/dishesService';
+
+// Menus officiels du jour publiés par le CROU Korhogo pour l'UPGC
+export const INITIAL_DISHES: Dish[] = DEFAULT_UPGC_DISHES;

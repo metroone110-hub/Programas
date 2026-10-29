@@ -188,7 +188,12 @@ export const AdminDashboard: React.FC<Props> = ({
     loadLedgerData();
   };
 
-  const canteenDishes = dishes.filter(d => d.canteenId === canteen.id);
+  const canteenDishes = dishes.filter(d => 
+    !d.canteenId || 
+    d.canteenId === 'all' || 
+    d.canteenId === canteen.id || 
+    (canteen.id.startsWith('resto-upgc') && (d.canteenId.startsWith('resto-upgc') || d.canteenId === 'all'))
+  );
 
   const filteredStudents = students.filter(s => {
     const q = matriculeSearch.toLowerCase();

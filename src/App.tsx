@@ -18,7 +18,14 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Canteen, Dish, MealTicket, UserProfile, MealType } from './types';
-import { INITIAL_CANTEENS, INITIAL_DISHES } from './data/mockData';
+import { INITIAL_CANTEENS } from './data/mockData';
+import { 
+  getLocalCachedDishes,
+  subscribeToDishes,
+  publishDishToFirestore,
+  toggleDishAvailabilityInFirestore,
+  removeDishFromFirestore
+} from './services/dishesService';
 import { 
   getLocalUserProfile, 
   saveLocalUserProfile, 
@@ -47,24 +54,17 @@ import { ProgramasPochetteSplash } from './components/ProgramasPochetteSplash';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
-  // Canteens & Dishes State
+  // Canteens & Dishes State (Synced in Real-Time across all devices via Firestore)
   const [canteens, setCanteens] = useState<Canteen[]>(INITIAL_CANTEENS);
   const [selectedCanteen, setSelectedCanteen] = useState<Canteen>(INITIAL_CANTEENS[0]);
-  const [dishes, setDishes] = useState<Dish[]>(() => {
-    try {
-      const saved = localStorage.getItem('crou_published_dishes');
-      return saved ? JSON.parse(saved) : INITIAL_DISHES;
-    } catch {
-      return INITIAL_DISHES;
-    }
-  });
+  const [dishes, setDishes] = useState<Dish[]>(() => getLocalCachedDishes());
   const [selectedMealType, setSelectedMealType] = useState<MealType>('dejeuner');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // User & Portal State (Interface 1 vs Interface 2)
   const [user, setUser] = useState<UserProfile | null>(() => getLocalUserProfile());
-  const [showBlackPortal, setShowBlackPortal] = useState<boolean>(() => !getLocalUserProfile());
+  const [showBlackPortal, setShowBlackPortal] = useState<boolean>(false);
   
   // Cart State (Inspired by IMG_0875.webp Screen 3)
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -102,6 +102,16 @@ export const App: React.FC = () => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
   };
+
+  // Synchronize published dishes with Firestore in real-time across ALL connected devices
+  useEffect(() => {
+    const unsubscribe = subscribeToDishes((syncedDishes) => {
+      if (syncedDishes && syncedDishes.length > 0) {
+        setDishes(syncedDishes);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync tickets with Firestore for seamless multi-device persistence
   useEffect(() => {
@@ -382,36 +392,25 @@ export const App: React.FC = () => {
     setShowWaveModal(true);
   };
 
-  // Admin dish actions (persisted in localStorage)
-  const handleAddDish = (newDish: Dish) => {
-    setDishes(prev => {
-      const updated = [newDish, ...prev];
-      try {
-        localStorage.setItem('crou_published_dishes', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-    showToast(`Plat "${newDish.name}" publié au menu.`);
+  // Admin dish actions (persisted and broadcasted in Firestore to ALL devices)
+  const handleAddDish = async (newDish: Dish) => {
+    setDishes(prev => [newDish, ...prev.filter(d => d.id !== newDish.id)]);
+    await publishDishToFirestore(newDish);
+    showToast(`Plat "${newDish.name}" publié et synchronisé sur tous les appareils.`);
   };
 
-  const handleToggleDishAvailability = (dishId: string) => {
-    setDishes(prev => {
-      const updated = prev.map(d => d.id === dishId ? { ...d, isAvailable: !d.isAvailable } : d);
-      try {
-        localStorage.setItem('crou_published_dishes', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+  const handleToggleDishAvailability = async (dishId: string) => {
+    const current = dishes.find(d => d.id === dishId);
+    const newStatus = current ? !current.isAvailable : false;
+    setDishes(prev => prev.map(d => d.id === dishId ? { ...d, isAvailable: newStatus } : d));
+    await toggleDishAvailabilityInFirestore(dishId, newStatus);
+    showToast('Disponibilité du plat mise à jour.');
   };
 
-  const handleDeleteDish = (dishId: string) => {
-    setDishes(prev => {
-      const updated = prev.filter(d => d.id !== dishId);
-      try {
-        localStorage.setItem('crou_published_dishes', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+  const handleDeleteDish = async (dishId: string) => {
+    setDishes(prev => prev.filter(d => d.id !== dishId));
+    await removeDishFromFirestore(dishId);
+    showToast('Plat supprimé du menu.');
   };
 
   const handleUpdateCanteen = (updated: Canteen) => {
@@ -421,12 +420,16 @@ export const App: React.FC = () => {
     }
   };
 
-  // Filtered dishes
+  // Filtered dishes (supports UPGC campus shared canteen dishes & meal switcher)
   const filteredDishes = dishes.filter(dish => {
-    const matchesCanteen = dish.canteenId === selectedCanteen.id;
+    const matchesCanteen = !dish.canteenId || 
+                          dish.canteenId === 'all' || 
+                          dish.canteenId === selectedCanteen.id ||
+                          (selectedCanteen.id.startsWith('resto-upgc') && dish.canteenId.startsWith('resto-upgc'));
     const matchesMeal = dish.mealType === selectedMealType;
     const matchesCategory = selectedCategory === 'all' || dish.category === selectedCategory;
-    const matchesSearch = dish.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = !searchQuery || 
+                          dish.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           dish.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCanteen && matchesMeal && matchesCategory && matchesSearch;
   });
@@ -637,16 +640,37 @@ export const App: React.FC = () => {
                   L'administration de la restauration universitaire publie le menu du jour avec les heures exactes de passage.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (user?.role === 'admin') setIsAdminView(true);
-                  else setShowBlackPortal(true);
-                }}
-                className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
-              >
-                <span>👨‍🍳 Programmer le menu du jour (Admin)</span>
-              </button>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                {selectedMealType === 'dejeuner' && dishes.some(d => d.mealType === 'diner') && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMealType('diner')}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <span>🌙 Voir les plats du Dîner (18h30 - 21h00)</span>
+                  </button>
+                )}
+                {selectedMealType === 'diner' && dishes.some(d => d.mealType === 'dejeuner') && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMealType('dejeuner')}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <span>☀️ Voir les plats du Déjeuner (11h30 - 14h30)</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (user?.role === 'admin') setIsAdminView(true);
+                    else setShowBlackPortal(true);
+                  }}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <span>👨‍🍳 Programmer le menu du jour (Admin)</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">

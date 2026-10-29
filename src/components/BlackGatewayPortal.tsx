@@ -154,12 +154,25 @@ export const BlackGatewayPortal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Subvention Ribbon */}
-        <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span className="text-xs font-bold text-slate-200">
-            Tarif Subventionné : <strong className="text-amber-400">200 FCFA</strong> / repas
-          </span>
+        {/* Subvention Ribbon & Close Button */}
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-xs font-bold text-slate-200">
+              Tarif Subventionné : <strong className="text-amber-400">200 FCFA</strong> / repas
+            </span>
+          </div>
+          {onGuestAccess && (
+            <button
+              type="button"
+              onClick={onGuestAccess}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold"
+              title="Fermer et voir les menus"
+            >
+              <span>Voir le Menu</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -434,15 +447,18 @@ export const BlackGatewayPortal: React.FC<Props> = ({
 
           {/* Quick guest preview link if needed */}
           {onGuestAccess && (
-            <div className="mt-6 pt-4 border-t border-white/10 text-center">
+            <div className="mt-6 pt-4 border-t border-white/10 space-y-2 text-center">
               <button
                 type="button"
                 onClick={onGuestAccess}
-                className="text-xs text-slate-400 hover:text-amber-300 transition-colors inline-flex items-center space-x-1"
+                className="w-full py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-bold text-amber-300 hover:text-white transition-all inline-flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm active:scale-98"
               >
-                <span>Consulter les plats sans connexion</span>
+                <span>🍽️ Découvrir le Menu du Jour Sans Connexion</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
+              <p className="text-[10px] text-slate-400">
+                Vous pouvez consulter les plats du jour librement. Connectez-vous pour acheter vos tickets repas.
+              </p>
             </div>
           )}
 
