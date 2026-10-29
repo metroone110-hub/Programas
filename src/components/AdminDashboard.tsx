@@ -46,6 +46,7 @@ import {
   getTodayDateString,
   getTodayFormatted
 } from '../services/dailyLedger';
+import { compressImage } from '../utils/imageCompressor';
 
 interface Props {
   canteen: Canteen;
@@ -93,6 +94,8 @@ export const AdminDashboard: React.FC<Props> = ({
   const [category, setCategory] = useState<'plat_principal' | 'entree' | 'dessert' | 'boisson'>('plat_principal');
   const [mealType, setMealType] = useState<'dejeuner' | 'diner'>('dejeuner');
   const [imageUrl, setImageUrl] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Anti-fraud & Student Matricules Registry
   const [students, setStudents] = useState<UserProfile[]>([]);
@@ -148,32 +151,46 @@ export const AdminDashboard: React.FC<Props> = ({
     });
   };
 
-  const handleCreateDish = (e: React.FormEvent) => {
+  const handleCreateDish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const newDish: Dish = {
-      id: 'dish_' + Math.random().toString(36).substring(2, 9),
-      name: name.trim(),
-      description: description.trim() || 'Plat préparé avec soin par l\'équipe du restaurant universitaire CROU.',
-      category,
-      price: parseInt(price, 10) || 200,
-      regularPrice: 500,
-      imageUrl: imageUrl.trim(),
-      isAvailable: true,
-      mealType,
-      canteenId: canteen.id,
-      tags: ['Distribution Officielle', 'Resto U'],
-      rating: 5.0,
-      ratingCount: 1
-    };
+    setIsPublishing(true);
+    try {
+      let finalImageUrl = imageUrl.trim();
+      if (finalImageUrl && finalImageUrl.startsWith('data:image')) {
+        try {
+          finalImageUrl = await compressImage(finalImageUrl, 600, 600, 0.72);
+        } catch (compErr) {
+          console.warn('Compression notice:', compErr);
+        }
+      }
 
-    onAddDish(newDish);
-    setName('');
-    setDescription('');
-    setImageUrl('');
-    setActionSuccessNotice(`Plat "${newDish.name}" publié au menu avec succès.`);
-    setTimeout(() => setActionSuccessNotice(null), 3000);
+      const newDish: Dish = {
+        id: 'dish_' + Math.random().toString(36).substring(2, 9),
+        name: name.trim(),
+        description: description.trim() || 'Plat préparé avec soin par l\'équipe du restaurant universitaire CROU.',
+        category,
+        price: parseInt(price, 10) || 200,
+        regularPrice: 500,
+        imageUrl: finalImageUrl,
+        isAvailable: true,
+        mealType,
+        canteenId: 'all', // Diffusé pour tous les étudiants UPGC
+        tags: ['Distribution Officielle', 'Resto U'],
+        rating: 5.0,
+        ratingCount: 1
+      };
+
+      onAddDish(newDish);
+      setName('');
+      setDescription('');
+      setImageUrl('');
+      setActionSuccessNotice(`Plat "${newDish.name}" publié et synchronisé sur tous les appareils.`);
+      setTimeout(() => setActionSuccessNotice(null), 3000);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const handleRunManualTurnstileCheck = async (e: React.FormEvent) => {
@@ -650,19 +667,23 @@ export const AdminDashboard: React.FC<Props> = ({
                       />
                       <label className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 cursor-pointer border border-slate-200 transition-colors">
                         <Camera className="w-3.5 h-3.5" />
-                        <span>Importer photo</span>
+                        <span>{isUploadingPhoto ? 'Traitement...' : 'Importer photo'}</span>
                         <input
                           type="file"
                           accept="image/*"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setImageUrl(reader.result as string);
-                              };
-                              reader.readAsDataURL(file);
+                              setIsUploadingPhoto(true);
+                              try {
+                                const compressed = await compressImage(file, 600, 600, 0.72);
+                                setImageUrl(compressed);
+                              } catch (err) {
+                                console.error('Image compression error:', err);
+                              } finally {
+                                setIsUploadingPhoto(false);
+                              }
                             }
                           }}
                         />
@@ -671,7 +692,7 @@ export const AdminDashboard: React.FC<Props> = ({
                     {imageUrl && (
                       <div className="mt-2 flex items-center space-x-2">
                         <img src={imageUrl} alt="Aperçu" className="w-10 h-10 object-cover rounded-lg border border-slate-200" />
-                        <span className="text-[11px] text-emerald-600 font-bold">Photo chargée</span>
+                        <span className="text-[11px] text-emerald-600 font-bold">Photo prête et optimisée</span>
                         <button
                           type="button"
                           onClick={() => setImageUrl('')}
@@ -682,16 +703,17 @@ export const AdminDashboard: React.FC<Props> = ({
                       </div>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1">
-                      Si vous ne mettez aucune photo, l'emblème officiel CROU-K s'affichera proprement sans image générique.
+                      Les photos sont automatiquement optimisées pour s'afficher rapidement sur le téléphone des étudiants.
                     </p>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
+                    disabled={isPublishing || isUploadingPhoto}
+                    className="w-full py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Publier au Menu des Étudiants</span>
+                    <span>{isPublishing ? 'Synchronisation sur tous les appareils...' : 'Publier au Menu des Étudiants'}</span>
                   </button>
                 </form>
               </div>

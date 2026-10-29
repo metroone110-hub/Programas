@@ -109,7 +109,11 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       animationFrameId.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach(t => {
+        try {
+          t.stop();
+        } catch {}
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
@@ -126,16 +130,16 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
 
   // Process and verify a decoded ticket text
   const processDecodedTicket = useCallback(async (rawText: string) => {
-    if (!rawText || scanCooldown) return;
+    if (!rawText) return;
 
-    setScanCooldown(true);
+    // 1. ARRÊTER LA CAMÉRA IMMÉDIATEMENT dès détection pour éviter tout multi-scan
+    stopCamera();
 
-    // Extract ticket number & matricule from JSON payload, URL, or raw text
-    // Examples: {"app":"CROUK_RESTO_U","tkt":"CROUK-2026-016278",...} or https://crou.ci/verify?tkt=CROUK-2026-016278
+    // 2. Extraire les données du ticket
     let ticketNum = rawText.trim();
     let mat = '';
 
-    if (ticketNum.startsWith('{') || ticketNum.includes('"tkt"')) {
+    if (ticketNum.startsWith('{') || ticketNum.includes('"tkt"') || ticketNum.includes('"app"')) {
       try {
         const parsed = JSON.parse(ticketNum);
         if (parsed.tkt || parsed.ticketNumber) ticketNum = parsed.tkt || parsed.ticketNumber;
@@ -161,8 +165,8 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
 
     setLastScannedText(ticketNum);
 
-    // Call validation against database & fraud check
-    const res = await verifyTurnstileTicket(ticketNum, mat);
+    // Call validation against database & fraud check (transmet rawText pour auto-reconstruction si nécessaire)
+    const res = await verifyTurnstileTicket(rawText, mat);
 
     const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -202,13 +206,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         time: nowStr
       });
     }
-
-    // Cooldown 2.5s before next scan
-    setTimeout(() => {
-      setScanCooldown(false);
-    }, 2500);
-
-  }, [scanCooldown, soundEnabled, onTicketValidated, onRefreshStats]);
+  }, [soundEnabled, onTicketValidated, onRefreshStats]);
 
   // Continuous Video Scan Loop with jsQR
   useEffect(() => {
@@ -222,7 +220,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA && !scanCooldown) {
+      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
           canvas.width = video.videoWidth;
@@ -248,7 +246,11 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
           }
 
           if (qrCode && qrCode.data) {
+            // STOP IMMÉDIATEMENT : Ferme la caméra instantanément
+            isScanning = false;
+            stopCamera();
             processDecodedTicket(qrCode.data);
+            return;
           }
         }
       }
@@ -264,7 +266,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [isCameraActive, scanCooldown, processDecodedTicket]);
+  }, [isCameraActive, processDecodedTicket]);
 
   // AI Photo Scanner Fallback
   const handlePhotoCaptureAI = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -399,125 +401,175 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Camera Live Viewfinder Box */}
-      <div className="relative rounded-3xl overflow-hidden bg-slate-950 aspect-[4/3] sm:aspect-[16/9] max-h-[380px] flex items-center justify-center border-2 border-slate-900 shadow-inner">
-        {/* Live Video Feed */}
-        <video
-          ref={videoRef}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
-            isCameraActive ? 'opacity-100' : 'opacity-0'
-          }`}
-          autoPlay
-          playsInline
-          muted
-        />
-
-        {/* Inactive State Overlay */}
-        {!isCameraActive && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3">
-            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 shadow-md">
-              <Camera className="w-8 h-8" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-300">Caméra vidéo en veille</p>
-              <p className="text-xs text-slate-500 max-w-xs mx-auto mt-0.5">
-                Cliquez sur « Activer Caméra Vidéo » pour scanner en direct comme sur l'application Wave.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={startCamera}
-              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer"
-            >
-              Activer Caméra en Direct
-            </button>
-          </div>
-        )}
-
-        {/* Error message */}
-        {cameraError && (
-          <div className="absolute inset-x-4 top-4 p-3 bg-red-950/90 border border-red-500/50 rounded-2xl text-xs text-red-200 text-center backdrop-blur-md">
-            {cameraError}
-          </div>
-        )}
-
-        {/* Wave Scanner Viewfinder Overlay when Camera is Active */}
-        {isCameraActive && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            {/* Viewfinder Target Box */}
-            <div className="relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-amber-400/40 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
-              {/* Corner brackets */}
-              <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-2xl"></div>
-              <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-2xl"></div>
-              <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-2xl"></div>
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-2xl"></div>
-
-              {/* Sweeping Green Laser Line matching Wave scanner */}
-              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-emerald-400 via-green-300 to-emerald-400 rounded-full shadow-[0_0_12px_#10b981] animate-scanLaser pointer-events-none"></div>
-
-              {/* Central Aim Dot */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="w-2 h-2 rounded-full bg-amber-400/60 animate-ping"></span>
-              </div>
-            </div>
-
-            {/* Hint label */}
-            <div className="absolute bottom-4 px-4 py-1.5 bg-black/70 backdrop-blur-md rounded-full text-[11px] font-bold text-amber-300 border border-white/10 shadow-lg">
-              Placez le QR Code de l'étudiant dans le cadre
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* Real-time Verdict Announcement Card */}
-      {verdict.status !== 'idle' && (
-        <div className={`p-4 sm:p-5 rounded-3xl border text-xs animate-scaleUp flex items-start space-x-3.5 shadow-lg ${
+      {/* Viewport: Either the Full Verdict Screen (with large green checkmark) or the Live Camera */}
+      {verdict.status !== 'idle' ? (
+        <div className={`rounded-3xl p-6 sm:p-8 border text-center flex flex-col items-center justify-center space-y-5 shadow-xl transition-all ${
           verdict.status === 'valid'
-            ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-            : 'bg-red-50 border-red-300 text-red-950 animate-bounce'
+            ? 'bg-gradient-to-b from-emerald-50 via-emerald-50/70 to-white border-emerald-300'
+            : 'bg-gradient-to-b from-red-50 via-red-50/70 to-white border-red-300'
         }`}>
+          {/* Big Circular Status Icon */}
           {verdict.status === 'valid' ? (
-            <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
-              <Check className="w-6 h-6 text-white stroke-[3]" />
+            <div className="relative my-2">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xl shadow-emerald-600/30">
+                <Check className="w-14 h-14 sm:w-16 sm:h-16 text-white stroke-[3.5]" />
+              </div>
+              <div className="absolute -inset-2 rounded-full border-4 border-emerald-400/40 animate-ping pointer-events-none" />
             </div>
           ) : (
-            <div className="w-10 h-10 rounded-2xl bg-red-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
-              <AlertOctagon className="w-6 h-6 text-white" />
+            <div className="relative my-2">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xl shadow-red-600/30">
+                <AlertOctagon className="w-14 h-14 sm:w-16 sm:h-16 text-white stroke-[2.5]" />
+              </div>
+              <div className="absolute -inset-2 rounded-full border-4 border-red-400/40 animate-ping pointer-events-none" />
             </div>
           )}
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-2">
-              <span className={`text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                verdict.status === 'valid'
-                  ? 'bg-emerald-200 text-emerald-900'
-                  : 'bg-red-200 text-red-900'
-              }`}>
-                {verdict.status === 'valid' ? '✅ Passage Validé' : '🚨 Alerte Tourniquet'}
-              </span>
-              {verdict.time && (
-                <span className="text-[11px] text-slate-500 font-mono">
-                  {verdict.time}
-                </span>
-              )}
-            </div>
+          {/* Titles & Message */}
+          <div className="space-y-1.5 max-w-md mx-auto">
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+              verdict.status === 'valid'
+                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                : 'bg-red-100 text-red-900 border border-red-300'
+            }`}>
+              {verdict.status === 'valid' ? '✅ Passage Validé' : (verdict.status === 'used' ? '🚨 Ticket Déjà Consommé' : '⚠️ Refus Tourniquet')}
+            </span>
 
-            <h4 className="text-sm sm:text-base font-extrabold mt-1 text-slate-900">
+            <h3 className={`text-2xl sm:text-3xl font-black ${
+              verdict.status === 'valid' ? 'text-emerald-950 font-cabinet' : 'text-red-950 font-cabinet'
+            }`}>
+              {verdict.status === 'valid' ? 'TICKET VALIDE' : (verdict.status === 'used' ? 'DÉJÀ CONSOMMÉ' : 'NON RECONNU')}
+            </h3>
+
+            <p className={`text-sm font-semibold ${
+              verdict.status === 'valid' ? 'text-emerald-800' : 'text-red-700'
+            }`}>
               {verdict.message}
-            </h4>
+            </p>
+          </div>
 
-            {verdict.ticket && (
-              <div className="mt-2 pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-slate-800">
-                  Étudiant : <strong>{verdict.ticket.studentName}</strong> ({verdict.ticket.studentMatricule})
+          {/* Ticket Metadata Card */}
+          {verdict.ticket && (
+            <div className="w-full max-w-md bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-left space-y-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-500 font-medium">Étudiant</span>
+                <span className="text-xs font-bold text-slate-900">
+                  {verdict.ticket.studentName} ({verdict.ticket.studentMatricule})
                 </span>
-                <span className="font-mono font-bold bg-white px-2 py-0.5 rounded-lg border border-slate-200 text-slate-700">
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-500 font-medium">Plat Servi</span>
+                <span className="text-xs font-extrabold text-orange-600">
+                  {verdict.ticket.dishName}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-500 font-medium">Numéro de Ticket</span>
+                <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
                   {verdict.ticket.ticketNumber}
                 </span>
               </div>
-            )}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">Heure de Passage</span>
+                <span className="text-xs font-mono font-bold text-slate-700">
+                  {verdict.time || new Date().toLocaleTimeString('fr-FR')}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Primary Action Button: "Scanner le ticket suivant" */}
+          <div className="w-full max-w-md pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setVerdict({ status: 'idle', message: '' });
+                startCamera();
+              }}
+              className={`w-full py-4 px-6 rounded-2xl font-black text-sm uppercase tracking-wider text-white shadow-lg transition-all active:scale-95 flex items-center justify-center space-x-2 cursor-pointer ${
+                verdict.status === 'valid'
+                  ? 'bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-500 hover:to-green-600 shadow-emerald-500/25'
+                  : 'bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 shadow-orange-500/25'
+              }`}
+            >
+              <Camera className="w-5 h-5" />
+              <span>
+                {verdict.status === 'valid'
+                  ? '📷 Scanner le ticket suivant'
+                  : '🔄 Scanner un autre ticket'}
+              </span>
+            </button>
           </div>
+        </div>
+      ) : (
+        /* Camera Live Viewfinder Box */
+        <div className="relative rounded-3xl overflow-hidden bg-slate-950 aspect-[4/3] sm:aspect-[16/9] max-h-[380px] flex items-center justify-center border-2 border-slate-900 shadow-inner">
+          {/* Live Video Feed */}
+          <video
+            ref={videoRef}
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
+              isCameraActive ? 'opacity-100' : 'opacity-0'
+            }`}
+            autoPlay
+            playsInline
+            muted
+          />
+
+          {/* Inactive State Overlay */}
+          {!isCameraActive && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3">
+              <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 shadow-md">
+                <Camera className="w-8 h-8" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-300">Caméra vidéo en veille</p>
+                <p className="text-xs text-slate-500 max-w-xs mx-auto mt-0.5">
+                  Cliquez sur « Activer Caméra Vidéo » pour scanner en direct comme sur l'application Wave.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={startCamera}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer"
+              >
+                Activer Caméra en Direct
+              </button>
+            </div>
+          )}
+
+          {/* Error message */}
+          {cameraError && (
+            <div className="absolute inset-x-4 top-4 p-3 bg-red-950/90 border border-red-500/50 rounded-2xl text-xs text-red-200 text-center backdrop-blur-md">
+              {cameraError}
+            </div>
+          )}
+
+          {/* Wave Scanner Viewfinder Overlay when Camera is Active */}
+          {isCameraActive && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              {/* Viewfinder Target Box */}
+              <div className="relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-amber-400/40 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                {/* Corner brackets */}
+                <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-2xl"></div>
+                <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-2xl"></div>
+                <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-2xl"></div>
+                <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-2xl"></div>
+
+                {/* Sweeping Green Laser Line matching Wave scanner */}
+                <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-emerald-400 via-green-300 to-emerald-400 rounded-full shadow-[0_0_12px_#10b981] animate-scanLaser pointer-events-none"></div>
+
+                {/* Central Aim Dot */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="w-2 h-2 rounded-full bg-amber-400/60 animate-ping"></span>
+                </div>
+              </div>
+
+              {/* Hint label */}
+              <div className="absolute bottom-4 px-4 py-1.5 bg-black/70 backdrop-blur-md rounded-full text-[11px] font-bold text-amber-300 border border-white/10 shadow-lg">
+                Placez le QR Code de l'étudiant dans le cadre
+              </div>
+            </div>
+          )}
         </div>
       )}
 

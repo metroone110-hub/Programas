@@ -9,11 +9,12 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Dish } from '../types';
+import { compressImage } from '../utils/imageCompressor';
 
 const DISHES_COLLECTION = 'crou_dishes';
 const LOCAL_DISHES_KEY = 'crou_published_dishes';
 
-// STRICT RULE: No hardcoded dishes. The administration has 100% control over the menu.
+// STRICT RULE: No hardcoded default dishes. The administration has 100% control over the menu.
 export const DEFAULT_UPGC_DISHES: Dish[] = [];
 
 /**
@@ -52,6 +53,15 @@ export function subscribeToDishes(onUpdate: (dishes: Dish[]) => void): () => voi
     
     const unsubscribe = onSnapshot(dishesCol, (snapshot) => {
       if (snapshot.empty) {
+        // Auto-heal: If dishes were saved locally on this admin device, sync them to Firestore with compression!
+        const local = getLocalCachedDishes();
+        if (local.length > 0) {
+          local.forEach(d => {
+            publishDishToFirestore(d);
+          });
+          onUpdate(local);
+          return;
+        }
         setLocalCachedDishes([]);
         onUpdate([]);
       } else {
@@ -83,18 +93,39 @@ export function subscribeToDishes(onUpdate: (dishes: Dish[]) => void): () => voi
 }
 
 /**
- * Publish a new dish from Administration to Firestore (synchronizes with all devices)
+ * Publish a new dish from Administration to Firestore (synchronizes with all devices).
+ * Automatically compresses high-resolution photos so they never exceed Firestore's 1MB limit.
  */
-export async function publishDishToFirestore(dish: Dish): Promise<void> {
-  const current = getLocalCachedDishes();
-  const updated = [dish, ...current.filter(d => d.id !== dish.id)];
-  setLocalCachedDishes(updated);
-
+export async function publishDishToFirestore(dish: Dish): Promise<{ success: boolean; error?: string }> {
   try {
-    const dishRef = doc(db, DISHES_COLLECTION, dish.id);
-    await setDoc(dishRef, dish, { merge: true });
-  } catch (err) {
+    const finalDish: Dish = { ...dish };
+    
+    // Auto-compress high-res phone camera photos (e.g. iPhone photos)
+    if (finalDish.imageUrl && finalDish.imageUrl.length > 50000) {
+      try {
+        finalDish.imageUrl = await compressImage(finalDish.imageUrl, 600, 600, 0.72);
+      } catch (compErr) {
+        console.warn('Image compression note:', compErr);
+      }
+    }
+
+    // Ensure canteenId is flexible: if empty or UPGC, set to 'all' so all UPGC students see it immediately
+    if (!finalDish.canteenId || finalDish.canteenId === 'resto-upgc-1' || finalDish.canteenId === 'resto-upgc-2') {
+      finalDish.canteenId = 'all';
+    }
+
+    const dishRef = doc(db, DISHES_COLLECTION, finalDish.id);
+    await setDoc(dishRef, finalDish, { merge: true });
+
+    // Update local cache
+    const current = getLocalCachedDishes();
+    const updated = [finalDish, ...current.filter(d => d.id !== finalDish.id)];
+    setLocalCachedDishes(updated);
+
+    return { success: true };
+  } catch (err: any) {
     console.error('Failed to sync dish to Firestore:', err);
+    return { success: false, error: err?.message || 'Erreur lors de la synchronisation Firestore.' };
   }
 }
 

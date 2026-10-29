@@ -395,9 +395,13 @@ export const App: React.FC = () => {
 
   // Admin dish actions (persisted and broadcasted in Firestore to ALL devices)
   const handleAddDish = async (newDish: Dish) => {
-    setDishes(prev => [newDish, ...prev.filter(d => d.id !== newDish.id)]);
-    await publishDishToFirestore(newDish);
-    showToast(`Plat "${newDish.name}" publié et synchronisé sur tous les appareils.`);
+    const res = await publishDishToFirestore(newDish);
+    if (res.success) {
+      setDishes(prev => [newDish, ...prev.filter(d => d.id !== newDish.id)]);
+      showToast(`Plat "${newDish.name}" publié et synchronisé sur tous les appareils.`);
+    } else {
+      showToast(`Erreur : ${res.error || 'Erreur lors de la synchronisation cloud'}`);
+    }
   };
 
   const handleToggleDishAvailability = async (dishId: string) => {

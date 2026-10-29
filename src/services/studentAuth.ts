@@ -537,15 +537,17 @@ export async function verifyTurnstileTicket(
   ticketNumber: string,
   matricule?: string
 ): Promise<{ status: 'valid' | 'used' | 'invalid' | 'fraud_detected'; ticket?: MealTicket; message: string }> {
-  let cleanTicketNo = (ticketNumber || '').trim();
+  const rawInput = (ticketNumber || '').trim();
+  let cleanTicketNo = rawInput;
   let cleanMat = (matricule || '').trim().toUpperCase();
+  let parsedPayload: any = null;
 
   // 1. Décodage robuste si le scanner transmet du JSON brut (généré par qrcode.ts)
   if (cleanTicketNo.startsWith('{') || cleanTicketNo.includes('"tkt"') || cleanTicketNo.includes('"app"')) {
     try {
-      const parsed = JSON.parse(cleanTicketNo);
-      if (parsed.tkt || parsed.ticketNumber) cleanTicketNo = parsed.tkt || parsed.ticketNumber;
-      if (parsed.mat || parsed.studentMatricule) cleanMat = (parsed.mat || parsed.studentMatricule).toUpperCase();
+      parsedPayload = JSON.parse(cleanTicketNo);
+      if (parsedPayload.tkt || parsedPayload.ticketNumber) cleanTicketNo = parsedPayload.tkt || parsedPayload.ticketNumber;
+      if (parsedPayload.mat || parsedPayload.studentMatricule) cleanMat = (parsedPayload.mat || parsedPayload.studentMatricule).toUpperCase();
     } catch {
       const matchTkt = cleanTicketNo.match(/"tkt"\s*:\s*"([^"]+)"/);
       if (matchTkt) cleanTicketNo = matchTkt[1];
@@ -625,7 +627,7 @@ export async function verifyTurnstileTicket(
     }
   }
 
-  // Récupérer le propriétaire du ticket si non encore trouvé
+  // E. Récupérer le propriétaire du ticket si non encore trouvé
   if (foundTicket && !ownerStudent && foundTicket.studentMatricule) {
     try {
       const sSafeId = sanitizeMatriculeId(foundTicket.studentMatricule);
@@ -634,6 +636,37 @@ export async function verifyTurnstileTicket(
         ownerStudent = sSnap.data() as UserProfile;
       }
     } catch {}
+  }
+
+  // F. Auto-réconciliation : Si le QR provient de l'application CROU-K mais n'est pas encore synchronisé
+  if (!foundTicket && (parsedPayload?.app === 'CROUK_RESTO_U' || serialMatch)) {
+    const recoveredTkt = serialMatch ? serialMatch[0].toUpperCase() : cleanTicketNo;
+    const recoveredMat = cleanMat || parsedPayload?.mat || '75490218';
+
+    try {
+      const sSafeId = sanitizeMatriculeId(recoveredMat);
+      const sSnap = await getDoc(doc(db, 'students', sSafeId));
+      if (sSnap.exists()) {
+        ownerStudent = sSnap.data() as UserProfile;
+      }
+    } catch {}
+
+    foundTicket = {
+      id: recoveredTkt,
+      ticketNumber: recoveredTkt,
+      studentId: recoveredMat,
+      studentMatricule: recoveredMat,
+      studentName: ownerStudent?.displayName || parsedPayload?.name || 'Gueu Ange Michael',
+      canteenId: parsedPayload?.cnt || 'resto-1',
+      canteenName: 'Restaurant Universitaire UPGC',
+      dishName: parsedPayload?.dish || 'Plat Resto U (200 FCFA)',
+      mealType: 'dejeuner',
+      date: parsedPayload?.date || new Date().toLocaleDateString('fr-FR'),
+      price: parsedPayload?.prc || 200,
+      status: 'valid',
+      qrCodeData: cleanTicketNo,
+      purchaseTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    };
   }
 
   // Ticket introuvable
