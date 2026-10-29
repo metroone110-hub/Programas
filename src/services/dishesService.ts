@@ -53,15 +53,7 @@ export function subscribeToDishes(onUpdate: (dishes: Dish[]) => void): () => voi
     
     const unsubscribe = onSnapshot(dishesCol, (snapshot) => {
       if (snapshot.empty) {
-        // Auto-heal: If dishes were saved locally on this admin device, sync them to Firestore with compression!
-        const local = getLocalCachedDishes();
-        if (local.length > 0) {
-          local.forEach(d => {
-            publishDishToFirestore(d);
-          });
-          onUpdate(local);
-          return;
-        }
+        // Strict: When Firestore is empty, all connected devices clear their menu
         setLocalCachedDishes([]);
         onUpdate([]);
       } else {

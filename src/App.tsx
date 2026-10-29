@@ -107,9 +107,7 @@ export const App: React.FC = () => {
   // Synchronize published dishes with Firestore in real-time across ALL connected devices
   useEffect(() => {
     const unsubscribe = subscribeToDishes((syncedDishes) => {
-      if (syncedDishes && syncedDishes.length > 0) {
-        setDishes(syncedDishes);
-      }
+      setDishes(syncedDishes || []);
     });
     return () => unsubscribe();
   }, []);
