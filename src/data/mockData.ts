@@ -63,7 +63,5 @@ export const INITIAL_CANTEENS: Canteen[] = [
   }
 ];
 
-import { DEFAULT_UPGC_DISHES } from '../services/dishesService';
-
-// Menus officiels du jour publiés par le CROU Korhogo pour l'UPGC
-export const INITIAL_DISHES: Dish[] = DEFAULT_UPGC_DISHES;
+// Aucun plat par défaut : c'est uniquement l'administration qui publie les plats
+export const INITIAL_DISHES: Dish[] = [];

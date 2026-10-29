@@ -24,7 +24,8 @@ import {
   subscribeToDishes,
   publishDishToFirestore,
   toggleDishAvailabilityInFirestore,
-  removeDishFromFirestore
+  removeDishFromFirestore,
+  clearAllDishesFromFirestore
 } from './services/dishesService';
 import { 
   getLocalUserProfile, 
@@ -413,6 +414,12 @@ export const App: React.FC = () => {
     showToast('Plat supprimé du menu.');
   };
 
+  const handleDeleteAllDishes = async () => {
+    setDishes([]);
+    await clearAllDishesFromFirestore();
+    showToast('Tous les plats ont été supprimés avec succès.');
+  };
+
   const handleUpdateCanteen = (updated: Canteen) => {
     setCanteens(prev => prev.map(c => c.id === updated.id ? updated : c));
     if (selectedCanteen.id === updated.id) {
@@ -446,6 +453,7 @@ export const App: React.FC = () => {
         onAddDish={handleAddDish}
         onToggleDishAvailability={handleToggleDishAvailability}
         onDeleteDish={handleDeleteDish}
+        onDeleteAllDishes={handleDeleteAllDishes}
         onClose={() => setIsAdminView(false)}
       />
     );

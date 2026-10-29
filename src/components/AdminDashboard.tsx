@@ -54,6 +54,7 @@ interface Props {
   onAddDish: (dish: Dish) => void;
   onToggleDishAvailability: (dishId: string) => void;
   onDeleteDish: (dishId: string) => void;
+  onDeleteAllDishes?: () => void;
   onClose: () => void;
 }
 
@@ -64,6 +65,7 @@ export const AdminDashboard: React.FC<Props> = ({
   onAddDish,
   onToggleDishAvailability,
   onDeleteDish,
+  onDeleteAllDishes,
   onClose
 }) => {
   const [adminTab, setAdminTab] = useState<'scanner' | 'dishes' | 'fraud' | 'tickets'>('scanner');
@@ -700,7 +702,24 @@ export const AdminDashboard: React.FC<Props> = ({
                   <h3 className="font-black text-base text-slate-900 font-cabinet">
                     Plats Actuels ({canteenDishes.length})
                   </h3>
-                  <span className="text-xs text-slate-400">Modifications instantanées</span>
+                  <div className="flex items-center space-x-2">
+                    {canteenDishes.length > 0 && onDeleteAllDishes && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Voulez-vous vraiment supprimer TOUS les plats du menu ?')) {
+                            onDeleteAllDishes();
+                          }
+                        }}
+                        className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1 cursor-pointer"
+                        title="Supprimer tous les plats du menu"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Tout Supprimer</span>
+                      </button>
+                    )}
+                    <span className="text-xs text-slate-400">Modifications instantanées</span>
+                  </div>
                 </div>
 
                 <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
