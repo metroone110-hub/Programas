@@ -62,9 +62,9 @@ export const ProgramasPochetteSplash: React.FC<Props> = ({ onComplete }) => {
         </div>
       </div>
 
-      {/* Bottom: Slim downloading / loading progress line going to 100% */}
-      <div className="w-full max-w-xs flex flex-col items-center space-y-2 pb-6">
-        <div className="w-full h-1 sm:h-1.5 bg-neutral-900 rounded-full overflow-hidden p-0.5 border border-white/5">
+      {/* Bottom: Slim downloading / loading progress line (compact 15% width) going to 100% */}
+      <div className="w-[150px] sm:w-[180px] flex flex-col items-center space-y-2 pb-6">
+        <div className="w-full h-1 bg-neutral-900 rounded-full overflow-hidden p-0.5 border border-white/10">
           <div 
             className="h-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-500 rounded-full transition-all duration-75 ease-out shadow-[0_0_12px_rgba(249,115,22,0.8)]"
             style={{ width: `${progress}%` }}

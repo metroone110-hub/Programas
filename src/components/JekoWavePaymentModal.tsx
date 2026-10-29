@@ -128,8 +128,8 @@ export const JekoWavePaymentModal: React.FC<Props> = ({
           {/* Header with Programas logo & Total Amount */}
           <div className="flex items-start justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center space-x-2.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-xl shadow-sm text-white">
-                🍽️
+              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm flex items-center justify-center ring-1 ring-orange-500/20 flex-shrink-0">
+                <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
               </div>
               <span className="font-extrabold text-slate-900 text-base font-cabinet">
                 Programas

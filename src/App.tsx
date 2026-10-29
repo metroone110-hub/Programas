@@ -95,10 +95,8 @@ export const App: React.FC = () => {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
 
-  // Animated "Pochette Programas" Splash Screen on entry
-  const [showSplash, setShowSplash] = useState<boolean>(() => {
-    return !sessionStorage.getItem('programas_splash_shown_session');
-  });
+  // Animated Programas Splash Screen on entry (bouncing logo on black background)
+  const [showSplash, setShowSplash] = useState<boolean>(true);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
