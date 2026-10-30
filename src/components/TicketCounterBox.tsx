@@ -50,9 +50,9 @@ export const TicketCounterBox: React.FC<Props> = ({
 
   return (
     <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 rounded-3xl p-5 sm:p-7 text-white shadow-xl border border-white/10 relative overflow-hidden">
-      {/* Decorative background glow */}
-      <div className="absolute -top-16 -right-16 w-48 h-48 bg-orange-500/20 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-rose-500/15 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Lightweight background accents (Zero GPU filter cost) */}
+      <div className="absolute -top-16 -right-16 w-48 h-48 bg-orange-500/10 rounded-full pointer-events-none"></div>
+      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-rose-500/10 rounded-full pointer-events-none"></div>
 
       <div className="relative z-10 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
         
@@ -116,7 +116,7 @@ export const TicketCounterBox: React.FC<Props> = ({
         </div>
 
         {/* Right: Quantity Stepper & Buy Action Card */}
-        <div className="w-full lg:w-80 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-2xl flex-shrink-0">
+        <div className="w-full lg:w-80 bg-slate-800/80 border border-white/20 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-2xl flex-shrink-0">
           
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300">
