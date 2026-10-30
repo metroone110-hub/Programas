@@ -11,6 +11,8 @@ interface ImageWithLoaderProps extends React.ImgHTMLAttributes<HTMLImageElement>
   spiralLabel?: string;
 }
 
+const globalImageCache = new Set<string>();
+
 /**
  * Image component that shows a fast-loading animated spiral (🌀) while fetching,
  * with instantaneous cache recognition, smooth opacity fade-in, and error retry.
@@ -25,28 +27,35 @@ export const ImageWithLoader: React.FC<ImageWithLoaderProps> = ({
   spiralLabel = 'Téléchargement...',
   ...imgProps
 }) => {
-  const [loaded, setLoaded] = useState<boolean>(false);
+  const isInitiallyCached = Boolean(src && globalImageCache.has(src));
+  const [loaded, setLoaded] = useState<boolean>(isInitiallyCached);
   const [error, setError] = useState<boolean>(false);
   const [retryKey, setRetryKey] = useState<number>(0);
 
   // Check if image is already cached by browser
   useEffect(() => {
-    setLoaded(false);
-    setError(false);
-
     if (!src) {
       setError(true);
+      return;
+    }
+
+    if (globalImageCache.has(src)) {
+      setLoaded(true);
+      setError(false);
       return;
     }
 
     const testImg = new Image();
     testImg.src = src;
     if (testImg.complete && testImg.naturalWidth > 0) {
+      globalImageCache.add(src);
       setLoaded(true);
+      setError(false);
     }
   }, [src, retryKey]);
 
   const handleLoad = () => {
+    if (src) globalImageCache.add(src);
     setLoaded(true);
     setError(false);
   };
@@ -143,6 +152,7 @@ export const ImageWithLoader: React.FC<ImageWithLoaderProps> = ({
         key={`${src}-${retryKey}`}
         src={src}
         alt={alt}
+        decoding="async"
         onLoad={handleLoad}
         onError={handleError}
         className={`w-full h-full object-cover transition-opacity duration-300 ${

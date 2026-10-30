@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, MealTicket } from '../types';
 
@@ -165,10 +165,23 @@ export async function registerStudentWithMatricule(data: {
     return { success: false, error: 'Veuillez renseigner votre nom complet.' };
   }
 
-  // Check if matricule already exists in registry
+  const safeId = sanitizeMatriculeId(cleanMatricule);
+
+  // Check if matricule already exists locally
   const registry = getLocalStudentsRegistry();
   if (registry[cleanMatricule]) {
     return { success: false, error: `Le matricule ${cleanMatricule} est déjà enregistré. Veuillez utiliser l'onglet "Connexion".` };
+  }
+
+  // Check if matricule already exists in Firestore on any device
+  try {
+    const studentRef = doc(db, 'students', safeId);
+    const snap = await getDoc(studentRef);
+    if (snap.exists()) {
+      return { success: false, error: `Le matricule ${cleanMatricule} est déjà enregistré. Veuillez utiliser l'onglet "Connexion".` };
+    }
+  } catch (checkErr) {
+    console.warn('Firestore matricule check note:', checkErr);
   }
 
   const newProfile: UserProfile = {
@@ -190,7 +203,6 @@ export async function registerStudentWithMatricule(data: {
   saveLocalUserProfile(newProfile);
 
   // 2. Store in Firestore database with sanitized safe document ID
-  const safeId = sanitizeMatriculeId(cleanMatricule);
   try {
     const studentRef = doc(db, 'students', safeId);
     await setDoc(studentRef, {
@@ -204,6 +216,39 @@ export async function registerStudentWithMatricule(data: {
   }
 
   return { success: true, user: newProfile };
+}
+
+/**
+ * Synchronise tous les comptes créés localement vers Firestore pour qu'ils soient visibles sur tous les appareils
+ */
+export async function syncAllLocalAccountsToFirestore(): Promise<void> {
+  try {
+    const local = getLocalStudentsRegistry();
+    const promises: Promise<any>[] = [];
+    for (const [mat, student] of Object.entries(local)) {
+      if (mat && student) {
+        const safeId = sanitizeMatriculeId(mat);
+        const sRef = doc(db, 'students', safeId);
+        promises.push(setDoc(sRef, {
+          uid: student.uid || mat,
+          matricule: mat,
+          displayName: student.displayName || 'Étudiant UPGC',
+          email: student.email || `${mat.toLowerCase()}@upgc.ci`,
+          role: student.role || 'student',
+          balance: typeof student.balance === 'number' ? student.balance : 0,
+          savedTickets: student.savedTickets || [],
+          university: student.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
+          campus: student.campus || 'Campus UPGC Korhogo',
+          phone: student.phone || '',
+          passwordHash: student.passwordHash || 'upgc2026',
+          lastSync: new Date().toISOString()
+        }, { merge: true }));
+      }
+    }
+    await Promise.allSettled(promises);
+  } catch (err) {
+    console.warn('Error syncing local accounts to Firestore:', err);
+  }
 }
 
 /**
@@ -515,18 +560,83 @@ export async function getAllRegisteredStudents(): Promise<UserProfile[]> {
   const studentsMap: Record<string, UserProfile> = { ...localRegistry };
 
   try {
+    // 1. First trigger background sync of any local accounts that haven't reached Firestore yet
+    syncAllLocalAccountsToFirestore().catch(() => {});
+
+    // 2. Query Firestore directly for the live global registry across all devices
     const snap = await getDocs(collection(db, 'students'));
     snap.forEach(docSnap => {
       const data = docSnap.data() as UserProfile;
       if (data.matricule) {
-        studentsMap[data.matricule.toUpperCase()] = data;
+        studentsMap[data.matricule.toUpperCase()] = {
+          ...data,
+          matricule: data.matricule.toUpperCase()
+        };
       }
     });
+
+    // 3. Update local storage so this device also remembers all accounts from other devices
+    try {
+      localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(studentsMap));
+    } catch {}
   } catch (err) {
     console.warn('Firestore getAllStudents note:', err);
   }
 
   return Object.values(studentsMap);
+}
+
+/**
+ * Abonnement en temps réel aux étudiants enregistrés dans Firestore
+ * Synchronise tous les comptes créés sur TOUS les appareils avec l'administration CROU
+ */
+export function subscribeToStudentsRegistry(onUpdate: (students: UserProfile[]) => void): () => void {
+  try {
+    // Sync any local unpushed accounts in background
+    syncAllLocalAccountsToFirestore().catch(() => {});
+
+    const studentsCol = collection(db, 'students');
+    const unsubscribe = onSnapshot(studentsCol, (snapshot) => {
+      const studentsMap: Record<string, UserProfile> = {};
+
+      // Local accounts base
+      const local = getLocalStudentsRegistry();
+      Object.values(local).forEach(s => {
+        if (s.matricule) {
+          studentsMap[s.matricule.toUpperCase()] = s;
+        }
+      });
+
+      // Override with real-time cloud data from all devices
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as UserProfile;
+        if (data.matricule) {
+          studentsMap[data.matricule.toUpperCase()] = {
+            ...data,
+            matricule: data.matricule.toUpperCase()
+          };
+        }
+      });
+
+      const studentList = Object.values(studentsMap);
+
+      // Save to local storage for offline resilience
+      try {
+        localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(studentsMap));
+      } catch {}
+
+      onUpdate(studentList);
+    }, (error) => {
+      console.warn('Firestore students onSnapshot note:', error);
+      getAllRegisteredStudents().then(onUpdate);
+    });
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to attach students snapshot:', err);
+    getAllRegisteredStudents().then(onUpdate);
+    return () => {};
+  }
 }
 
 /**

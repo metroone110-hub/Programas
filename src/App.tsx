@@ -34,7 +34,8 @@ import {
   addMealTicket, 
   logoutUser,
   purchaseTicketsBatch,
-  syncStudentTicketsWithFirestore
+  syncStudentTicketsWithFirestore,
+  syncAllLocalAccountsToFirestore
 } from './services/studentAuth';
 import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
@@ -110,6 +111,11 @@ export const App: React.FC = () => {
       setDishes(syncedDishes || []);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Synchronize any locally registered student accounts to Firestore on boot across all devices
+  useEffect(() => {
+    syncAllLocalAccountsToFirestore().catch(e => console.warn('Account sync notice:', e));
   }, []);
 
   // Sync tickets with Firestore for seamless multi-device persistence
@@ -462,7 +468,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen min-h-[100dvh] bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full overflow-x-clip overscroll-y-none">
       
       {/* 3D Holographic Animated Programas Pochette Splash Screen */}
       {showSplash && (

@@ -27,7 +27,12 @@ import {
   Calendar,
   CheckCircle2,
   X,
-  HelpCircle
+  HelpCircle,
+  HardDrive,
+  ExternalLink,
+  FileSpreadsheet,
+  UploadCloud,
+  Check
 } from 'lucide-react';
 import { Dish, Canteen, CrowdLevel, UserProfile, MealTicket } from '../types';
 import { ImageWithLoader } from './ImageWithLoader';
@@ -36,7 +41,9 @@ import {
   getAllRegisteredStudents, 
   verifyTurnstileTicket, 
   getFraudAuditLogs, 
-  FraudAuditLog 
+  FraudAuditLog,
+  subscribeToStudentsRegistry,
+  syncAllLocalAccountsToFirestore
 } from '../services/studentAuth';
 import { 
   DailyLedgerStats,
@@ -46,6 +53,16 @@ import {
   getTodayDateString,
   getTodayFormatted
 } from '../services/dailyLedger';
+import { 
+  initDriveAuth,
+  signInWithGoogleForDrive,
+  exportStudentRegistryToDrive,
+  exportLedgerToDrive,
+  listAppFilesFromDrive,
+  signOutDrive,
+  DriveUploadResult,
+  getCachedDriveUser
+} from '../services/googleDriveService';
 import { compressImage } from '../utils/imageCompressor';
 
 interface Props {
@@ -69,7 +86,7 @@ export const AdminDashboard: React.FC<Props> = ({
   onDeleteAllDishes,
   onClose
 }) => {
-  const [adminTab, setAdminTab] = useState<'scanner' | 'dishes' | 'fraud' | 'tickets'>('scanner');
+  const [adminTab, setAdminTab] = useState<'scanner' | 'dishes' | 'fraud' | 'tickets' | 'drive'>('scanner');
 
   // Daily Ledger State (starts at zero or active day)
   const [dailyLedger, setDailyLedger] = useState<DailyLedgerStats>({
@@ -101,6 +118,21 @@ export const AdminDashboard: React.FC<Props> = ({
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [matriculeSearch, setMatriculeSearch] = useState('');
   const [fraudLogs, setFraudLogs] = useState<FraudAuditLog[]>([]);
+  const [isRefreshingRegistry, setIsRefreshingRegistry] = useState(false);
+
+  // Google Drive Integration State
+  const [driveUser, setDriveUser] = useState<any>(() => getCachedDriveUser());
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
+  const [isExportingDrive, setIsExportingDrive] = useState<boolean>(false);
+  const [driveExportSuccess, setDriveExportSuccess] = useState<DriveUploadResult | null>(null);
+  const [driveFiles, setDriveFiles] = useState<Array<{ id: string; name: string; webViewLink?: string; createdTime?: string }>>([]);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Manual Turnstile check simulation fallback
   const [scanTicketNumber, setScanTicketNumber] = useState('');
@@ -108,15 +140,50 @@ export const AdminDashboard: React.FC<Props> = ({
   const [manualScanResult, setManualScanResult] = useState<{ status: string; message: string; ticket?: MealTicket } | null>(null);
   const [isVerifyingManual, setIsVerifyingManual] = useState(false);
 
+  // Subscribe to real-time student registry from Firestore and Drive auth
   useEffect(() => {
-    loadRegistryData();
+    // 1. Multi-Device Real-Time Subscription: Every student registered on any phone appears instantly!
+    const unsubscribeStudents = subscribeToStudentsRegistry((liveStudents) => {
+      setStudents(liveStudents);
+      setFraudLogs(getFraudAuditLogs());
+    });
+
     loadLedgerData();
+
+    // 2. Drive Auth listener
+    const unsubscribeDrive = initDriveAuth((user, token) => {
+      setDriveUser(user);
+      setIsDriveConnected(!!user && !!token);
+      if (token) {
+        listAppFilesFromDrive().then(setDriveFiles).catch(() => {});
+      }
+    });
+
+    return () => {
+      unsubscribeStudents();
+      unsubscribeDrive();
+    };
   }, []);
 
   const loadRegistryData = async () => {
     const list = await getAllRegisteredStudents();
     setStudents(list);
     setFraudLogs(getFraudAuditLogs());
+  };
+
+  const handleForceRefreshCloud = async () => {
+    setIsRefreshingRegistry(true);
+    try {
+      await syncAllLocalAccountsToFirestore();
+      const updated = await getAllRegisteredStudents();
+      setStudents(updated);
+      setActionSuccessNotice('Synchronisation Cloud Firestore effectuée : tous les comptes sont à jour.');
+      setTimeout(() => setActionSuccessNotice(null), 3500);
+    } catch (err) {
+      console.warn('Sync error:', err);
+    } finally {
+      setIsRefreshingRegistry(false);
+    }
   };
 
   const loadLedgerData = async () => {
@@ -136,6 +203,88 @@ export const AdminDashboard: React.FC<Props> = ({
     setArchivesList(updatedArchives);
     setActionSuccessNotice('La journée a été archivée avec succès dans l\'historique permanent.');
     setTimeout(() => setActionSuccessNotice(null), 4000);
+  };
+
+  // Google Drive Action Handlers with MANDATORY explicit user confirmation
+  const handleConnectDrive = async () => {
+    try {
+      const res = await signInWithGoogleForDrive();
+      setDriveUser(res.user);
+      setIsDriveConnected(true);
+      const files = await listAppFilesFromDrive();
+      setDriveFiles(files);
+      setActionSuccessNotice(`Connecté à Google Drive avec le compte : ${res.user.email}`);
+      setTimeout(() => setActionSuccessNotice(null), 4000);
+    } catch (err: any) {
+      console.error('Drive connection error:', err);
+      setActionSuccessNotice(err.message || 'Impossible de se connecter à Google Drive.');
+      setTimeout(() => setActionSuccessNotice(null), 4000);
+    }
+  };
+
+  const handleDisconnectDrive = async () => {
+    await signOutDrive();
+    setDriveUser(null);
+    setIsDriveConnected(false);
+    setDriveFiles([]);
+    setActionSuccessNotice('Déconnecté de Google Drive.');
+    setTimeout(() => setActionSuccessNotice(null), 3000);
+  };
+
+  // Confirmation before Student Registry Export
+  const promptExportStudentsToDrive = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Exporter le Registre des Étudiants sur Google Drive',
+      description: `Vous êtes sur le point de créer un fichier CSV contenant la liste complète de ${students.length} étudiants (matricules, soldes et tickets) directement sur votre compte Google Drive. Souhaitez-vous continuer ?`,
+      confirmText: 'Sauvegarder sur Google Drive',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setIsExportingDrive(true);
+        try {
+          const res = await exportStudentRegistryToDrive(students);
+          setDriveExportSuccess(res);
+          const updatedFiles = await listAppFilesFromDrive();
+          setDriveFiles(updatedFiles);
+          setActionSuccessNotice(`Fichier « ${res.name} » créé avec succès sur votre Google Drive !`);
+          setTimeout(() => setActionSuccessNotice(null), 5000);
+        } catch (err: any) {
+          console.error('Export error:', err);
+          setActionSuccessNotice(err.message || 'Erreur lors de l\'export vers Google Drive.');
+          setTimeout(() => setActionSuccessNotice(null), 4000);
+        } finally {
+          setIsExportingDrive(false);
+        }
+      }
+    });
+  };
+
+  // Confirmation before Daily Ledger Export
+  const promptExportLedgerToDrive = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Exporter le Bilan Comptable Journalier sur Google Drive',
+      description: `Vous êtes sur le point de créer un rapport comptable CSV du ${dailyLedger.formattedDate} (${dailyLedger.revenueCollected.toLocaleString('fr-FR')} FCFA de recettes, ${dailyLedger.mealsValidated} repas servis) directement sur votre compte Google Drive. Souhaitez-vous continuer ?`,
+      confirmText: 'Sauvegarder sur Google Drive',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setIsExportingDrive(true);
+        try {
+          const res = await exportLedgerToDrive(dailyLedger);
+          setDriveExportSuccess(res);
+          const updatedFiles = await listAppFilesFromDrive();
+          setDriveFiles(updatedFiles);
+          setActionSuccessNotice(`Bilan « ${res.name} » créé avec succès sur votre Google Drive !`);
+          setTimeout(() => setActionSuccessNotice(null), 5000);
+        } catch (err: any) {
+          console.error('Export error:', err);
+          setActionSuccessNotice(err.message || 'Erreur lors de l\'export vers Google Drive.');
+          setTimeout(() => setActionSuccessNotice(null), 4000);
+        } finally {
+          setIsExportingDrive(false);
+        }
+      }
+    });
   };
 
   // Crowd controls
@@ -222,9 +371,9 @@ export const AdminDashboard: React.FC<Props> = ({
   });
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen min-h-[100dvh] bg-slate-100 flex flex-col font-sans overscroll-y-none">
       {/* Top Header */}
-      <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-lg border-b border-slate-800">
+      <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-lg border-b border-slate-800 gpu-layer">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
             <button
@@ -301,6 +450,19 @@ export const AdminDashboard: React.FC<Props> = ({
             >
               <Ticket className="w-4 h-4" />
               <span>Billetterie & Archives</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAdminTab('drive')}
+              className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 flex-shrink-0 ${
+                adminTab === 'drive'
+                  ? 'bg-blue-600 text-white font-black shadow-sm'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <HardDrive className="w-4 h-4" />
+              <span>Google Drive</span>
             </button>
           </div>
         </div>
@@ -813,25 +975,54 @@ export const AdminDashboard: React.FC<Props> = ({
             
             {/* Students Matricules Table */}
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-black text-base text-slate-900 font-cabinet">
-                    Registre des Étudiants & Matricules UPGC ({students.length})
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Contrôle des numéros de matricule pour prévenir toute tentative d'usurpation ou de fraude.
+                  <div className="flex items-center space-x-2">
+                    <h3 className="font-black text-base text-slate-900 font-cabinet">
+                      Registre des Étudiants & Matricules UPGC ({students.length})
+                    </h3>
+                    <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>En direct (Multi-Appareils)</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tous les comptes créés sur n'importe quel téléphone ou ordinateur s'affichent automatiquement ici en temps réel.
                   </p>
                 </div>
 
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={matriculeSearch}
-                    onChange={(e) => setMatriculeSearch(e.target.value)}
-                    placeholder="Rechercher un matricule..."
-                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleForceRefreshCloud}
+                    disabled={isRefreshingRegistry}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 border border-slate-200 disabled:opacity-50"
+                    title="Forcer la synchronisation avec tous les appareils"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshingRegistry ? 'animate-spin text-orange-600' : ''}`} />
+                    <span>{isRefreshingRegistry ? 'Synchronisation...' : 'Actualiser Cloud'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={promptExportStudentsToDrive}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 border border-blue-200"
+                    title="Exporter le registre vers Google Drive"
+                  >
+                    <HardDrive className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Exporter Drive</span>
+                  </button>
+
+                  <div className="relative w-full sm:w-56">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={matriculeSearch}
+                      onChange={(e) => setMatriculeSearch(e.target.value)}
+                      placeholder="Rechercher un matricule..."
+                      className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1012,7 +1203,269 @@ export const AdminDashboard: React.FC<Props> = ({
           </div>
         )}
 
+        {/* TAB 5: GOOGLE DRIVE (SAUVEGARDES DU REGISTRE ET BILAN COMPTABLE) */}
+        {adminTab === 'drive' && (
+          <div className="space-y-6 animate-fadeIn">
+            
+            {/* Header Connection Card */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 flex-shrink-0">
+                    <HardDrive className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-black text-base text-slate-900 font-cabinet">
+                        Sauvegardes Google Drive Officielles CROU
+                      </h3>
+                      {isDriveConnected ? (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>Connecté</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                          Non connecté
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Sauvegardez en un clic le registre officiel des étudiants et les bilans comptables sur votre Google Drive.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  {isDriveConnected ? (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-mono font-bold text-slate-700 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 truncate max-w-[200px]">
+                        {driveUser?.email || 'Google Drive Actif'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectDrive}
+                        className="px-3 py-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors font-bold"
+                      >
+                        Déconnecter
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleConnectDrive}
+                      className="inline-flex items-center space-x-2.5 px-4 py-2 bg-white border border-slate-300 rounded-xl shadow-xs hover:bg-slate-50 transition-colors text-slate-800 font-bold text-xs"
+                    >
+                      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                      </svg>
+                      <span>Connecter Google Drive</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Success Export Notification */}
+              {driveExportSuccess && (
+                <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+                  <div className="flex items-center space-x-2.5 text-xs text-emerald-900">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                    <div>
+                      <span className="font-bold block">Fichier enregistré sur Google Drive :</span>
+                      <span className="font-mono text-emerald-800">{driveExportSuccess.name}</span>
+                    </div>
+                  </div>
+                  {driveExportSuccess.webViewLink && (
+                    <a
+                      href={driveExportSuccess.webViewLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex-shrink-0"
+                    >
+                      <span>Ouvrir sur Drive</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 2 Main Export Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Action 1: Export Student Registry */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4 hover:border-blue-200 transition-colors">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                    <FileSpreadsheet className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm text-slate-900 font-cabinet">
+                      Registre des Étudiants UPGC (.csv)
+                    </h4>
+                    <span className="text-[11px] text-slate-500">
+                      {students.length} étudiants inscrits synchronisés
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Exporte un tableau prêt pour Google Sheets ou Excel contenant les matricules, noms complets, emails, soldes et nombre de repas achetés.
+                </p>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={promptExportStudentsToDrive}
+                    disabled={isExportingDrive}
+                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    <span>{isExportingDrive ? 'Exportation en cours...' : 'Sauvegarder le Registre sur Drive'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Action 2: Export Daily Financial Ledger */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4 hover:border-amber-200 transition-colors">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm text-slate-900 font-cabinet">
+                      Bilan Comptable Journalier (.csv)
+                    </h4>
+                    <span className="text-[11px] text-slate-500">
+                      Session du {dailyLedger.formattedDate}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Exporte le rapport financier du jour : {dailyLedger.revenueCollected.toLocaleString('fr-FR')} FCFA de recettes, {dailyLedger.mealsValidated} repas servis au tourniquet et liste détaillée des passages.
+                </p>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={promptExportLedgerToDrive}
+                    disabled={isExportingDrive}
+                    className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    <span>{isExportingDrive ? 'Exportation en cours...' : 'Sauvegarder le Bilan sur Drive'}</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* List of files on Google Drive */}
+            {driveFiles.length > 0 && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
+                    Sauvegardes CROU existantes sur Google Drive ({driveFiles.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => listAppFilesFromDrive().then(setDriveFiles)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                    title="Actualiser la liste"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="divide-y divide-slate-100 text-xs">
+                  {driveFiles.map((file) => (
+                    <div key={file.id} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <div className="truncate">
+                          <span className="font-bold text-slate-800 block truncate">{file.name}</span>
+                          {file.createdTime && (
+                            <span className="text-[10px] text-slate-400">
+                              Créé le {new Date(file.createdTime).toLocaleString('fr-FR')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {file.webViewLink && (
+                        <a
+                          href={file.webViewLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 text-[11px] font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center space-x-1 flex-shrink-0"
+                        >
+                          <span>Voir</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
       </main>
+
+      {/* CONFIRMATION MODAL (MANDATORY FOR GOOGLE DRIVE ACTIONS) */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-scaleUp">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                  <HardDrive className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900 font-cabinet">
+                    {confirmModal.title}
+                  </h3>
+                  <span className="text-[11px] text-slate-400">Google Drive API</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              {confirmModal.description}
+            </p>
+
+            <div className="pt-2 flex items-center justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center space-x-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{confirmModal.confirmText || 'Confirmer'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
 

@@ -99,11 +99,12 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
             <div
               key={`${photo.id}-${idx}`}
               onClick={() => handleCardClick(photo)}
-              className="group relative w-64 sm:w-72 h-44 sm:h-48 rounded-2xl overflow-hidden bg-slate-950 shadow-md border border-slate-200/90 cursor-pointer flex-shrink-0 transition-transform hover:scale-103 active:scale-98"
+              className="group relative w-64 sm:w-72 h-44 sm:h-48 rounded-2xl overflow-hidden bg-slate-950 shadow-md border border-slate-200/90 cursor-pointer flex-shrink-0 transition-transform hover:scale-103 active:scale-98 gpu-layer"
             >
               <img
                 src={photo.imageUrl}
                 alt={photo.title}
+                decoding="async"
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 loading="lazy"
               />
