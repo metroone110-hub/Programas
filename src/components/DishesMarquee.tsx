@@ -99,13 +99,13 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
             <div
               key={`${photo.id}-${idx}`}
               onClick={() => handleCardClick(photo)}
-              className="group relative w-64 sm:w-72 h-44 sm:h-48 rounded-2xl overflow-hidden bg-slate-950 shadow-md border border-slate-200/90 cursor-pointer flex-shrink-0 transition-transform hover:scale-103 active:scale-98 gpu-layer"
+              className="group relative w-64 sm:w-72 h-44 sm:h-48 rounded-2xl overflow-hidden bg-slate-950 shadow-md border border-slate-200/90 cursor-pointer flex-shrink-0 transition-transform hover:scale-102 active:scale-98"
             >
               <img
                 src={photo.imageUrl}
                 alt={photo.title}
                 decoding="async"
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
                 loading="lazy"
               />
               
@@ -114,7 +114,7 @@ export const DishesMarquee: React.FC<Props> = ({ onPhotoClick }) => {
 
               {/* Tag Badge */}
               <div className="absolute top-2.5 left-2.5 flex items-center space-x-1.5">
-                <span className={`px-2 py-0.5 rounded-lg text-white font-extrabold text-[10px] shadow-sm backdrop-blur-xs font-mono flex items-center space-x-1 ${
+                <span className={`px-2 py-0.5 rounded-lg text-white font-extrabold text-[10px] shadow-sm font-mono flex items-center space-x-1 ${
                   photo.highlight ? 'bg-orange-600 border border-amber-300/40' : 'bg-black/60 border border-white/20'
                 }`}>
                   <Camera className="w-3 h-3" />

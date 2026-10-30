@@ -97,8 +97,14 @@ export const App: React.FC = () => {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
 
-  // Animated Programas Splash Screen on entry (bouncing logo on black background)
-  const [showSplash, setShowSplash] = useState<boolean>(true);
+  // Animated Programas Splash Screen on entry (bouncing logo on black background) - only once per session
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    try {
+      return !sessionStorage.getItem('programas_splash_shown_session');
+    } catch {
+      return false;
+    }
+  });
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -468,7 +474,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full overflow-x-clip overscroll-y-none">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full">
       
       {/* 3D Holographic Animated Programas Pochette Splash Screen */}
       {showSplash && (
@@ -726,7 +732,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto bg-white border-t border-slate-200/80 pt-6 pb-24 text-center text-xs text-slate-500">
+      <footer className="mt-auto bg-slate-50 border-t border-slate-200/80 pt-6 pb-28 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <span>🍽️ <strong>CROU Resto U</strong></span>

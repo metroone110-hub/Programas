@@ -50,7 +50,7 @@ export const Navbar: React.FC<Props> = ({
   const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
 
   return (
-    <header className="sticky top-0 z-30 bg-white/98 backdrop-blur-md border-b border-slate-200/80 shadow-xs select-none gpu-layer">
+    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs select-none pt-[env(safe-area-inset-top,0px)]">
       <div className="max-w-6xl w-full mx-auto px-4 py-2.5 space-y-2.5">
         
         {/* ROW 1: Brand, Canteen Switcher & Admin Button (matching IMG_1079) */}

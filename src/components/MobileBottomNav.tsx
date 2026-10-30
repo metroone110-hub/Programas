@@ -18,9 +18,9 @@ export const MobileBottomNav: React.FC<Props> = ({
   user
 }) => {
   return (
-    <div className="fixed bottom-3 inset-x-0 z-40 flex items-center justify-center px-4 pointer-events-none select-none gpu-layer">
+    <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] inset-x-0 z-40 flex items-center justify-center px-4 pointer-events-none select-none">
       <nav 
-        className="pointer-events-auto bg-white/98 backdrop-blur-xl border border-slate-200/90 shadow-2xl rounded-full px-2 py-1.5 flex items-center space-x-1 sm:space-x-2 max-w-md w-full justify-around ring-1 ring-black/5 gpu-layer"
+        className="pointer-events-auto bg-white border border-slate-200 shadow-2xl rounded-full px-2 py-1.5 flex items-center space-x-1 sm:space-x-2 max-w-md w-full justify-around ring-1 ring-black/5"
         aria-label="Navigation Principale"
       >
         {/* 1. Accueil */}

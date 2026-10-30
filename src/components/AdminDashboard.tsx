@@ -371,9 +371,9 @@ export const AdminDashboard: React.FC<Props> = ({
   });
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-slate-100 flex flex-col font-sans overscroll-y-none">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       {/* Top Header */}
-      <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-lg border-b border-slate-800 gpu-layer">
+      <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-lg border-b border-slate-800 pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
             <button
