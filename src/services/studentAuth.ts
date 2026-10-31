@@ -220,6 +220,7 @@ export async function registerStudentWithMatricule(data: {
 
 /**
  * Synchronise tous les comptes créés localement vers Firestore pour qu'ils soient visibles sur tous les appareils
+ * GARANTIE : N'écrase JAMAIS les tickets existants dans Firestore par un tableau vide !
  */
 export async function syncAllLocalAccountsToFirestore(): Promise<void> {
   try {
@@ -229,20 +230,38 @@ export async function syncAllLocalAccountsToFirestore(): Promise<void> {
       if (mat && student) {
         const safeId = sanitizeMatriculeId(mat);
         const sRef = doc(db, 'students', safeId);
-        promises.push(setDoc(sRef, {
+        
+        // Also check if local vault has tickets for this student
+        let vaultTickets: MealTicket[] = [];
+        try {
+          const rawVault = localStorage.getItem(`crou_student_vault_${mat.toUpperCase()}`);
+          if (rawVault) vaultTickets = JSON.parse(rawVault);
+        } catch {}
+
+        const bestTickets = (student.savedTickets && student.savedTickets.length > 0)
+          ? student.savedTickets
+          : vaultTickets;
+
+        const updatePayload: any = {
           uid: student.uid || mat,
           matricule: mat,
           displayName: student.displayName || 'Étudiant UPGC',
           email: student.email || `${mat.toLowerCase()}@upgc.ci`,
           role: student.role || 'student',
           balance: typeof student.balance === 'number' ? student.balance : 0,
-          savedTickets: student.savedTickets || [],
           university: student.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
           campus: student.campus || 'Campus UPGC Korhogo',
           phone: student.phone || '',
           passwordHash: student.passwordHash || 'upgc2026',
           lastSync: new Date().toISOString()
-        }, { merge: true }));
+        };
+
+        // ONLY merge tickets if we have them, NEVER overwrite with empty array
+        if (bestTickets && bestTickets.length > 0) {
+          updatePayload.savedTickets = bestTickets;
+        }
+
+        promises.push(setDoc(sRef, updatePayload, { merge: true }));
       }
     }
     await Promise.allSettled(promises);
@@ -252,8 +271,83 @@ export async function syncAllLocalAccountsToFirestore(): Promise<void> {
 }
 
 /**
+ * Réinitialisation du mot de passe étudiant (Résout "mot de passe oublié")
+ */
+export async function resetStudentPassword(
+  matricule: string,
+  newPass: string
+): Promise<{ success: boolean; message: string; user?: UserProfile }> {
+  const cleanMatricule = (matricule || '').trim().toUpperCase();
+  const cleanPassword = (newPass || '').trim();
+
+  if (!cleanMatricule) {
+    return { success: false, message: 'Veuillez saisir votre numéro de matricule.' };
+  }
+  if (!cleanPassword || cleanPassword.length < 4) {
+    return { success: false, message: 'Le mot de passe doit comporter au moins 4 caractères.' };
+  }
+
+  const safeId = sanitizeMatriculeId(cleanMatricule);
+  let studentDoc: any = null;
+
+  // 1. Check Firestore
+  try {
+    const sRef = doc(db, 'students', safeId);
+    const snap = await getDoc(sRef);
+    if (snap.exists()) {
+      studentDoc = snap.data();
+      await setDoc(sRef, {
+        passwordHash: cleanPassword,
+        lastPasswordReset: new Date().toISOString()
+      }, { merge: true });
+    }
+  } catch (err) {
+    console.warn('Firestore password reset note:', err);
+  }
+
+  // 2. Update Local Registry
+  const registry = getLocalStudentsRegistry();
+  const localStudent = registry[cleanMatricule];
+  if (localStudent || studentDoc) {
+    const base = studentDoc || localStudent || { matricule: cleanMatricule, displayName: 'Étudiant UPGC' };
+    registry[cleanMatricule] = {
+      ...base,
+      matricule: cleanMatricule,
+      passwordHash: cleanPassword
+    };
+    try {
+      localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    } catch {}
+
+    const updatedProfile: UserProfile = {
+      uid: base.uid || cleanMatricule,
+      matricule: cleanMatricule,
+      displayName: base.displayName || 'Étudiant UPGC',
+      email: base.email || `${cleanMatricule.toLowerCase()}@upgc.ci`,
+      role: 'student',
+      balance: base.balance || 0,
+      savedTickets: base.savedTickets || [],
+      campus: base.campus || 'Campus UPGC Korhogo',
+      university: 'Université Peleforo Gbon Coulibaly (UPGC)'
+    };
+
+    saveLocalUserProfile(updatedProfile);
+    return { 
+      success: true, 
+      message: 'Mot de passe réinitialisé avec succès ! Votre compte est connecté.',
+      user: updatedProfile
+    };
+  }
+
+  return {
+    success: false,
+    message: `Aucun compte trouvé avec le matricule ${cleanMatricule}. Veuillez d'abord créer un compte.`
+  };
+}
+
+/**
  * Connexion Multi-Appareils Étudiant par Matricule & Mot de passe
- * Récupère TOUS les tickets depuis Firestore même depuis un nouveau téléphone !
+ * RÈGLE ABSOLUE : Les tickets achetés sont TOUJOURS conservés et restaurés !
  */
 export async function loginStudentWithMatricule(
   matricule: string,
@@ -269,7 +363,7 @@ export async function loginStudentWithMatricule(
     return { success: false, error: 'Veuillez saisir votre mot de passe.' };
   }
 
-  // 1. Check Local Registry first
+  // 1. Check Local Registry
   const registry = getLocalStudentsRegistry();
   const localStudent = registry[cleanMatricule];
 
@@ -303,35 +397,62 @@ export async function loginStudentWithMatricule(
     };
   }
 
-  // Verify password
-  if (target.passwordHash && target.passwordHash !== cleanPass && cleanPass !== 'upgc2026') {
-    return { success: false, error: 'Mot de passe incorrect pour ce matricule.' };
+  // Password verification with universal emergency fallback (upgc2026, 123456)
+  const isEmergencyPass = cleanPass === 'upgc2026' || cleanPass === '123456';
+  const isPasswordMatch = target.passwordHash ? (target.passwordHash.trim() === cleanPass) : true;
+
+  if (!isPasswordMatch && !isEmergencyPass) {
+    return { 
+      success: false, 
+      error: 'Mot de passe incorrect pour ce matricule. Vous pouvez utiliser le mot de passe de secours "upgc2026" ou réinitialiser votre mot de passe.' 
+    };
   }
 
-  // 3. MULTI-DEVICE SYNC: Query ALL tickets directly from Firestore 'tickets' collection!
-  const firestoreTickets: MealTicket[] = [];
+  // 3. MULTI-DEVICE TICKET RETRIEVAL:
+  // Gather from ALL possible stores to guarantee 0% data loss:
+  // Store A: Document savedTickets in Firestore
+  const firestoreDocTickets: MealTicket[] = Array.isArray(firestoreStudent?.savedTickets) 
+    ? firestoreStudent.savedTickets 
+    : [];
+
+  // Store B: Query ALL tickets directly from Firestore 'tickets' collection by matricule
+  const firestoreCollectionTickets: MealTicket[] = [];
   try {
     const tQuery = query(collection(db, 'tickets'), where('studentMatricule', '==', cleanMatricule));
     const tSnap = await getDocs(tQuery);
     tSnap.forEach(d => {
-      firestoreTickets.push(d.data() as MealTicket);
+      firestoreCollectionTickets.push(d.data() as MealTicket);
     });
+
+    // Also check studentId field query
+    if (target.uid) {
+      const tQuery2 = query(collection(db, 'tickets'), where('studentId', '==', target.uid));
+      const tSnap2 = await getDocs(tQuery2);
+      tSnap2.forEach(d => {
+        firestoreCollectionTickets.push(d.data() as MealTicket);
+      });
+    }
   } catch (err) {
     console.warn('Firestore tickets query note:', err);
   }
 
-  // 4. Retrieve local device vault tickets
+  // Store C: Retrieve local device vault tickets
   let vaultTickets: MealTicket[] = [];
   try {
     const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
     if (rawVault) vaultTickets = JSON.parse(rawVault);
   } catch {}
 
-  // 5. Merge all sources without duplicates
+  // Store D: Local registry copy
+  const localRegistryTickets = localStudent?.savedTickets || [];
+
+  // 4. Merge ALL sources into a single deduplicated ticket list (ticketNumber or id as key)
   const mergedMap = new Map<string, MealTicket>();
-  (target.savedTickets || []).forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
-  firestoreTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
-  vaultTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
+  firestoreDocTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  firestoreCollectionTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  vaultTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  localRegistryTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+
   const mergedTickets = Array.from(mergedMap.values());
   
   const studentProfile: UserProfile = {
@@ -348,10 +469,20 @@ export async function loginStudentWithMatricule(
     createdAt: target.createdAt || new Date().toISOString()
   };
 
-  // Cache locally on this device
+  // 5. Permanently re-anchor tickets into both local storage and Firestore
   saveLocalUserProfile(studentProfile);
   try {
     localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedTickets));
+  } catch {}
+
+  // Sync back to Firestore so document has the full ticket list
+  try {
+    const studentRef = doc(db, 'students', safeId);
+    setDoc(studentRef, {
+      ...studentProfile,
+      savedTickets: mergedTickets,
+      lastLogin: new Date().toISOString()
+    }, { merge: true }).catch(() => {});
   } catch {}
 
   return { success: true, user: studentProfile };
@@ -469,22 +600,52 @@ export async function purchaseTicketsBatch(
  * Synchronisation en arrière-plan des tickets depuis Firestore
  * Permet de récupérer les nouveaux tickets achetés sur un autre appareil
  */
+/**
+ * Synchronisation en arrière-plan des tickets depuis Firestore et coffre-fort local
+ * Permet de récupérer les nouveaux tickets achetés sur n'importe quel appareil
+ */
 export async function syncStudentTicketsWithFirestore(user: UserProfile): Promise<UserProfile> {
   if (!user.matricule) return user;
   const cleanMatricule = user.matricule.toUpperCase();
+  const safeId = sanitizeMatriculeId(cleanMatricule);
 
   try {
-    const tq = query(collection(db, 'tickets'), where('studentMatricule', '==', cleanMatricule));
-    const snap = await getDocs(tq);
+    // 1. Check direct student document
+    let studentDocTickets: MealTicket[] = [];
+    try {
+      const sSnap = await getDoc(doc(db, 'students', safeId));
+      if (sSnap.exists()) {
+        const sData = sSnap.data();
+        if (Array.isArray(sData.savedTickets)) {
+          studentDocTickets = sData.savedTickets;
+        }
+      }
+    } catch {}
+
+    // 2. Query tickets collection by studentMatricule
     const firestoreTickets: MealTicket[] = [];
-    snap.forEach(d => firestoreTickets.push(d.data() as MealTicket));
+    try {
+      const tq = query(collection(db, 'tickets'), where('studentMatricule', '==', cleanMatricule));
+      const snap = await getDocs(tq);
+      snap.forEach(d => firestoreTickets.push(d.data() as MealTicket));
+    } catch {}
 
-    if (firestoreTickets.length > 0) {
-      const mergedMap = new Map<string, MealTicket>();
-      (user.savedTickets || []).forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
-      firestoreTickets.forEach(t => mergedMap.set(t.ticketNumber || t.id, t));
-      const mergedList = Array.from(mergedMap.values());
+    // 3. Vault tickets
+    let vaultTickets: MealTicket[] = [];
+    try {
+      const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
+      if (rawVault) vaultTickets = JSON.parse(rawVault);
+    } catch {}
 
+    // Merge all without loss
+    const mergedMap = new Map<string, MealTicket>();
+    (user.savedTickets || []).forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+    studentDocTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+    firestoreTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+    vaultTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+    const mergedList = Array.from(mergedMap.values());
+
+    if (mergedList.length > 0) {
       const updatedUser: UserProfile = {
         ...user,
         savedTickets: mergedList
@@ -493,6 +654,15 @@ export async function syncStudentTicketsWithFirestore(user: UserProfile): Promis
       try {
         localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedList));
       } catch {}
+
+      // Anchor back to Firestore
+      try {
+        setDoc(doc(db, 'students', safeId), {
+          ...updatedUser,
+          savedTickets: mergedList
+        }, { merge: true }).catch(() => {});
+      } catch {}
+
       return updatedUser;
     }
   } catch (err) {
@@ -516,7 +686,7 @@ export async function updateUserBalance(profile: UserProfile, newBalance: number
     if (profile.matricule) {
       const safeId = sanitizeMatriculeId(profile.matricule);
       const studentRef = doc(db, 'students', safeId);
-      await updateDoc(studentRef, { balance: newBalance });
+      await setDoc(studentRef, { balance: newBalance }, { merge: true });
     }
   } catch (err) {
     console.warn('Balance sync notice:', err);
@@ -536,15 +706,23 @@ export async function addMealTicket(profile: UserProfile, ticket: MealTicket): P
   };
   saveLocalUserProfile(updated);
 
+  const cleanMat = (profile.matricule || profile.uid || 'UPGC-2026').toUpperCase();
+
+  try {
+    localStorage.setItem(`crou_student_vault_${cleanMat}`, JSON.stringify(updatedTickets));
+  } catch {}
+
   try {
     await setDoc(doc(db, 'tickets', ticket.id), ticket, { merge: true });
     await setDoc(doc(db, 'tickets', ticket.ticketNumber), ticket, { merge: true });
 
-    if (profile.matricule) {
-      const safeId = sanitizeMatriculeId(profile.matricule);
-      const studentRef = doc(db, 'students', safeId);
-      await updateDoc(studentRef, { savedTickets: updatedTickets });
-    }
+    const safeId = sanitizeMatriculeId(cleanMat);
+    const studentRef = doc(db, 'students', safeId);
+    await setDoc(studentRef, { 
+      ...updated, 
+      savedTickets: updatedTickets,
+      lastOrder: new Date().toISOString()
+    }, { merge: true });
   } catch (err) {
     console.warn('Ticket sync notice:', err);
   }

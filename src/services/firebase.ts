@@ -14,9 +14,9 @@ googleProvider.setCustomParameters({
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 googleProvider.addScope('https://www.googleapis.com/auth/drive');
 
-// Explicitly pass firestoreDatabaseId if configured
-export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+const cfg = firebaseConfig as any;
+export const db = cfg.firestoreDatabaseId && cfg.firestoreDatabaseId !== '(default)'
+  ? getFirestore(app, cfg.firestoreDatabaseId)
   : getFirestore(app);
 
 export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;

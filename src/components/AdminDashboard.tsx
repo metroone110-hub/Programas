@@ -61,7 +61,10 @@ import {
   listAppFilesFromDrive,
   signOutDrive,
   DriveUploadResult,
-  getCachedDriveUser
+  getCachedDriveUser,
+  downloadFileLocally,
+  generateStudentRegistryCsvData,
+  generateLedgerCsvData
 } from '../services/googleDriveService';
 import { compressImage } from '../utils/imageCompressor';
 
@@ -285,6 +288,20 @@ export const AdminDashboard: React.FC<Props> = ({
         }
       }
     });
+  };
+
+  const handleDownloadStudentsCsvDirect = () => {
+    const { fileName, content } = generateStudentRegistryCsvData(students);
+    downloadFileLocally(fileName, 'text/csv', content);
+    setActionSuccessNotice(`Fichier « ${fileName} » téléchargé directement sur votre appareil !`);
+    setTimeout(() => setActionSuccessNotice(null), 4000);
+  };
+
+  const handleDownloadLedgerCsvDirect = () => {
+    const { fileName, content } = generateLedgerCsvData(dailyLedger);
+    downloadFileLocally(fileName, 'text/csv', content);
+    setActionSuccessNotice(`Bilan « ${fileName} » téléchargé directement sur votre appareil !`);
+    setTimeout(() => setActionSuccessNotice(null), 4000);
   };
 
   // Crowd controls
@@ -1319,15 +1336,24 @@ export const AdminDashboard: React.FC<Props> = ({
                   Exporte un tableau prêt pour Google Sheets ou Excel contenant les matricules, noms complets, emails, soldes et nombre de repas achetés.
                 </p>
 
-                <div className="pt-2">
+                <div className="pt-2 space-y-2">
                   <button
                     type="button"
                     onClick={promptExportStudentsToDrive}
                     disabled={isExportingDrive}
-                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-2 disabled:opacity-50"
+                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
                   >
                     <UploadCloud className="w-4 h-4" />
                     <span>{isExportingDrive ? 'Exportation en cours...' : 'Sauvegarder le Registre sur Drive'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadStudentsCsvDirect}
+                    className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>Télécharger directement le CSV</span>
                   </button>
                 </div>
               </div>
@@ -1352,15 +1378,24 @@ export const AdminDashboard: React.FC<Props> = ({
                   Exporte le rapport financier du jour : {dailyLedger.revenueCollected.toLocaleString('fr-FR')} FCFA de recettes, {dailyLedger.mealsValidated} repas servis au tourniquet et liste détaillée des passages.
                 </p>
 
-                <div className="pt-2">
+                <div className="pt-2 space-y-2">
                   <button
                     type="button"
                     onClick={promptExportLedgerToDrive}
                     disabled={isExportingDrive}
-                    className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-2 disabled:opacity-50"
+                    className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
                   >
                     <UploadCloud className="w-4 h-4" />
                     <span>{isExportingDrive ? 'Exportation en cours...' : 'Sauvegarder le Bilan sur Drive'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadLedgerCsvDirect}
+                    className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>Télécharger directement le CSV</span>
                   </button>
                 </div>
               </div>

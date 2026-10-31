@@ -53,9 +53,11 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { RadarAffluenceMap } from './components/RadarAffluenceMap';
 import { TicketCounterBox } from './components/TicketCounterBox';
 import { ProgramasPochetteSplash } from './components/ProgramasPochetteSplash';
+import { ProgramasPromoVideoModal } from './components/ProgramasPromoVideoModal';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
+  const [showPromoVideo, setShowPromoVideo] = useState<boolean>(false);
   // Canteens & Dishes State (Synced in Real-Time across all devices via Firestore)
   const [canteens, setCanteens] = useState<Canteen[]>(INITIAL_CANTEENS);
   const [selectedCanteen, setSelectedCanteen] = useState<Canteen>(INITIAL_CANTEENS[0]);
@@ -518,6 +520,7 @@ export const App: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onOpenNotifications={() => setShowMyTicketsModal(true)}
+        onOpenPromoVideo={() => setShowPromoVideo(true)}
       />
 
       {/* Main Content Area */}
@@ -557,6 +560,7 @@ export const App: React.FC = () => {
           onBuyTickets={handleBuyTickets}
           onOpenAuth={() => setShowBlackPortal(true)}
           onOpenMyTickets={() => setShowMyTicketsModal(true)}
+          onOpenPromoVideo={() => setShowPromoVideo(true)}
         />
 
         {/* CONSULTATIVE DAILY MENU DISPLAYED BY CROU-K ADMINISTRATION (WITH DATE & HOURS) */}
@@ -845,6 +849,19 @@ export const App: React.FC = () => {
         ticket={activeTicket}
         onClose={() => setActiveTicket(null)}
         onMarkAsUsed={handleMarkTicketUsed}
+      />
+
+      {/* Interactive TikTok/Reels Style Promo Video Modal */}
+      <ProgramasPromoVideoModal
+        isOpen={showPromoVideo}
+        onClose={() => setShowPromoVideo(false)}
+        onActionClick={() => {
+          if (!user) {
+            setShowBlackPortal(true);
+          } else {
+            handleBuyTickets(1, 200);
+          }
+        }}
       />
 
       {/* Mobile Floating Bottom Navigation Dock (matching IMG_1079) */}

@@ -18,7 +18,8 @@ import {
 import { 
   registerStudentWithMatricule, 
   loginStudentWithMatricule, 
-  loginAdminDirect 
+  loginAdminDirect,
+  resetStudentPassword
 } from '../services/studentAuth';
 import { UserProfile } from '../types';
 
@@ -33,11 +34,15 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   onSuccess,
   onGuestAccess 
 }) => {
-  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'admin'>('login');
+  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'admin' | 'forgot_password'>('login');
   
   // Student Login State
   const [loginMatricule, setLoginMatricule] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+
+  // Forgot Password State
+  const [forgotMatricule, setForgotMatricule] = useState('');
+  const [forgotNewPass, setForgotNewPass] = useState('');
   
   // Student Register State
   const [regMatricule, setRegMatricule] = useState('');
@@ -118,6 +123,28 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Erreur lors de la connexion.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setIsLoading(true);
+
+    try {
+      const res = await resetStudentPassword(forgotMatricule, forgotNewPass);
+      if (res.success && res.user) {
+        setSuccessNotice('Votre mot de passe a été réinitialisé avec succès ! Connexion immédiate...');
+        setTimeout(() => {
+          onSuccess(res.user!);
+        }, 900);
+      } else {
+        setErrorMsg(res.message || 'Impossible de réinitialiser le mot de passe.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erreur réseau.');
     } finally {
       setIsLoading(false);
     }
@@ -284,6 +311,19 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotMatricule(loginMatricule);
+                      setActiveTab('forgot_password');
+                      setErrorMsg(null);
+                    }}
+                    className="text-xs text-amber-400 hover:text-amber-300 hover:underline cursor-pointer transition-colors"
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                </div>
               </div>
 
               <button
@@ -293,6 +333,74 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               >
                 <span>{isLoading ? 'Vérification...' : 'Accéder au Resto U'}</span>
                 <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+
+          {/* TAB: RÉINITIALISATION MOT DE PASSE OUBLIÉ */}
+          {activeTab === 'forgot_password' && (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-xs text-amber-200">
+                <span className="font-bold block mb-1">🔑 Récupération de compte étudiant :</span>
+                Entrez votre numéro de matricule et choisissez un nouveau mot de passe pour réactiver votre accès immédiat.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Numéro de Matricule Étudiant *
+                </label>
+                <div className="relative">
+                  <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type="text"
+                    value={forgotMatricule}
+                    onChange={(e) => setForgotMatricule(e.target.value.toUpperCase())}
+                    placeholder="Ex: UPGC-2026-0842 ou CI0226019482"
+                    className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono tracking-wider uppercase transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Nouveau Mot de Passe *
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    value={forgotNewPass}
+                    onChange={(e) => setForgotNewPass(e.target.value)}
+                    placeholder="Au moins 4 caractères"
+                    className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition-all"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white"
+                  >
+                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
+              >
+                <span>{isLoading ? 'Mise à jour...' : 'Réinitialiser & Se Connecter'}</span>
+                <Sparkles className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTab('login'); setErrorMsg(null); }}
+                className="w-full py-2 text-center text-xs text-slate-400 hover:text-white transition-colors"
+              >
+                ← Retour à la connexion
               </button>
             </form>
           )}
