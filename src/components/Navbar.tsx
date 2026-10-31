@@ -30,7 +30,6 @@ interface Props {
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
   onOpenNotifications?: () => void;
-  onOpenPromoVideo?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -46,8 +45,7 @@ export const Navbar: React.FC<Props> = ({
   onOpenCart,
   searchQuery = '',
   onSearchChange,
-  onOpenNotifications,
-  onOpenPromoVideo
+  onOpenNotifications
 }) => {
   const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
 
@@ -99,20 +97,8 @@ export const Navbar: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Right: Promo Video, PWA Install & Admin Button */}
-          <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
-            {onOpenPromoVideo && (
-              <button
-                type="button"
-                onClick={onOpenPromoVideo}
-                className="px-2.5 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1 shadow-sm active:scale-95 cursor-pointer"
-                title="Regarder la vidéo publicitaire et démo de Programas"
-              >
-                <span>🎬</span>
-                <span className="hidden xs:inline">Vidéo Démo</span>
-              </button>
-            )}
-
+          {/* Right: PWA Install & Admin Button */}
+          <div className="flex items-center space-x-2 flex-shrink-0">
             <PWAInstallButton />
 
             {/* Admin CROU Button matching IMG_1079 */}

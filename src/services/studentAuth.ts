@@ -404,7 +404,7 @@ export async function loginStudentWithMatricule(
   if (!isPasswordMatch && !isEmergencyPass) {
     return { 
       success: false, 
-      error: 'Mot de passe incorrect pour ce matricule. Vous pouvez utiliser le mot de passe de secours "upgc2026" ou réinitialiser votre mot de passe.' 
+      error: 'Mot de passe incorrect pour ce matricule. Veuillez vérifier votre saisie ou cliquer sur "Mot de passe oublié ?".' 
     };
   }
 

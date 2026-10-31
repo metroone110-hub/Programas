@@ -17,15 +17,13 @@ interface Props {
   onBuyTickets: (quantity: number, totalAmount: number) => void;
   onOpenAuth: () => void;
   onOpenMyTickets: () => void;
-  onOpenPromoVideo?: () => void;
 }
 
 export const TicketCounterBox: React.FC<Props> = ({
   user,
   onBuyTickets,
   onOpenAuth,
-  onOpenMyTickets,
-  onOpenPromoVideo
+  onOpenMyTickets
 }) => {
   const [quantity, setQuantity] = useState<number>(1);
 
@@ -69,18 +67,6 @@ export const TicketCounterBox: React.FC<Props> = ({
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
               Tarif Subventionné : 200 FCFA / ticket
             </span>
-
-            {onOpenPromoVideo && (
-              <button
-                type="button"
-                onClick={onOpenPromoVideo}
-                className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 flex items-center space-x-1 cursor-pointer transition-colors shadow-xs active:scale-95"
-                title="Regarder le spot vidéo publicitaire de Programas"
-              >
-                <span>🎬</span>
-                <span>Spot Publicitaire (35s)</span>
-              </button>
-            )}
           </div>
 
           <div>

@@ -188,37 +188,36 @@ export const CartDrawer: React.FC<Props> = ({
             <div className="p-6 bg-slate-50 border-t border-slate-200 space-y-4">
               
               {/* Price Breakdown */}
-              <div className="space-y-1.5 text-xs text-slate-600">
+              <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex justify-between">
-                  <span>Prix ordinaire ({totalMealCount} repas)</span>
-                  <span className="line-through text-slate-400">{totalSubsidizedValue} FCFA</span>
+                  <span className="font-medium text-slate-700">Tickets ({totalMealCount} repas)</span>
+                  <span className="font-bold text-slate-900 font-mono">{totalAmount.toLocaleString('fr-FR')} FCFA</span>
                 </div>
-                <div className="flex justify-between text-emerald-600 font-semibold">
-                  <span>Subvention CROU Korhogo (90%)</span>
-                  <span>- {totalSavings} FCFA</span>
+                <div className="flex justify-between text-slate-500">
+                  <span>Frais de service (1,5%)</span>
+                  <span className="font-semibold text-slate-700 font-mono">+{Math.round(totalAmount * 0.015).toLocaleString('fr-FR')} FCFA</span>
                 </div>
                 <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
-                  <span>Total Net à Payer</span>
-                  <span className="text-xl text-orange-600 font-cabinet">{totalAmount} FCFA</span>
+                  <span className="text-sm font-black">Total à payer</span>
+                  <span className="text-xl text-slate-950 font-black font-mono">
+                    {(totalAmount + Math.round(totalAmount * 0.015)).toLocaleString('fr-FR')} FCFA
+                  </span>
                 </div>
-                <p className="text-[10px] text-slate-500 text-right">
-                  Soit exactement 200 FCFA par repas subventionné
-                </p>
               </div>
 
               {/* Action Checkout Button */}
               <button
                 type="button"
                 onClick={onCheckout}
-                className="w-full py-4 bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-orange-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 cursor-pointer"
+                className="w-full py-4 bg-slate-950 hover:bg-black text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl transition-all flex items-center justify-center space-x-2 active:scale-98 cursor-pointer"
               >
-                <span>Commander & Payer {totalAmount} FCFA</span>
+                <span>Payer {(totalAmount + Math.round(totalAmount * 0.015)).toLocaleString('fr-FR')} FCFA</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              <div className="flex items-center justify-center space-x-2 text-[10px] text-slate-400">
+              <div className="flex items-center justify-center space-x-2 text-[11px] text-slate-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Paiement sécurisé Wave • Tickets officiels stockés sans perte</span>
+                <span>Paiement sécurisé et instantané</span>
               </div>
             </div>
           )}

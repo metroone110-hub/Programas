@@ -53,11 +53,9 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { RadarAffluenceMap } from './components/RadarAffluenceMap';
 import { TicketCounterBox } from './components/TicketCounterBox';
 import { ProgramasPochetteSplash } from './components/ProgramasPochetteSplash';
-import { ProgramasPromoVideoModal } from './components/ProgramasPromoVideoModal';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
-  const [showPromoVideo, setShowPromoVideo] = useState<boolean>(false);
   // Canteens & Dishes State (Synced in Real-Time across all devices via Firestore)
   const [canteens, setCanteens] = useState<Canteen[]>(INITIAL_CANTEENS);
   const [selectedCanteen, setSelectedCanteen] = useState<Canteen>(INITIAL_CANTEENS[0]);
@@ -520,7 +518,6 @@ export const App: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onOpenNotifications={() => setShowMyTicketsModal(true)}
-        onOpenPromoVideo={() => setShowPromoVideo(true)}
       />
 
       {/* Main Content Area */}
@@ -560,10 +557,9 @@ export const App: React.FC = () => {
           onBuyTickets={handleBuyTickets}
           onOpenAuth={() => setShowBlackPortal(true)}
           onOpenMyTickets={() => setShowMyTicketsModal(true)}
-          onOpenPromoVideo={() => setShowPromoVideo(true)}
         />
 
-        {/* CONSULTATIVE DAILY MENU DISPLAYED BY CROU-K ADMINISTRATION (WITH DATE & HOURS) */}
+        {/* MENU DU JOUR */}
         <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/90 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
@@ -571,10 +567,10 @@ export const App: React.FC = () => {
                 <span>🍽️ Restauration Universitaire • UPGC</span>
               </div>
               <h2 className="text-lg sm:text-xl font-black text-slate-900 font-cabinet">
-                Menu du Jour Affiché par l'Administration
+                Menu du Jour
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Affichage consultatif • Les repas se retirent au guichet sur présentation de votre Ticket Repas CROU (200 FCFA).
+                Plats disponibles aujourd'hui • 200 FCFA sur présentation de votre Ticket Repas CROU.
               </p>
             </div>
 
@@ -849,19 +845,6 @@ export const App: React.FC = () => {
         ticket={activeTicket}
         onClose={() => setActiveTicket(null)}
         onMarkAsUsed={handleMarkTicketUsed}
-      />
-
-      {/* Interactive TikTok/Reels Style Promo Video Modal */}
-      <ProgramasPromoVideoModal
-        isOpen={showPromoVideo}
-        onClose={() => setShowPromoVideo(false)}
-        onActionClick={() => {
-          if (!user) {
-            setShowBlackPortal(true);
-          } else {
-            handleBuyTickets(1, 200);
-          }
-        }}
       />
 
       {/* Mobile Floating Bottom Navigation Dock (matching IMG_1079) */}
