@@ -36,9 +36,22 @@ export const BlackGatewayPortal: React.FC<Props> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register' | 'admin' | 'forgot_password'>('login');
   
-  // Student Login State
-  const [loginMatricule, setLoginMatricule] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  // Student Login State (Remembered credentials from previous sessions)
+  const [loginMatricule, setLoginMatricule] = useState(() => {
+    try {
+      return localStorage.getItem('crou_remembered_matricule') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [loginPassword, setLoginPassword] = useState(() => {
+    try {
+      return localStorage.getItem('crou_remembered_password') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [rememberMe, setRememberMe] = useState(true);
 
   // Forgot Password State
   const [forgotMatricule, setForgotMatricule] = useState('');
@@ -70,6 +83,17 @@ export const BlackGatewayPortal: React.FC<Props> = ({
     try {
       const res = await loginStudentWithMatricule(loginMatricule, loginPassword);
       if (res.success && res.user) {
+        if (rememberMe) {
+          try {
+            localStorage.setItem('crou_remembered_matricule', loginMatricule.trim().toUpperCase());
+            localStorage.setItem('crou_remembered_password', loginPassword);
+          } catch {}
+        } else {
+          try {
+            localStorage.removeItem('crou_remembered_matricule');
+            localStorage.removeItem('crou_remembered_password');
+          } catch {}
+        }
         onSuccess(res.user);
       } else {
         setErrorMsg(res.error || 'Matricule ou mot de passe incorrect.');
@@ -95,6 +119,10 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       });
 
       if (res.success && res.user) {
+        try {
+          localStorage.setItem('crou_remembered_matricule', regMatricule.trim().toUpperCase());
+          localStorage.setItem('crou_remembered_password', regPassword);
+        } catch {}
         setSuccessNotice('Compte étudiant créé avec succès ! Votre pass repas est activé.');
         setTimeout(() => {
           onSuccess(res.user!);
@@ -277,9 +305,11 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                   <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
                   <input
                     type="text"
+                    name="username"
+                    autoComplete="username"
                     value={loginMatricule}
                     onChange={(e) => setLoginMatricule(e.target.value.toUpperCase())}
-                    placeholder="Ex: UPGC-2026-0842 ou CI0226019482"
+                    placeholder="Ex: 01601834 ou UPGC-2026-0842"
                     className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 font-mono tracking-wider uppercase transition-all"
                     required
                   />
@@ -297,6 +327,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                   <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
                   <input
                     type={showPass ? 'text' : 'password'}
+                    name="password"
+                    autoComplete="current-password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="Votre mot de passe"
@@ -311,7 +343,18 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <div className="flex justify-end pt-1">
+                
+                <div className="flex items-center justify-between pt-2">
+                  <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded bg-black/60 border-white/30 text-orange-500 focus:ring-orange-500 cursor-pointer accent-orange-500"
+                    />
+                    <span className="font-medium text-slate-300">Se souvenir de moi</span>
+                  </label>
+
                   <button
                     type="button"
                     onClick={() => {

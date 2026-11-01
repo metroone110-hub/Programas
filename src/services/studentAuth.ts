@@ -470,6 +470,7 @@ export async function loginStudentWithMatricule(
   };
 
   // 5. Permanently re-anchor tickets into both local storage and Firestore
+  updateStudentInLocalRegistry(studentProfile, target.passwordHash || cleanPass);
   saveLocalUserProfile(studentProfile);
   try {
     localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedTickets));
