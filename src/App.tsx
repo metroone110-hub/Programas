@@ -48,9 +48,8 @@ import { TicketModal } from './components/TicketModal';
 import { MyTicketsModal } from './components/MyTicketsModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ImageWithLoader } from './components/ImageWithLoader';
-import { DishesMarquee } from './components/DishesMarquee';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { RadarAffluenceMap } from './components/RadarAffluenceMap';
+import { CroukOfficialGalleryAndAbout } from './components/CroukOfficialGalleryAndAbout';
 import { TicketCounterBox } from './components/TicketCounterBox';
 import { ProgramasPochetteSplash } from './components/ProgramasPochetteSplash';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
@@ -89,13 +88,12 @@ export const App: React.FC = () => {
   const [waveTotalAmount, setWaveTotalAmount] = useState<number>(200);
 
   // Other Modals
-  const [showRadarModal, setShowRadarModal] = useState<boolean>(false);
   const [showMyTicketsModal, setShowMyTicketsModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
+  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
 
   // Animated Programas Splash Screen on entry (bouncing logo on black background) - only once per session
   const [showSplash, setShowSplash] = useState<boolean>(() => {
@@ -191,12 +189,10 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const handleBottomTabChange = (tab: 'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile') => {
+  const handleBottomTabChange = (tab: 'home' | 'search' | 'cart' | 'tickets' | 'profile') => {
     setActiveBottomTab(tab);
     if (tab === 'home') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tab === 'radar') {
-      setShowRadarModal(true);
     } else if (tab === 'search') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (tab === 'cart') {
@@ -523,33 +519,6 @@ export const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24">
         
-        {/* Radar Affluence Resto U - Compact Header Card (matching IMG_1079) */}
-        <div 
-          onClick={() => setShowRadarModal(true)}
-          className="bg-amber-50/80 hover:bg-amber-100/80 border border-orange-200/90 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between shadow-xs cursor-pointer transition-all active:scale-98"
-        >
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <MapPin className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5 flex-wrap">
-                <span className="font-extrabold text-xs sm:text-sm text-slate-900">Radar Affluence Resto U</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-100 text-rose-700">Google Maps</span>
-              </div>
-              <p className="text-[11px] text-slate-500 line-clamp-1">
-                Savoir s'il y a du monde au Resto U en direct • Périmètre 65m
-              </p>
-            </div>
-          </div>
-          <button 
-            type="button"
-            className="text-xs font-bold text-orange-600 flex items-center space-x-1 hover:underline flex-shrink-0 ml-2 cursor-pointer"
-          >
-            <span>Voir la carte</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
 
         {/* DEDICATED TICKET PURCHASING GUICHET (CROU-K SUBVENTION 200 FCFA) */}
         <TicketCounterBox
@@ -710,8 +679,8 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Galerie Défilante des 6 Photos : Ambiance & Vie au Resto U UPGC */}
-        <DishesMarquee />
+        {/* Galerie des 3 Photos Officielles du Resto U & Section À Propos UPGC / CROU-K */}
+        <CroukOfficialGalleryAndAbout />
 
         {/* Active Ticket Quick Access Banner if user has a valid ticket */}
         {user && user.savedTickets && user.savedTickets.some(t => t.status === 'valid') && (
@@ -787,46 +756,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Interactive Radar Affluence Modal (Accessible on click without taking page space) */}
-      {showRadarModal && (
-        <div 
-          onClick={() => setShowRadarModal(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl overflow-hidden max-w-xl w-full max-h-[90vh] shadow-2xl border border-slate-100 flex flex-col animate-scaleUp"
-          >
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center space-x-2">
-                <MapPin className="w-5 h-5 text-orange-600" />
-                <h3 className="text-sm font-black text-slate-900 font-cabinet">
-                  Radar Affluence Resto U • Google Maps
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowRadarModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-800 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1">
-              <RadarAffluenceMap 
-                canteen={selectedCanteen}
-                onUpdateCrowdLevel={(level, waitMin) => {
-                  setSelectedCanteen(prev => ({
-                    ...prev,
-                    crowdLevel: level,
-                    waitingTimeMinutes: waitMin
-                  }));
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {user && (
         <MyTicketsModal

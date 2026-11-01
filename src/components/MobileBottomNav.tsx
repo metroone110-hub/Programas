@@ -3,8 +3,8 @@ import { Home, MapPin, Search, ShoppingBag, QrCode, User } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface Props {
-  activeTab: 'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile';
-  onTabChange: (tab: 'home' | 'radar' | 'search' | 'cart' | 'tickets' | 'profile') => void;
+  activeTab: 'home' | 'search' | 'cart' | 'tickets' | 'profile';
+  onTabChange: (tab: 'home' | 'search' | 'cart' | 'tickets' | 'profile') => void;
   cartCount: number;
   validTicketsCount: number;
   user: UserProfile | null;
@@ -35,18 +35,6 @@ export const MobileBottomNav: React.FC<Props> = ({
         >
           <Home className="w-4 h-4 flex-shrink-0" />
           <span className="text-xs font-bold leading-none">Accueil</span>
-        </button>
-
-        {/* 2. Radar Resto */}
-        <button
-          type="button"
-          onClick={() => onTabChange('radar')}
-          className={`p-2 rounded-full transition-all text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer relative ${
-            activeTab === 'radar' ? 'text-orange-600 bg-orange-50 font-bold' : ''
-          }`}
-          title="Radar Affluence Resto U"
-        >
-          <MapPin className="w-5 h-5" />
         </button>
 
         {/* 3. Recherche */}

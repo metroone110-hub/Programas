@@ -190,17 +190,20 @@ export const CartDrawer: React.FC<Props> = ({
               {/* Price Breakdown */}
               <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex justify-between">
-                  <span className="font-medium text-slate-700">Tickets ({totalMealCount} repas)</span>
+                  <span className="font-medium text-slate-700">Tickets ({totalMealCount} repas à 200 F)</span>
                   <span className="font-bold text-slate-900 font-mono">{totalAmount.toLocaleString('fr-FR')} FCFA</span>
                 </div>
                 <div className="flex justify-between text-slate-500">
-                  <span>Frais de service (1,5%)</span>
-                  <span className="font-semibold text-slate-700 font-mono">+{Math.round(totalAmount * 0.015).toLocaleString('fr-FR')} FCFA</span>
+                  <span>Frais de transaction (1,5% + 14 F)</span>
+                  <span className="font-semibold text-slate-700 font-mono">+{(totalMealCount * 20).toLocaleString('fr-FR')} FCFA</span>
                 </div>
                 <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
-                  <span className="text-sm font-black">Total à payer</span>
+                  <div>
+                    <span className="text-sm font-black block">Total à payer</span>
+                    <span className="text-[10px] font-normal text-slate-500">Soit 220 FCFA par repas</span>
+                  </div>
                   <span className="text-xl text-slate-950 font-black font-mono">
-                    {(totalAmount + Math.round(totalAmount * 0.015)).toLocaleString('fr-FR')} FCFA
+                    {(totalAmount + (totalMealCount * 20)).toLocaleString('fr-FR')} FCFA
                   </span>
                 </div>
               </div>
@@ -211,7 +214,7 @@ export const CartDrawer: React.FC<Props> = ({
                 onClick={onCheckout}
                 className="w-full py-4 bg-slate-950 hover:bg-black text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl transition-all flex items-center justify-center space-x-2 active:scale-98 cursor-pointer"
               >
-                <span>Payer {(totalAmount + Math.round(totalAmount * 0.015)).toLocaleString('fr-FR')} FCFA</span>
+                <span>Payer {(totalAmount + (totalMealCount * 20)).toLocaleString('fr-FR')} FCFA</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 

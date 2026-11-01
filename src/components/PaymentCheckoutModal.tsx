@@ -53,10 +53,12 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   onSuccess
 }) => {
   const isDirectTicketPurchase = Boolean(items && items.length > 0);
-  const calculatedItemsTotal = items ? items.reduce((sum, item) => sum + (item.quantity * 200), 0) : (totalAmount || 200);
-  const ticketBasePrice = totalAmount || calculatedItemsTotal || 200;
-  // Frais de transaction officiels : 1,5%
-  const transactionFee = Math.round(ticketBasePrice * 0.015);
+  const totalTicketCount = items && items.length > 0
+    ? items.reduce((sum, item) => sum + item.quantity, 0)
+    : Math.max(1, Math.round((totalAmount || 200) / 200));
+  const ticketBasePrice = totalTicketCount * 200;
+  // Frais de transaction officiels : 1,5% + 14 F (soit 20 FCFA de frais par ticket -> total 220 FCFA par repas)
+  const transactionFee = totalTicketCount * 20;
   const currentFinalAmount = ticketBasePrice + transactionFee;
 
   // Selected payment method matching IMG_1194_0c2de57a.png
@@ -553,22 +555,25 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Summary Box: Prix des tickets, puis frais 1,5% en bas, puis total */}
+              {/* Summary Box: Prix des tickets, puis frais 1,5% + 14 F en bas, puis total (220 F CFA / ticket) */}
               <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs sm:text-sm bg-white shadow-xs">
                 <div className="px-4 py-3 flex items-center justify-between text-slate-700">
-                  <span className="font-semibold text-slate-800">Prix des tickets</span>
+                  <span className="font-semibold text-slate-800">Prix des tickets ({totalTicketCount} repas à 200 F)</span>
                   <span className="font-bold text-slate-900 font-mono">
                     {ticketBasePrice.toLocaleString('fr-FR')} F CFA
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between text-slate-500 bg-slate-50/70">
-                  <span className="text-xs">Frais de service (1,5%)</span>
+                  <span className="text-xs">Frais de transaction (1,5% + 14 F)</span>
                   <span className="font-semibold text-slate-700 font-mono text-xs">
                     +{transactionFee.toLocaleString('fr-FR')} F CFA
                   </span>
                 </div>
                 <div className="px-4 py-3.5 flex items-center justify-between font-black text-slate-900 bg-slate-50">
-                  <span className="text-sm font-black">Total à payer</span>
+                  <div>
+                    <span className="text-sm font-black block">Total à payer</span>
+                    <span className="text-[10px] font-medium text-slate-500">Soit 220 F CFA par repas</span>
+                  </div>
                   <span className="font-black text-slate-950 text-base sm:text-lg font-mono">
                     {currentFinalAmount.toLocaleString('fr-FR')} F CFA
                   </span>
