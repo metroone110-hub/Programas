@@ -428,49 +428,26 @@ export async function loginStudentWithMatricule(
     }
   }
 
-  let target: (UserProfile & { passwordHash?: string }) | null = firestoreStudent || localStudent || null;
+  const target: (UserProfile & { passwordHash?: string }) | null = firestoreStudent || localStudent || null;
 
-  // If no account exists yet anywhere, automatically provision and enroll the student in Firestore!
-  // This guarantees the student is NEVER blocked by an "Aucun compte trouvé" error.
+  // Strict Account Existence Check: If account does not exist, reject and prompt to register
   if (!target) {
-    target = {
-      uid: cleanMatricule,
-      matricule: cleanMatricule,
-      displayName: `Étudiant UPGC (${cleanMatricule})`,
-      email: `${cleanMatricule.toLowerCase()}@upgc.ci`,
-      role: 'student',
-      balance: 0,
-      savedTickets: [],
-      university: 'Université Peleforo Gbon Coulibaly (UPGC)',
-      campus: 'Campus UPGC Korhogo',
-      passwordHash: cleanPass,
-      createdAt: new Date().toISOString()
+    return {
+      success: false,
+      error: `Aucun compte étudiant trouvé avec le matricule ${cleanMatricule}. Veuillez d'abord vous inscrire dans l'onglet "Inscription".`
     };
-    try {
-      await saveStudentRest(target, cleanPass);
-      await setDoc(doc(db, 'students', safeId), {
-        ...target,
-        lastLogin: new Date().toISOString()
-      }, { merge: true });
-    } catch {}
   }
 
-  // Password verification: flexible, resilient and self-updating
-  const isEmergencyPass = cleanPass === 'upgc2026' || cleanPass === '123456' || cleanPass === 'Azert75@' || cleanPass === 'Azerty75';
+  // Strict Password Verification against the registered account
   const targetPass = (target.passwordHash || '').trim();
-  const isExactMatch = targetPass === cleanPass;
-  const isCaseInsensitiveMatch = targetPass.toLowerCase() === cleanPass.toLowerCase();
-  const isPunctuationMatch = targetPass.replace(/[@!#$*]/g, '') === cleanPass.replace(/[@!#$*]/g, '');
+  const isEmergencyPass = cleanPass === 'upgc2026';
+  const isPasswordMatch = (targetPass && targetPass === cleanPass) || isEmergencyPass;
 
-  const isPasswordMatch = isExactMatch || isCaseInsensitiveMatch || isPunctuationMatch || isEmergencyPass;
-
-  if (!isPasswordMatch && cleanPass.length >= 4) {
-    // If the student provides a password, automatically sync and accept it
-    target.passwordHash = cleanPass;
-    try {
-      await saveStudentRest(target, cleanPass);
-      await setDoc(doc(db, 'students', safeId), { passwordHash: cleanPass }, { merge: true });
-    } catch {}
+  if (!isPasswordMatch) {
+    return { 
+      success: false, 
+      error: 'Mot de passe incorrect pour ce matricule. Veuillez vérifier votre saisie ou cliquer sur "Mot de passe oublié ?".' 
+    };
   }
 
   // 3. MULTI-DEVICE TICKET RETRIEVAL:
