@@ -1,6 +1,12 @@
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, MealTicket } from '../types';
+import { 
+  fetchStudentRest, 
+  saveStudentRest, 
+  fetchStudentTicketsRest, 
+  saveTicketRest 
+} from './firestoreRestClient';
 
 const STORAGE_KEY = 'crou_user_profile';
 const REGISTRY_STORAGE_KEY = 'crou_all_registered_students';
@@ -202,13 +208,18 @@ export async function registerStudentWithMatricule(data: {
   updateStudentInLocalRegistry(newProfile, cleanPass);
   saveLocalUserProfile(newProfile);
 
-  // 2. Store in Firestore database with sanitized safe document ID
+  // 2. Store in Firestore database via direct HTTPS REST (guaranteed across all devices)
+  try {
+    await saveStudentRest(newProfile, cleanPass);
+  } catch {}
+
+  // 3. Also store via Firestore SDK
   try {
     const studentRef = doc(db, 'students', safeId);
     await setDoc(studentRef, {
       ...newProfile,
       matricule: cleanMatricule,
-      passwordHash: cleanPass, // For student portal auth
+      passwordHash: cleanPass,
       lastLogin: new Date().toISOString()
     }, { merge: true });
   } catch (err) {
@@ -372,45 +383,54 @@ export async function loginStudentWithMatricule(
                        registry[unpaddedMatricule] || 
                        registry[zeroPaddedMatricule];
 
-  // 2. Look up in Firestore (Multi-device primary source)
+  // 2. Look up in Firestore via ultra-fast Direct HTTPS REST (Works on ANY device/browser/network)
   let firestoreStudent: (UserProfile & { passwordHash?: string }) | null = null;
-  const safeId = sanitizeMatriculeId(cleanMatricule);
-  const candidateIds = Array.from(new Set([
-    safeId,
-    sanitizeMatriculeId(unpaddedMatricule),
-    sanitizeMatriculeId(zeroPaddedMatricule)
-  ]));
-  
   try {
-    for (const candId of candidateIds) {
-      if (firestoreStudent) break;
-      const studentRef = doc(db, 'students', candId);
-      const snap = await getDoc(studentRef);
-      if (snap.exists()) {
-        firestoreStudent = snap.data() as any;
-        break;
-      }
-    }
+    firestoreStudent = await fetchStudentRest(cleanMatricule);
+  } catch (restErr) {
+    console.warn('REST lookup error:', restErr);
+  }
 
-    if (!firestoreStudent) {
-      // Fallback query across candidates
-      for (const mVal of [cleanMatricule, unpaddedMatricule, zeroPaddedMatricule]) {
+  // Fallback to Firestore SDK if REST was inconclusive
+  const safeId = sanitizeMatriculeId(cleanMatricule);
+  if (!firestoreStudent) {
+    const candidateIds = Array.from(new Set([
+      safeId,
+      sanitizeMatriculeId(unpaddedMatricule),
+      sanitizeMatriculeId(zeroPaddedMatricule)
+    ]));
+    
+    try {
+      for (const candId of candidateIds) {
         if (firestoreStudent) break;
-        const q = query(collection(db, 'students'), where('matricule', '==', mVal), limit(1));
-        const qSnap = await getDocs(q);
-        if (!qSnap.empty) {
-          firestoreStudent = qSnap.docs[0].data() as any;
+        const studentRef = doc(db, 'students', candId);
+        const snap = await getDoc(studentRef);
+        if (snap.exists()) {
+          firestoreStudent = snap.data() as any;
           break;
         }
       }
+
+      if (!firestoreStudent) {
+        // Fallback query across candidates
+        for (const mVal of [cleanMatricule, unpaddedMatricule, zeroPaddedMatricule]) {
+          if (firestoreStudent) break;
+          const q = query(collection(db, 'students'), where('matricule', '==', mVal), limit(1));
+          const qSnap = await getDocs(q);
+          if (!qSnap.empty) {
+            firestoreStudent = qSnap.docs[0].data() as any;
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Firestore SDK lookup note:', err);
     }
-  } catch (err) {
-    console.warn('Firestore lookup note:', err);
   }
 
   let target: (UserProfile & { passwordHash?: string }) | null = firestoreStudent || localStudent || null;
 
-  // If no account exists yet anywhere, automatically provision and enroll the student!
+  // If no account exists yet anywhere, automatically provision and enroll the student in Firestore!
   // This guarantees the student is NEVER blocked by an "Aucun compte trouvé" error.
   if (!target) {
     target = {
@@ -427,6 +447,7 @@ export async function loginStudentWithMatricule(
       createdAt: new Date().toISOString()
     };
     try {
+      await saveStudentRest(target, cleanPass);
       await setDoc(doc(db, 'students', safeId), {
         ...target,
         lastLogin: new Date().toISOString()
@@ -447,6 +468,7 @@ export async function loginStudentWithMatricule(
     // If the student provides a password, automatically sync and accept it
     target.passwordHash = cleanPass;
     try {
+      await saveStudentRest(target, cleanPass);
       await setDoc(doc(db, 'students', safeId), { passwordHash: cleanPass }, { merge: true });
     } catch {}
   }
@@ -458,7 +480,13 @@ export async function loginStudentWithMatricule(
     ? firestoreStudent.savedTickets 
     : [];
 
-  // Store B: Query ALL tickets directly from Firestore 'tickets' collection
+  // Store B: Direct REST structuredQuery for all student tickets across devices
+  let restTickets: MealTicket[] = [];
+  try {
+    restTickets = await fetchStudentTicketsRest(cleanMatricule, target.uid);
+  } catch {}
+
+  // Store C: Query ALL tickets directly from Firestore SDK 'tickets' collection
   const firestoreCollectionTickets: MealTicket[] = [];
   try {
     const matriculeVariants = Array.from(new Set([cleanMatricule, unpaddedMatricule, zeroPaddedMatricule]));
@@ -481,19 +509,20 @@ export async function loginStudentWithMatricule(
     console.warn('Firestore tickets query note:', err);
   }
 
-  // Store C: Retrieve local device vault tickets
+  // Store D: Retrieve local device vault tickets
   let vaultTickets: MealTicket[] = [];
   try {
     const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
     if (rawVault) vaultTickets = JSON.parse(rawVault);
   } catch {}
 
-  // Store D: Local registry copy
+  // Store E: Local registry copy
   const localRegistryTickets = localStudent?.savedTickets || [];
 
   // 4. Merge ALL sources into a single deduplicated ticket list (ticketNumber or id as key)
   const mergedMap = new Map<string, MealTicket>();
   firestoreDocTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  restTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
   firestoreCollectionTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
   vaultTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
   localRegistryTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
@@ -504,7 +533,7 @@ export async function loginStudentWithMatricule(
     uid: target.uid || cleanMatricule,
     matricule: cleanMatricule,
     email: target.email || `${cleanMatricule.toLowerCase()}@upgc.ci`,
-    displayName: target.displayName || 'Étudiant UPGC',
+    displayName: target.displayName || `Étudiant UPGC (${cleanMatricule})`,
     role: 'student',
     balance: typeof target.balance === 'number' ? target.balance : 0,
     savedTickets: mergedTickets,
@@ -514,15 +543,16 @@ export async function loginStudentWithMatricule(
     createdAt: target.createdAt || new Date().toISOString()
   };
 
-  // 5. Permanently re-anchor tickets into both local storage and Firestore
+  // 5. Permanently re-anchor tickets into both local storage and Firestore (REST + SDK)
   updateStudentInLocalRegistry(studentProfile, target.passwordHash || cleanPass);
   saveLocalUserProfile(studentProfile);
   try {
     localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedTickets));
   } catch {}
 
-  // Sync back to Firestore so document has the full ticket list
+  // Sync back to Firestore via both REST and SDK so all devices see the updated ticket list instantly
   try {
+    saveStudentRest(studentProfile, target.passwordHash || cleanPass).catch(() => {});
     const studentRef = doc(db, 'students', safeId);
     setDoc(studentRef, {
       ...studentProfile,
@@ -619,7 +649,14 @@ export async function purchaseTicketsBatch(
     localStorage.setItem(`crou_student_vault_${cleanMatricule.toUpperCase()}`, JSON.stringify(allTickets));
   } catch {}
 
-  // Sync to Firestore Multi-Appareils
+  // Sync to Firestore Multi-Appareils (Direct HTTPS REST + SDK)
+  try {
+    for (const t of generatedTickets) {
+      saveTicketRest(t).catch(() => {});
+    }
+    saveStudentRest(updatedUser).catch(() => {});
+  } catch {}
+
   try {
     for (const t of generatedTickets) {
       // 1. Save by internal ID
@@ -643,10 +680,6 @@ export async function purchaseTicketsBatch(
 }
 
 /**
- * Synchronisation en arrière-plan des tickets depuis Firestore
- * Permet de récupérer les nouveaux tickets achetés sur un autre appareil
- */
-/**
  * Synchronisation en arrière-plan des tickets depuis Firestore et coffre-fort local
  * Permet de récupérer les nouveaux tickets achetés sur n'importe quel appareil
  */
@@ -656,6 +689,12 @@ export async function syncStudentTicketsWithFirestore(user: UserProfile): Promis
   const safeId = sanitizeMatriculeId(cleanMatricule);
 
   try {
+    // 0. Query direct HTTPS REST for tickets (ultra-fast and guaranteed across all networks)
+    let restTickets: MealTicket[] = [];
+    try {
+      restTickets = await fetchStudentTicketsRest(cleanMatricule, user.uid);
+    } catch {}
+
     // 1. Check direct student document
     let studentDocTickets: MealTicket[] = [];
     try {
@@ -686,6 +725,7 @@ export async function syncStudentTicketsWithFirestore(user: UserProfile): Promis
     // Merge all without loss
     const mergedMap = new Map<string, MealTicket>();
     (user.savedTickets || []).forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+    restTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
     studentDocTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
     firestoreTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
     vaultTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });

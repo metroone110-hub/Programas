@@ -1,0 +1,286 @@
+import firebaseConfig from '../../firebase-applet-config.json';
+import { UserProfile, MealTicket } from '../types';
+
+const config = firebaseConfig as any;
+const BASE_URL = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId || '(default)'}/documents`;
+const API_KEY = config.apiKey;
+
+/**
+ * Convertit un champ typé Firestore REST ({ stringValue: 'x' }) en valeur JavaScript pure
+ */
+export function fromFirestoreRestValue(val: any): any {
+  if (!val || typeof val !== 'object') return val;
+  if ('stringValue' in val) return val.stringValue;
+  if ('integerValue' in val) return parseInt(val.integerValue, 10);
+  if ('doubleValue' in val) return parseFloat(val.doubleValue);
+  if ('booleanValue' in val) return val.booleanValue;
+  if ('nullValue' in val) return null;
+  if ('timestampValue' in val) return val.timestampValue;
+  if ('arrayValue' in val) {
+    const values = val.arrayValue?.values || [];
+    return values.map(fromFirestoreRestValue);
+  }
+  if ('mapValue' in val) {
+    const fields = val.mapValue?.fields || {};
+    const res: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      res[k] = fromFirestoreRestValue(v);
+    }
+    return res;
+  }
+  return val;
+}
+
+/**
+ * Convertit une valeur JavaScript en format typé Firestore REST
+ */
+export function toFirestoreRestValue(val: any): any {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'string') return { stringValue: val };
+  if (typeof val === 'number') {
+    if (Number.isInteger(val)) return { integerValue: val.toString() };
+    return { doubleValue: val };
+  }
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (Array.isArray(val)) {
+    return {
+      arrayValue: {
+        values: val.map(toFirestoreRestValue)
+      }
+    };
+  }
+  if (typeof val === 'object') {
+    const fields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val)) {
+      if (v !== undefined) {
+        fields[k] = toFirestoreRestValue(v);
+      }
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+export function fromFirestoreRestDoc(doc: any): any {
+  if (!doc || !doc.fields) return null;
+  const res: Record<string, any> = {};
+  for (const [k, v] of Object.entries(doc.fields)) {
+    res[k] = fromFirestoreRestValue(v);
+  }
+  return res;
+}
+
+export function toFirestoreRestFields(obj: Record<string, any>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      fields[k] = toFirestoreRestValue(v);
+    }
+  }
+  return fields;
+}
+
+/**
+ * Récupère un étudiant via l'API REST officielle Firestore (HTTPS direct sans WebSocket/WebChannel)
+ * Teste le matricule exact, sans zéro initial et avec zéro initial.
+ */
+export async function fetchStudentRest(matricule: string): Promise<(UserProfile & { passwordHash?: string }) | null> {
+  const clean = (matricule || '').trim().toUpperCase();
+  if (!clean) return null;
+
+  const unpadded = clean.replace(/^0+/, '');
+  const zeroPadded = '0' + unpadded;
+  const candidates = Array.from(new Set([clean, unpadded, zeroPadded]));
+
+  for (const cand of candidates) {
+    try {
+      const url = `${BASE_URL}/students/${encodeURIComponent(cand)}?key=${API_KEY}`;
+      const res = await fetch(url, { method: 'GET' });
+      if (res.ok) {
+        const docJson = await res.json();
+        const data = fromFirestoreRestDoc(docJson);
+        if (data && (data.matricule || data.uid)) {
+          return {
+            uid: data.uid || cand,
+            matricule: data.matricule || cand,
+            displayName: data.displayName || `Étudiant (${cand})`,
+            email: data.email || `${cand.toLowerCase()}@upgc.ci`,
+            role: data.role || 'student',
+            balance: typeof data.balance === 'number' ? data.balance : 0,
+            savedTickets: Array.isArray(data.savedTickets) ? data.savedTickets : [],
+            university: data.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
+            campus: data.campus || 'Campus UPGC Korhogo',
+            phone: data.phone || '',
+            passwordHash: data.passwordHash,
+            createdAt: data.createdAt || new Date().toISOString()
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('REST fetch student attempt failed for cand:', cand, err);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Sauvegarde ou met à jour un profil étudiant dans Firestore via l'API REST (UPSERT garanti)
+ */
+export async function saveStudentRest(student: UserProfile, passwordHash?: string): Promise<boolean> {
+  if (!student.matricule) return false;
+  const safeId = student.matricule.trim().toUpperCase();
+  const url = `${BASE_URL}/students/${encodeURIComponent(safeId)}?key=${API_KEY}`;
+
+  const payload = {
+    fields: toFirestoreRestFields({
+      uid: student.uid || safeId,
+      matricule: safeId,
+      displayName: student.displayName || `Étudiant (${safeId})`,
+      email: student.email || `${safeId.toLowerCase()}@upgc.ci`,
+      role: student.role || 'student',
+      balance: typeof student.balance === 'number' ? student.balance : 0,
+      savedTickets: student.savedTickets || [],
+      university: student.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
+      campus: student.campus || 'Campus UPGC Korhogo',
+      phone: student.phone || '',
+      ...(passwordHash ? { passwordHash } : {}),
+      lastSync: new Date().toISOString()
+    })
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST save student failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Récupère tous les tickets d'un étudiant via REST structuredQuery
+ */
+export async function fetchStudentTicketsRest(matricule: string, uid?: string): Promise<MealTicket[]> {
+  const clean = (matricule || '').trim().toUpperCase();
+  const unpadded = clean.replace(/^0+/, '');
+  const zeroPadded = '0' + unpadded;
+  const variants = Array.from(new Set([clean, unpadded, zeroPadded, uid].filter(Boolean) as string[]));
+
+  const allTickets: MealTicket[] = [];
+  const url = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId || '(default)'}/documents:runQuery?key=${API_KEY}`;
+
+  for (const matVal of variants) {
+    try {
+      const queryPayload = {
+        structuredQuery: {
+          from: [{ collectionId: 'tickets' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'studentMatricule' },
+              op: 'EQUAL',
+              value: { stringValue: matVal }
+            }
+          }
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(queryPayload)
+      });
+
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows)) {
+          rows.forEach(r => {
+            if (r.document) {
+              const ticket = fromFirestoreRestDoc(r.document) as MealTicket;
+              if (ticket && (ticket.ticketNumber || ticket.id)) {
+                allTickets.push(ticket);
+              }
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('REST fetch tickets error for variant:', matVal, err);
+    }
+  }
+
+  // Also query by studentId if uid is present
+  if (uid) {
+    try {
+      const queryPayload = {
+        structuredQuery: {
+          from: [{ collectionId: 'tickets' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'studentId' },
+              op: 'EQUAL',
+              value: { stringValue: uid }
+            }
+          }
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(queryPayload)
+      });
+
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows)) {
+          rows.forEach(r => {
+            if (r.document) {
+              const ticket = fromFirestoreRestDoc(r.document) as MealTicket;
+              if (ticket && (ticket.ticketNumber || ticket.id)) {
+                allTickets.push(ticket);
+              }
+            }
+          });
+        }
+      }
+    } catch {}
+  }
+
+  // Deduplicate by ticketNumber or id
+  const map = new Map<string, MealTicket>();
+  allTickets.forEach(t => {
+    const key = t.ticketNumber || t.id;
+    if (key) map.set(key, t);
+  });
+  return Array.from(map.values());
+}
+
+/**
+ * Sauvegarde un ticket individuel dans Firestore via REST
+ */
+export async function saveTicketRest(ticket: MealTicket): Promise<boolean> {
+  if (!ticket || (!ticket.id && !ticket.ticketNumber)) return false;
+  const docId = ticket.ticketNumber || ticket.id;
+  const url = `${BASE_URL}/tickets/${encodeURIComponent(docId)}?key=${API_KEY}`;
+
+  const payload = {
+    fields: toFirestoreRestFields(ticket)
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST save ticket failed:', err);
+    return false;
+  }
+}
