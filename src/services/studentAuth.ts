@@ -23,68 +23,8 @@ export interface FraudAuditLog {
   resolved?: boolean;
 }
 
-// Seed initial registered students for demo so admin has immediate data to audit
-const INITIAL_DEMO_STUDENTS: UserProfile[] = [
-  {
-    uid: 'UPGC-2026-0842',
-    matricule: 'UPGC-2026-0842',
-    email: 'upgc-2026-0842@upgc.ci',
-    displayName: 'Kouassi Jean-Eudes',
-    role: 'student',
-    balance: 1400,
-    savedTickets: [
-      {
-        id: 'tkt_demo_1',
-        ticketNumber: 'CROUK-2026-016278',
-        studentId: 'UPGC-2026-0842',
-        studentName: 'Kouassi Jean-Eudes',
-        studentMatricule: 'UPGC-2026-0842',
-        canteenId: 'resto-cocody-1',
-        canteenName: 'Resto U - Campus UPGC Korhogo',
-        dishName: 'Attiéké & Poisson Braisé',
-        mealType: 'dejeuner',
-        date: new Date().toLocaleDateString('fr-FR'),
-        price: 200,
-        status: 'valid',
-        qrCodeData: 'https://crou.ci/verify?tkt=CROUK-2026-016278',
-        purchaseTime: '11:42'
-      }
-    ],
-    university: 'Université Peleforo Gbon Coulibaly (UPGC)',
-    campus: 'Campus UPGC Korhogo',
-    createdAt: new Date().toISOString()
-  },
-  {
-    uid: 'CI0226019482',
-    matricule: 'CI0226019482',
-    email: 'ci0226019482@upgc.ci',
-    displayName: 'Touré Fatou Aïcha',
-    role: 'student',
-    balance: 800,
-    savedTickets: [
-      {
-        id: 'tkt_demo_2',
-        ticketNumber: 'CROUK-2026-094121',
-        studentId: 'CI0226019482',
-        studentName: 'Touré Fatou Aïcha',
-        studentMatricule: 'CI0226019482',
-        canteenId: 'resto-cocody-1',
-        canteenName: 'Resto U - Campus UPGC Korhogo',
-        dishName: 'Sauce Graine & Foutou Banane',
-        mealType: 'diner',
-        date: new Date().toLocaleDateString('fr-FR'),
-        price: 200,
-        status: 'used',
-        usedTime: '12:30',
-        qrCodeData: 'https://crou.ci/verify?tkt=CROUK-2026-094121',
-        purchaseTime: '10:15'
-      }
-    ],
-    university: 'Université Peleforo Gbon Coulibaly (UPGC)',
-    campus: 'Campus UPGC Korhogo',
-    createdAt: new Date().toISOString()
-  }
-];
+// Registry of registered students
+const INITIAL_DEMO_STUDENTS: UserProfile[] = [];
 
 export function getLocalUserProfile(): UserProfile | null {
   try {
@@ -101,7 +41,6 @@ export function saveLocalUserProfile(profile: UserProfile | null): void {
     localStorage.removeItem(STORAGE_KEY);
   } else {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    // Also sync into student registry & permanent vault if it's a student
     if (profile.role === 'student' && profile.matricule) {
       updateStudentInLocalRegistry(profile);
       try {
@@ -114,14 +53,7 @@ export function saveLocalUserProfile(profile: UserProfile | null): void {
 function getLocalStudentsRegistry(): Record<string, UserProfile & { passwordHash?: string }> {
   try {
     const raw = localStorage.getItem(REGISTRY_STORAGE_KEY);
-    if (!raw) {
-      const initMap: Record<string, UserProfile & { passwordHash?: string }> = {};
-      INITIAL_DEMO_STUDENTS.forEach(s => {
-        initMap[s.matricule!.toUpperCase()] = { ...s, passwordHash: '123456' };
-      });
-      localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(initMap));
-      return initMap;
-    }
+    if (!raw) return {};
     return JSON.parse(raw);
   } catch {
     return {};
@@ -374,17 +306,10 @@ export async function loginStudentWithMatricule(
     return { success: false, error: 'Veuillez saisir votre mot de passe.' };
   }
 
-  // 1. Check Local Registry
-  const registry = getLocalStudentsRegistry();
-  const unpaddedMatricule = cleanMatricule.replace(/^0+/, '');
-  const zeroPaddedMatricule = '0' + unpaddedMatricule;
-  
-  const localStudent = registry[cleanMatricule] || 
-                       registry[unpaddedMatricule] || 
-                       registry[zeroPaddedMatricule];
-
-  // 2. Look up in Firestore via ultra-fast Direct HTTPS REST (Works on ANY device/browser/network)
+  // 1. Look up exclusively in the real Firestore database
   let firestoreStudent: (UserProfile & { passwordHash?: string }) | null = null;
+  const safeId = sanitizeMatriculeId(cleanMatricule);
+  
   try {
     firestoreStudent = await fetchStudentRest(cleanMatricule);
   } catch (restErr) {
@@ -392,56 +317,29 @@ export async function loginStudentWithMatricule(
   }
 
   // Fallback to Firestore SDK if REST was inconclusive
-  const safeId = sanitizeMatriculeId(cleanMatricule);
   if (!firestoreStudent) {
-    const candidateIds = Array.from(new Set([
-      safeId,
-      sanitizeMatriculeId(unpaddedMatricule),
-      sanitizeMatriculeId(zeroPaddedMatricule)
-    ]));
-    
     try {
-      for (const candId of candidateIds) {
-        if (firestoreStudent) break;
-        const studentRef = doc(db, 'students', candId);
-        const snap = await getDoc(studentRef);
-        if (snap.exists()) {
-          firestoreStudent = snap.data() as any;
-          break;
-        }
-      }
-
-      if (!firestoreStudent) {
-        // Fallback query across candidates
-        for (const mVal of [cleanMatricule, unpaddedMatricule, zeroPaddedMatricule]) {
-          if (firestoreStudent) break;
-          const q = query(collection(db, 'students'), where('matricule', '==', mVal), limit(1));
-          const qSnap = await getDocs(q);
-          if (!qSnap.empty) {
-            firestoreStudent = qSnap.docs[0].data() as any;
-            break;
-          }
-        }
+      const studentRef = doc(db, 'students', safeId);
+      const snap = await getDoc(studentRef);
+      if (snap.exists()) {
+        firestoreStudent = snap.data() as any;
       }
     } catch (err) {
       console.warn('Firestore SDK lookup note:', err);
     }
   }
 
-  const target: (UserProfile & { passwordHash?: string }) | null = firestoreStudent || localStudent || null;
-
-  // Strict Account Existence Check: If account does not exist, reject and prompt to register
-  if (!target) {
+  // Strict Account Existence Check: Must exist in Firestore!
+  if (!firestoreStudent) {
     return {
       success: false,
       error: `Aucun compte étudiant trouvé avec le matricule ${cleanMatricule}. Veuillez d'abord vous inscrire dans l'onglet "Inscription".`
     };
   }
 
-  // Strict Password Verification against the registered account
-  const targetPass = (target.passwordHash || '').trim();
-  const isEmergencyPass = cleanPass === 'upgc2026';
-  const isPasswordMatch = (targetPass && targetPass === cleanPass) || isEmergencyPass;
+  // Strict Password Verification against the registered account in Firestore
+  const targetPass = (firestoreStudent.passwordHash || '').trim();
+  const isPasswordMatch = targetPass === cleanPass;
 
   if (!isPasswordMatch) {
     return { 
@@ -449,6 +347,8 @@ export async function loginStudentWithMatricule(
       error: 'Mot de passe incorrect pour ce matricule. Veuillez vérifier votre saisie ou cliquer sur "Mot de passe oublié ?".' 
     };
   }
+
+  const target = firestoreStudent;
 
   // 3. MULTI-DEVICE TICKET RETRIEVAL:
   // Gather from ALL possible stores across all matricule variations to guarantee 0% data loss:
@@ -464,6 +364,8 @@ export async function loginStudentWithMatricule(
   } catch {}
 
   // Store C: Query ALL tickets directly from Firestore SDK 'tickets' collection
+  const unpaddedMatricule = cleanMatricule.replace(/^0+/, '');
+  const zeroPaddedMatricule = '0' + unpaddedMatricule;
   const firestoreCollectionTickets: MealTicket[] = [];
   try {
     const matriculeVariants = Array.from(new Set([cleanMatricule, unpaddedMatricule, zeroPaddedMatricule]));
@@ -493,16 +395,12 @@ export async function loginStudentWithMatricule(
     if (rawVault) vaultTickets = JSON.parse(rawVault);
   } catch {}
 
-  // Store E: Local registry copy
-  const localRegistryTickets = localStudent?.savedTickets || [];
-
   // 4. Merge ALL sources into a single deduplicated ticket list (ticketNumber or id as key)
   const mergedMap = new Map<string, MealTicket>();
-  firestoreDocTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  restTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  firestoreCollectionTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  vaultTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  localRegistryTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  firestoreDocTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  restTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  firestoreCollectionTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  vaultTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
 
   const mergedTickets = Array.from(mergedMap.values());
   

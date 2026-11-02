@@ -117,10 +117,6 @@ export const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Synchronize any locally registered student accounts to Firestore on boot across all devices
-  useEffect(() => {
-    syncAllLocalAccountsToFirestore().catch(e => console.warn('Account sync notice:', e));
-  }, []);
 
   // Sync tickets with Firestore for seamless multi-device persistence
   useEffect(() => {
