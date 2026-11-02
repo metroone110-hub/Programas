@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, X, ShieldAlert, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Copy, Check, ExternalLink, X, ShieldAlert, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { DEV_DOMAIN, SHARED_DOMAIN, FIREBASE_PROJECT_ID } from '../services/firebase';
 
 interface Props {
@@ -55,7 +55,7 @@ export const FirebaseDomainHelpModal: React.FC<Props> = ({ isOpen, onClose, onCo
         <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-700">
           <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 text-amber-900 text-xs leading-relaxed">
             <div className="flex items-center font-bold text-amber-950 mb-1 space-x-1.5">
-              <Sparkles className="w-4 h-4 text-amber-600" />
+              <ShieldCheck className="w-4 h-4 text-amber-600" />
               <span>Pourquoi voyez-vous ce message ?</span>
             </div>
             Pour des raisons de sécurité, Google Firebase demande d'enregistrer l'adresse de votre application une seule fois dans la liste des <strong>« Domaines autorisés »</strong>.

@@ -57,8 +57,8 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
     ? items.reduce((sum, item) => sum + item.quantity, 0)
     : Math.max(1, Math.round((totalAmount || 200) / 200));
   const ticketBasePrice = totalTicketCount * 200;
-  // Frais de transaction officiels : 1,5% + 14 F (soit 20 FCFA de frais par ticket -> total 220 FCFA par repas)
-  const transactionFee = totalTicketCount * 20;
+  // Frais de transaction officiels : 1,5% + 7 F (soit 10 FCFA de frais par ticket -> total 210 FCFA par repas)
+  const transactionFee = totalTicketCount * 10;
   const currentFinalAmount = ticketBasePrice + transactionFee;
 
   // Selected payment method matching IMG_1194_0c2de57a.png
@@ -555,7 +555,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Summary Box: Prix des tickets, puis frais 1,5% + 14 F en bas, puis total (220 F CFA / ticket) */}
+              {/* Summary Box: Prix des tickets, puis frais 1,5% + 7 F en bas, puis total (210 F CFA / ticket) */}
               <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs sm:text-sm bg-white shadow-xs">
                 <div className="px-4 py-3 flex items-center justify-between text-slate-700">
                   <span className="font-semibold text-slate-800">Prix des tickets ({totalTicketCount} repas à 200 F)</span>
@@ -564,7 +564,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                   </span>
                 </div>
                 <div className="px-4 py-2.5 flex items-center justify-between text-slate-500 bg-slate-50/70">
-                  <span className="text-xs">Frais de transaction (1,5% + 14 F)</span>
+                  <span className="text-xs">Frais de transaction (1,5% + 7 F)</span>
                   <span className="font-semibold text-slate-700 font-mono text-xs">
                     +{transactionFee.toLocaleString('fr-FR')} F CFA
                   </span>
@@ -572,7 +572,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                 <div className="px-4 py-3.5 flex items-center justify-between font-black text-slate-900 bg-slate-50">
                   <div>
                     <span className="text-sm font-black block">Total à payer</span>
-                    <span className="text-[10px] font-medium text-slate-500">Soit 220 F CFA par repas</span>
+                    <span className="text-[10px] font-medium text-slate-500">Soit 210 F CFA par repas</span>
                   </div>
                   <span className="font-black text-slate-950 text-base sm:text-lg font-mono">
                     {currentFinalAmount.toLocaleString('fr-FR')} F CFA

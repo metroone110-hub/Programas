@@ -5,7 +5,7 @@ import {
   User, 
   ArrowRight, 
   KeyRound, 
-  Sparkles, 
+  UserPlus, 
   GraduationCap, 
   AlertCircle, 
   Eye, 
@@ -261,7 +261,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <UserPlus className="w-3.5 h-3.5 text-amber-300" />
               <span>Inscription</span>
             </button>
 
@@ -435,7 +435,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                 className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <span>{isLoading ? 'Mise à jour...' : 'Réinitialiser & Se Connecter'}</span>
-                <Sparkles className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4" />
               </button>
 
               <button
@@ -531,7 +531,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                 className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-orange-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <span>{isLoading ? 'Création...' : 'Créer mon Compte & Activer le Pass'}</span>
-                <Sparkles className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}

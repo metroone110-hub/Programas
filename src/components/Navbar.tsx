@@ -6,7 +6,6 @@ import {
   User, 
   LogOut, 
   ShieldCheck, 
-  Sparkles, 
   ChevronDown, 
   ShoppingBag, 
   GraduationCap,

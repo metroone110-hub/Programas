@@ -3,7 +3,6 @@ import {
   Plus, 
   Trash2, 
   Camera, 
-  Sparkles, 
   Users, 
   Clock, 
   CheckCircle, 

@@ -5,7 +5,6 @@ import {
   MapPin, 
   Users, 
   Search, 
-  Sparkles, 
   ShieldCheck, 
   AlertCircle, 
   QrCode, 

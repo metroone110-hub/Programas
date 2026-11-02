@@ -4,7 +4,6 @@ import {
   Info,
   Calendar,
   Clock,
-  Sparkles,
   UtensilsCrossed
 } from 'lucide-react';
 import { Dish } from '../types';

@@ -5,7 +5,6 @@ import {
   Utensils, 
   Calendar, 
   Award, 
-  Sparkles, 
   Maximize2, 
   X,
   GraduationCap,
@@ -136,7 +135,7 @@ export const CroukOfficialGalleryAndAbout: React.FC = () => {
         {/* Informations sur le CROU-K (Capacité & Plats) */}
         <div className="relative z-10 space-y-3">
           <div className="flex items-center space-x-2 text-xs font-black uppercase tracking-wider text-amber-400">
-            <Sparkles className="w-4 h-4" />
+            <TrendingUp className="w-4 h-4" />
             <span>Chiffres Clés & Capacités du CROU-K</span>
           </div>
 

@@ -5,7 +5,6 @@ import {
   AlertOctagon, 
   Volume2, 
   VolumeX, 
-  Sparkles, 
   RefreshCw, 
   Scan, 
   Search, 
@@ -494,12 +493,12 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
             {isAiAnalyzing ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
-                <span>Analyse IA Google en cours...</span>
+                <span>Lecture optique du ticket...</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Prendre Photo & Analyser avec l'IA Google</span>
+                <Camera className="w-4 h-4 text-amber-500" />
+                <span>Prendre Photo & Scanner le Ticket</span>
               </>
             )}
           </button>

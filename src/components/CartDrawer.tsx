@@ -7,7 +7,6 @@ import {
   ShoppingBag, 
   ArrowRight, 
   ShieldCheck, 
-  Sparkles,
   Ticket
 } from 'lucide-react';
 import { Dish, UserProfile } from '../types';
@@ -194,16 +193,16 @@ export const CartDrawer: React.FC<Props> = ({
                   <span className="font-bold text-slate-900 font-mono">{totalAmount.toLocaleString('fr-FR')} FCFA</span>
                 </div>
                 <div className="flex justify-between text-slate-500">
-                  <span>Frais de transaction (1,5% + 14 F)</span>
-                  <span className="font-semibold text-slate-700 font-mono">+{(totalMealCount * 20).toLocaleString('fr-FR')} FCFA</span>
+                  <span>Frais de transaction (1,5% + 7 F)</span>
+                  <span className="font-semibold text-slate-700 font-mono">+{(totalMealCount * 10).toLocaleString('fr-FR')} FCFA</span>
                 </div>
                 <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
                   <div>
                     <span className="text-sm font-black block">Total à payer</span>
-                    <span className="text-[10px] font-normal text-slate-500">Soit 220 FCFA par repas</span>
+                    <span className="text-[10px] font-normal text-slate-500">Soit 210 FCFA par repas</span>
                   </div>
                   <span className="text-xl text-slate-950 font-black font-mono">
-                    {(totalAmount + (totalMealCount * 20)).toLocaleString('fr-FR')} FCFA
+                    {(totalAmount + (totalMealCount * 10)).toLocaleString('fr-FR')} FCFA
                   </span>
                 </div>
               </div>
@@ -214,7 +213,7 @@ export const CartDrawer: React.FC<Props> = ({
                 onClick={onCheckout}
                 className="w-full py-4 bg-slate-950 hover:bg-black text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl transition-all flex items-center justify-center space-x-2 active:scale-98 cursor-pointer"
               >
-                <span>Payer {(totalAmount + (totalMealCount * 20)).toLocaleString('fr-FR')} FCFA</span>
+                <span>Payer {(totalAmount + (totalMealCount * 10)).toLocaleString('fr-FR')} FCFA</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 

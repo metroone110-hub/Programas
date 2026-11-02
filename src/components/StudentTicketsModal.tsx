@@ -8,8 +8,7 @@ import {
   Clock, 
   Search, 
   ArrowRight,
-  Filter,
-  Sparkles
+  Filter
 } from 'lucide-react';
 import { MealTicket, UserProfile } from '../types';
 import { TicketVisual } from './TicketVisual';

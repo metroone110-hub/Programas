@@ -4,7 +4,6 @@ import {
   Plus, 
   Minus, 
   ShieldCheck, 
-  Sparkles, 
   QrCode, 
   CheckCircle2, 
   ChevronRight,
@@ -157,10 +156,10 @@ export const TicketCounterBox: React.FC<Props> = ({
               <span className="text-xs font-bold text-white">Total à régler :</span>
               <div className="text-right">
                 <span className="text-xl font-black text-amber-400 font-cabinet">
-                  {(quantity * 220).toLocaleString('fr-FR')} FCFA
+                  {(quantity * 210).toLocaleString('fr-FR')} FCFA
                 </span>
                 <span className="block text-[10px] text-slate-300 font-medium">
-                  (200 F repas + 20 F frais 1,5% + 14 F)
+                  (200 F repas + 10 F frais 1,5% + 7 F)
                 </span>
               </div>
             </div>
@@ -173,7 +172,7 @@ export const TicketCounterBox: React.FC<Props> = ({
             className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-500 via-rose-500 to-orange-600 hover:from-orange-600 hover:to-rose-600 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-orange-500/25 flex items-center justify-center space-x-2 transition-all active:scale-98 cursor-pointer group"
           >
             <Ticket className="w-4 h-4 text-white group-hover:rotate-12 transition-transform" />
-            <span>Acheter {quantity} Ticket{quantity > 1 ? 's' : ''} • {(quantity * 220).toLocaleString('fr-FR')} F</span>
+            <span>Acheter {quantity} Ticket{quantity > 1 ? 's' : ''} • {(quantity * 210).toLocaleString('fr-FR')} F</span>
             <ChevronRight className="w-4 h-4 text-white/80 group-hover:translate-x-1 transition-transform" />
           </button>
 
