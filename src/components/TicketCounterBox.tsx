@@ -48,39 +48,31 @@ export const TicketCounterBox: React.FC<Props> = ({
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 rounded-3xl p-5 sm:p-7 text-white shadow-xl border border-white/10 relative overflow-hidden">
-      {/* Lightweight background accents (Zero GPU filter cost) */}
-      <div className="absolute -top-16 -right-16 w-48 h-48 bg-orange-500/10 rounded-full pointer-events-none"></div>
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-rose-500/10 rounded-full pointer-events-none"></div>
-
+    <div className="bg-slate-900 rounded-2xl p-5 sm:p-7 text-white shadow-md border border-slate-800 relative overflow-hidden">
       <div className="relative z-10 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
         
-        {/* Left: Presentation & Assurance CROU */}
-        <div className="space-y-3 max-w-xl">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wide bg-orange-500 text-white shadow-xs flex items-center space-x-1">
-              <Ticket className="w-3.5 h-3.5" />
-              <span>Billetterie Resto U • CROU-K</span>
-            </span>
-
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              Tarif Subventionné : 200 FCFA / ticket
-            </span>
+        {/* Left: Presentation & Description */}
+        <div className="space-y-3.5 max-w-xl">
+          <div className="flex items-center space-x-2 text-xs font-semibold text-orange-400">
+            <Ticket className="w-4 h-4" />
+            <span>Restaurant universitaire CROU-K</span>
+            <span className="text-slate-600">·</span>
+            <span className="text-slate-300 font-normal">200 FCFA par repas</span>
           </div>
 
           <div>
-            <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-white font-cabinet leading-tight">
-              Achetez vos Tickets Repas Officiels
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-snug">
+              Tickets repas
             </h2>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mt-1">
-              Les repas sont servis au réfectoire sur présentation du <strong>Ticket QR</strong>. Choisissez le nombre de tickets et payez instantanément par <strong>Wave, Orange, MTN, Moov, Djamo ou Carte</strong>.
+            <p className="text-sm text-slate-300 leading-relaxed mt-1.5">
+              Commandez vos tickets de repas subventionnés. Présentez simplement votre ticket QR au tourniquet du réfectoire. Paiement instantané et sécurisé.
             </p>
           </div>
 
           {/* Quick Packs Selector */}
           <div className="pt-1">
-            <span className="text-[11px] font-bold text-slate-400 block mb-2 uppercase tracking-wider">
-              Choix rapide de formule :
+            <span className="text-xs font-medium text-slate-400 block mb-2">
+              Formules rapides :
             </span>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {quickPacks.map((pack) => (
@@ -88,24 +80,24 @@ export const TicketCounterBox: React.FC<Props> = ({
                   key={pack.qty}
                   type="button"
                   onClick={() => setQuantity(pack.qty)}
-                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                     quantity === pack.qty
-                      ? 'border-orange-500 bg-orange-500/20 ring-1 ring-orange-500 shadow-md'
-                      : 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-300'
+                      ? 'border-orange-500 bg-orange-500/15 text-white ring-1 ring-orange-500'
+                      : 'border-slate-800 bg-slate-800/60 hover:bg-slate-800 text-slate-300'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-white font-cabinet">
-                      {pack.qty} ticket{pack.qty > 1 ? 's' : ''}
+                    <span className="text-sm font-semibold text-white">
+                      {pack.qty} repas
                     </span>
                     {quantity === pack.qty && (
-                      <span className="w-2 h-2 rounded-full bg-orange-400"></span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
                     )}
                   </div>
-                  <div className="text-[11px] font-bold text-amber-400 mt-0.5">
+                  <div className="text-xs font-medium text-orange-300 mt-1">
                     {(pack.qty * 200).toLocaleString('fr-FR')} F
                   </div>
-                  <div className="text-[9px] text-slate-400 truncate mt-0.5">
+                  <div className="text-xs text-slate-400 truncate mt-0.5">
                     {pack.desc}
                   </div>
                 </button>
@@ -115,30 +107,30 @@ export const TicketCounterBox: React.FC<Props> = ({
         </div>
 
         {/* Right: Quantity Stepper & Buy Action Card */}
-        <div className="w-full lg:w-80 bg-slate-800/80 border border-white/20 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-2xl flex-shrink-0">
+        <div className="w-full lg:w-80 bg-slate-800/90 border border-slate-700/80 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-lg flex-shrink-0">
           
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-300">
+            <span className="text-sm font-medium text-slate-300">
               Nombre de tickets :
             </span>
             
             {/* Stepper */}
-            <div className="flex items-center space-x-2 bg-slate-900/60 p-1 rounded-xl border border-white/15">
+            <div className="flex items-center space-x-2 bg-slate-900 p-1 rounded-xl border border-slate-700">
               <button
                 type="button"
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold transition-all active:scale-95 cursor-pointer"
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold transition-all active:scale-95 cursor-pointer"
                 title="Diminuer"
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
-              <span className="w-8 text-center font-black text-base text-white font-mono">
+              <span className="w-8 text-center font-bold text-base text-white font-mono">
                 {quantity}
               </span>
               <button
                 type="button"
                 onClick={() => setQuantity(quantity + 1)}
-                className="w-8 h-8 rounded-lg bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center font-bold transition-all active:scale-95 cursor-pointer"
+                className="w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-500 text-white flex items-center justify-center font-bold transition-all active:scale-95 cursor-pointer"
                 title="Augmenter"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -147,59 +139,54 @@ export const TicketCounterBox: React.FC<Props> = ({
           </div>
 
           {/* Pricing summary */}
-          <div className="p-3 bg-black/40 rounded-xl border border-white/10 space-y-1">
-            <div className="flex items-center justify-between text-xs text-slate-300">
-              <span>Tarif unitaire CROU :</span>
-              <span className="font-mono">200 FCFA</span>
+          <div className="p-3.5 bg-slate-900/80 rounded-xl border border-slate-700/70 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Prix des repas (200 F / repas) :</span>
+              <span className="font-mono text-slate-200">{(quantity * 200).toLocaleString('fr-FR')} FCFA</span>
             </div>
-            <div className="flex items-center justify-between pt-1 border-t border-white/10">
-              <span className="text-xs font-bold text-white">Total à régler :</span>
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Frais (1,5% + 7 F) :</span>
+              <span className="font-mono text-slate-200">+{(quantity * 10).toLocaleString('fr-FR')} FCFA</span>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+              <span className="text-sm font-semibold text-white">Total à payer :</span>
               <div className="text-right">
-                <span className="text-xl font-black text-amber-400 font-cabinet">
+                <span className="text-xl font-bold text-white">
                   {(quantity * 210).toLocaleString('fr-FR')} FCFA
                 </span>
-                <span className="block text-[10px] text-slate-300 font-medium">
-                  (200 F repas + 10 F frais 1,5% + 7 F)
+                <span className="block text-xs text-slate-400 font-normal">
+                  Soit 210 FCFA par repas
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Big Buy Button */}
+          {/* Buy Button */}
           <button
             type="button"
             onClick={handleBuy}
-            className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-500 via-rose-500 to-orange-600 hover:from-orange-600 hover:to-rose-600 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-orange-500/25 flex items-center justify-center space-x-2 transition-all active:scale-98 cursor-pointer group"
+            className="w-full py-3.5 px-4 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-semibold text-sm rounded-xl shadow-md transition-all active:scale-98 cursor-pointer flex items-center justify-center space-x-2"
           >
-            <Ticket className="w-4 h-4 text-white group-hover:rotate-12 transition-transform" />
-            <span>Acheter {quantity} Ticket{quantity > 1 ? 's' : ''} • {(quantity * 210).toLocaleString('fr-FR')} F</span>
-            <ChevronRight className="w-4 h-4 text-white/80 group-hover:translate-x-1 transition-transform" />
+            <Ticket className="w-4 h-4 text-white" />
+            <span>Acheter {quantity} ticket{quantity > 1 ? 's' : ''} · {(quantity * 210).toLocaleString('fr-FR')} FCFA</span>
+            <ChevronRight className="w-4 h-4 text-white/80" />
           </button>
 
           {/* Supported badges mini line */}
-          <div className="flex items-center justify-center space-x-2 text-[10px] text-slate-300">
-            <span className="font-medium">Moyens acceptés :</span>
-            <div className="flex items-center space-x-1.5">
-              <div className="w-4 h-4 rounded-full overflow-hidden bg-sky-400 flex items-center justify-center">
-                <img src="/assets/aistudio/IMG_1213_589dc8ca.png" alt="Wave" className="w-full h-full object-cover" />
-              </div>
-              <span className="px-1 py-0.5 bg-[#ff7900] text-black font-black text-[7px] rounded-xs">OM</span>
-              <span className="px-1 py-0.5 bg-[#ffcc00] text-black font-black text-[7px] rounded-xs">MTN</span>
-              <span className="px-1 py-0.5 bg-[#0077c8] text-white font-black text-[7px] rounded-xs">MOOV</span>
-              <span className="px-1 py-0.5 bg-black text-white italic font-black text-[7px] rounded-xs font-serif">djamo</span>
-            </div>
+          <div className="flex items-center justify-center space-x-2 text-xs text-slate-400">
+            <span>Paiement sécurisé : Wave, Orange, MTN, Moov, Djamo</span>
           </div>
 
           {/* User Tickets Shortcut if connected */}
           {user && (
-            <div className="pt-2 border-t border-white/10 text-center">
+            <div className="pt-2 border-t border-slate-700/60 text-center">
               <button
                 type="button"
                 onClick={onOpenMyTickets}
-                className="text-xs text-amber-300 hover:text-white font-bold inline-flex items-center space-x-1.5 transition-colors cursor-pointer"
+                className="text-xs text-orange-300 hover:text-white font-medium inline-flex items-center space-x-1.5 transition-colors cursor-pointer"
               >
                 <QrCode className="w-3.5 h-3.5" />
-                <span>Mes tickets disponibles ({validTicketsCount}) &gt;</span>
+                <span>Mes tickets disponibles ({validTicketsCount}) →</span>
               </button>
             </div>
           )}

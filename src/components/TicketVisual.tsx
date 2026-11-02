@@ -13,7 +13,8 @@ import {
   Share2,
   FileText,
   BadgeCheck,
-  Eye
+  Eye,
+  Ticket
 } from 'lucide-react';
 import { MealTicket } from '../types';
 import { generateTicketQRCodeDataURL } from '../utils/qrcode';
@@ -110,22 +111,22 @@ export const TicketVisual: React.FC<Props> = ({
         }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-lg shadow-inner">
-                🍽️
+              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-inner">
+                <Ticket className="w-5 h-5 text-amber-200" />
               </div>
               <div>
-                <span className="text-[10px] tracking-wider uppercase font-black text-amber-200 block">
-                  CROU KORHOGO • RESTAU. U
+                <span className="text-xs font-semibold text-orange-200 block">
+                  CROU Korhogo · Restaurant U
                 </span>
-                <span className="text-sm font-black font-cabinet leading-tight block">
-                  Ticket Repas Authentique (200 Frs)
+                <span className="text-sm font-bold leading-tight block">
+                  Ticket de repas · 200 FCFA
                 </span>
               </div>
             </div>
 
             <div className="text-right">
-              <span className="text-[10px] font-black bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full uppercase tracking-wider">
-                {ticket.mealType === 'dejeuner' ? '☀️ Déjeuner' : '🌙 Dîner'}
+              <span className="text-xs font-semibold bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-lg">
+                {ticket.mealType === 'dejeuner' ? 'Midi' : 'Soir'}
               </span>
             </div>
           </div>
@@ -135,26 +136,26 @@ export const TicketVisual: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setViewMode('photo')}
-              className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+              className={`py-1.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                 viewMode === 'photo'
-                  ? 'bg-white text-orange-600 shadow-sm font-cabinet'
+                  ? 'bg-white text-slate-900 shadow-sm font-semibold'
                   : 'text-white/80 hover:text-white'
               }`}
             >
               <Eye className="w-3.5 h-3.5" />
-              <span>Vrai Ticket (Photo)</span>
+              <span>Photo du ticket</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode('qrcode')}
-              className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+              className={`py-1.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                 viewMode === 'qrcode'
-                  ? 'bg-white text-orange-600 shadow-sm font-cabinet'
+                  ? 'bg-white text-slate-900 shadow-sm font-semibold'
                   : 'text-white/80 hover:text-white'
               }`}
             >
               <QrCode className="w-3.5 h-3.5" />
-              <span>QR Code Tourniquet</span>
+              <span>QR Code tourniquet</span>
             </button>
           </div>
         </div>

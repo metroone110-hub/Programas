@@ -24,8 +24,8 @@ export const MyTicketsModal: React.FC<Props> = ({ isOpen, onClose, user, onSelec
               <Ticket className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-bold text-base font-cabinet text-white">Mes Tickets Repas</h3>
-              <p className="text-xs text-slate-400">{tickets.length} ticket(s) enregistrés</p>
+              <h3 className="font-bold text-base text-white tracking-tight">Mes tickets de repas</h3>
+              <p className="text-sm text-slate-300">{tickets.length} ticket(s) enregistrés</p>
             </div>
           </div>
           <button

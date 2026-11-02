@@ -70,52 +70,52 @@ export const PWAInstallButton: React.FC = () => {
       <button
         type="button"
         onClick={handleInstallClick}
-        className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+        className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-medium border border-slate-200 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
         title="Installer l'application sur votre écran d'accueil"
       >
-        <Download className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Installer l'App</span>
+        <Download className="w-3.5 h-3.5 text-slate-600" />
+        <span className="hidden sm:inline">Installer l'application</span>
         <span className="sm:hidden">Installer</span>
       </button>
 
       {/* Guided Modal for iOS iPhone/iPad users */}
       {showIOSModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4 animate-scaleUp text-slate-900">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4 animate-scaleUp text-slate-900">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <span className="text-xl">📲</span>
-                <h3 className="font-black text-sm text-slate-900 font-cabinet">
-                  Installer sur votre iPhone
+                <Smartphone className="w-5 h-5 text-orange-600" />
+                <h3 className="font-bold text-base text-slate-900">
+                  Installer sur iPhone
                 </h3>
               </div>
               <button
                 onClick={() => setShowIOSModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Pour utiliser CROU Resto U comme une vraie application sur votre écran d'accueil iPhone :
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Pour ajouter Programas sur votre écran d'accueil :
             </p>
 
-            <ol className="text-xs space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 font-medium">
+            <ol className="text-xs space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100 font-normal text-slate-700">
               <li className="flex items-start space-x-2.5">
-                <span className="w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+                <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
                 <span>
-                  Appuyez sur le bouton <strong>Partager</strong> <Share2 className="w-3.5 h-3.5 inline text-blue-600 mx-0.5" /> situé en bas au centre de Safari.
+                  Appuyez sur le bouton <strong>Partager</strong> <Share2 className="w-3.5 h-3.5 inline text-blue-600 mx-0.5" /> en bas au centre de Safari.
                 </span>
               </li>
               <li className="flex items-start space-x-2.5">
-                <span className="w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+                <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
                 <span>
-                  Faites défiler vers le bas et sélectionnez <strong>« Sur l'écran d'accueil »</strong> <PlusSquare className="w-3.5 h-3.5 inline text-slate-700 mx-0.5" />.
+                  Faites défiler et appuyez sur <strong>« Sur l'écran d'accueil »</strong> <PlusSquare className="w-3.5 h-3.5 inline text-slate-700 mx-0.5" />.
                 </span>
               </li>
               <li className="flex items-start space-x-2.5">
-                <span className="w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+                <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
                 <span>
                   Appuyez sur <strong>« Ajouter »</strong> en haut à droite.
                 </span>
@@ -124,9 +124,9 @@ export const PWAInstallButton: React.FC = () => {
 
             <button
               onClick={() => setShowIOSModal(false)}
-              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md"
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-xl transition-all cursor-pointer"
             >
-              Compris !
+              Fermer
             </button>
           </div>
         </div>

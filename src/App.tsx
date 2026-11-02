@@ -524,86 +524,84 @@ export const App: React.FC = () => {
         />
 
         {/* MENU DU JOUR */}
-        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/90 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
-              <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-900 text-[10px] font-black uppercase tracking-wider mb-1">
-                <span>🍽️ Restauration Universitaire • UPGC</span>
+              <div className="text-xs font-semibold text-orange-600 tracking-normal mb-1">
+                Restaurant universitaire · UPGC Korhogo
               </div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 font-cabinet">
-                Menu du Jour
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                Au menu aujourd'hui
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Plats disponibles aujourd'hui • 200 FCFA sur présentation de votre Ticket Repas CROU.
+              <p className="text-sm text-slate-500 mt-1">
+                Plats cuisinés sur place · 200 FCFA avec votre ticket CROU.
               </p>
             </div>
 
-            {/* Service hours schedule badge */}
-            <div className="flex items-center space-x-2 text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80 self-start sm:self-auto">
-              <span>☀️ Déjeuner : <strong className="text-orange-600">11h30 - 14h30</strong></span>
-              <span>•</span>
-              <span>🌙 Dîner : <strong className="text-orange-600">18h30 - 21h00</strong></span>
+            {/* Service hours schedule */}
+            <div className="flex items-center space-x-2 text-xs font-medium text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200 self-start sm:self-auto">
+              <span>Midi : <strong className="text-slate-900 font-semibold">11h30 – 14h30</strong></span>
+              <span className="text-slate-300">·</span>
+              <span>Soir : <strong className="text-slate-900 font-semibold">18h30 – 21h00</strong></span>
             </div>
           </div>
 
           {/* Meal Type Switcher & Search */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="inline-flex p-1 bg-slate-100 rounded-2xl">
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl">
               <button
                 type="button"
                 onClick={() => setSelectedMealType('dejeuner')}
-                className={`px-5 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
                   selectedMealType === 'dejeuner'
-                    ? 'bg-white text-orange-600 shadow-sm font-cabinet'
+                    ? 'bg-white text-slate-900 shadow-xs font-semibold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>☀️</span>
-                <span>Déjeuner (11h30 - 14h30)</span>
+                <span>Déjeuner (11h30 – 14h30)</span>
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedMealType('diner')}
-                className={`px-5 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
                   selectedMealType === 'diner'
-                    ? 'bg-white text-orange-600 shadow-sm font-cabinet'
+                    ? 'bg-white text-slate-900 shadow-xs font-semibold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>🌙</span>
-                <span>Dîner (18h30 - 21h00)</span>
+                <span>Dîner (18h30 – 21h00)</span>
               </button>
             </div>
 
             {/* Search Bar */}
             <div className="relative flex-1 sm:max-w-xs">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filtrer un plat au menu..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+                placeholder="Rechercher un plat..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
               />
             </div>
           </div>
 
-          {/* Category Filter Pills */}
+          {/* Category Filter Tabs */}
           <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
             {[
               { id: 'all', label: 'Tous les plats' },
-              { id: 'plat_principal', label: '🍛 Plats Chauds' },
-              { id: 'entree', label: '🥗 Entrées / Accompagnements' },
-              { id: 'dessert', label: '🍧 Desserts & Fruits' },
-              { id: 'boisson', label: '🥤 Boissons Locales' },
+              { id: 'plat_principal', label: 'Plats chauds' },
+              { id: 'entree', label: 'Entrées & accompagnements' },
+              { id: 'dessert', label: 'Desserts & fruits' },
+              { id: 'boisson', label: 'Boissons' },
             ].map(cat => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all cursor-pointer ${
                   selectedCategory === cat.id
-                    ? 'bg-slate-900 text-white shadow-xs'
+                    ? 'bg-slate-900 text-white shadow-xs font-semibold'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
@@ -614,16 +612,16 @@ export const App: React.FC = () => {
 
           {/* Dishes Grid or Admin Publication Banner */}
           {filteredDishes.length === 0 ? (
-            <div className="bg-amber-50/70 border border-orange-200/80 rounded-2xl p-6 sm:p-8 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mx-auto text-2xl shadow-inner">
-                👨‍🍳
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-white text-orange-600 border border-slate-200 flex items-center justify-center mx-auto shadow-xs">
+                <Utensils className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base font-cabinet">
-                  Aucun plat publié pour ce service ({selectedMealType === 'dejeuner' ? 'Déjeuner 11h30-14h30' : 'Dîner 18h30-21h00'})
+                <h3 className="font-semibold text-slate-900 text-base">
+                  Aucun plat publié pour ce service ({selectedMealType === 'dejeuner' ? 'Midi 11h30 – 14h30' : 'Soir 18h30 – 21h00'})
                 </h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  L'administration de la restauration universitaire publie le menu du jour avec les heures exactes de passage.
+                <p className="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+                  Le restaurant universitaire met à jour les plats du jour avant chaque service.
                 </p>
               </div>
 
@@ -632,18 +630,18 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSelectedMealType('diner')}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-xl shadow-xs transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
                   >
-                    <span>🌙 Voir les plats du Dîner (18h30 - 21h00)</span>
+                    <span>Voir les plats du soir (18h30 – 21h00)</span>
                   </button>
                 )}
                 {selectedMealType === 'diner' && dishes.some(d => d.mealType === 'dejeuner') && (
                   <button
                     type="button"
                     onClick={() => setSelectedMealType('dejeuner')}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-full shadow-md transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-xl shadow-xs transition-all active:scale-95 inline-flex items-center space-x-1.5 cursor-pointer"
                   >
-                    <span>☀️ Voir les plats du Déjeuner (11h30 - 14h30)</span>
+                    <span>Voir les plats du midi (11h30 – 14h30)</span>
                   </button>
                 )}
                 <button

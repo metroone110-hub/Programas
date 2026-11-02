@@ -54,9 +54,9 @@ export const StudentTicketsModal: React.FC<Props> = ({
               <Ticket className="w-6 h-6 text-orange-400" />
             </div>
             <div>
-              <h3 className="text-xl font-black font-cabinet">Mes Tickets CROU</h3>
-              <p className="text-xs text-slate-300">
-                {validTickets.length} ticket{validTickets.length > 1 ? 's' : ''} valide{validTickets.length > 1 ? 's' : ''} pour les repas
+              <h3 className="text-lg font-bold text-white tracking-tight">Mes tickets de repas</h3>
+              <p className="text-sm text-slate-300">
+                {validTickets.length} ticket{validTickets.length > 1 ? 's' : ''} disponible{validTickets.length > 1 ? 's' : ''}
               </p>
             </div>
           </div>

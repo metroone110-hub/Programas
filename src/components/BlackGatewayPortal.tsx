@@ -298,8 +298,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
           {activeTab === 'login' && (
             <form onSubmit={handleStudentLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Numéro de Matricule Étudiant
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Numéro de matricule
                 </label>
                 <div className="relative">
                   <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -314,14 +314,14 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     required
                   />
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Votre identifiant officiel unique à l'université UPGC.
+                <p className="text-xs text-slate-400 mt-1">
+                  Votre identifiant officiel à l'université UPGC.
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Mot de Passe
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Mot de passe
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -372,9 +372,9 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-orange-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
+                className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
-                <span>{isLoading ? 'Vérification...' : 'Accéder au Resto U'}</span>
+                <span>{isLoading ? 'Vérification...' : 'Se connecter'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
@@ -452,8 +452,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
           {activeTab === 'register' && (
             <form onSubmit={handleStudentRegister} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Numéro de Matricule Étudiant *
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Numéro de matricule *
                 </label>
                 <div className="relative">
                   <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -469,8 +469,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Nom et Prénom(s) *
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Nom et prénom(s) *
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -486,7 +486,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
                   UFR / Faculté
                 </label>
                 <select
@@ -502,8 +502,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Créer un Mot de Passe *
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Créer un mot de passe *
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -528,9 +528,9 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-orange-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
+                className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
-                <span>{isLoading ? 'Création...' : 'Créer mon Compte & Activer le Pass'}</span>
+                <span>{isLoading ? 'Création...' : 'Créer mon compte'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
@@ -541,12 +541,12 @@ export const BlackGatewayPortal: React.FC<Props> = ({
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div className="p-3 bg-slate-800/60 border border-amber-500/30 rounded-2xl flex items-center space-x-2 text-xs text-amber-300">
                 <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <span>Espace réservé à la Direction et aux contrôleurs de tourniquet du CROU.</span>
+                <span>Espace réservé à la Direction et aux contrôleurs du CROU.</span>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Pseudo Administrateur
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Identifiant administrateur
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -562,8 +562,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Mot de Passe Administrateur
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Mot de passe administrateur
                 </label>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
@@ -588,9 +588,9 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
+                className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold text-sm rounded-2xl border border-amber-500/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
-                <span>{isLoading ? 'Connexion...' : 'Connexion Direction CROU'}</span>
+                <span>{isLoading ? 'Connexion...' : 'Connexion administration'}</span>
                 <ShieldCheck className="w-4 h-4" />
               </button>
             </form>
