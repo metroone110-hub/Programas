@@ -6,24 +6,70 @@
     <link rel="alternate icon" type="image/png" href="/pwa-192x192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#ea580c" />
+
+    <meta name="theme-color" content="#ea580c" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Programas" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
     <title>Programas • CROU Korhogo Resto U</title>
-    <meta name="description" content="Programas : Billetterie officielle, menu du restaurant universitaire et tickets subventionnés à 200 FCFA pour les étudiants du CROU Korhogo (UPGC)." />
+    <meta name="description" content="Programas : le ticket du restaurant universitaire du CROU Korhogo (UPGC), à 200 FCFA, directement sur ton téléphone." />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:site_name" content="Programas" />
     <meta property="og:title" content="Programas • CROU Korhogo Resto U" />
-    <meta property="og:description" content="Programas : Billetterie officielle, menu du restaurant universitaire et tickets subventionnés à 200 FCFA pour les étudiants du CROU Korhogo (UPGC)." />
+    <meta property="og:description" content="Ton ticket de restaurant universitaire à 200 FCFA, directement sur ton téléphone." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="preload" as="image" href="/assets/aistudio/IMG_1017_cbecc94a.jpeg">
-    <link rel="preload" as="image" href="/assets/aistudio/IMG_1038_80198fc0.jpeg">
+    <link rel="preload" as="image" href="/assets/aistudio/IMG_1017_cbecc94a.jpeg" />
+    <link rel="preload" as="image" href="/assets/aistudio/IMG_1038_80198fc0.jpeg" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <style>
+      :root { --bg: #f5f5f7; --fg: #1d1d1f; --muted: #86868b; --accent: #ea580c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #000; --fg: #f5f5f7; --muted: #98989d; }
+      }
+      html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Plus Jakarta Sans", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior-y: none;
+      }
+      /* Écran de démarrage : remplacé dès que React monte */
+      .boot {
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      .boot-mark {
+        width: 64px; height: 64px; border-radius: 15px;
+        background: var(--accent);
+        animation: boot-in .5s cubic-bezier(.2,.8,.2,1) both;
+      }
+      @keyframes boot-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+      @media (prefers-reduced-motion: reduce) { .boot-mark { animation: none; } }
+    </style>
   </head>
-  <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-orange-500 selection:text-white">
-    <div id="root"></div>
+  <body class="selection:bg-orange-500 selection:text-white">
+    <div id="root">
+      <div class="boot" role="status" aria-label="Chargement de Programas"><div class="boot-mark"></div></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

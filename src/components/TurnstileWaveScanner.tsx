@@ -233,7 +233,6 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
     if (res.status === 'valid' && res.ticket) {
       if (soundEnabled) {
         soundSynthesizer.playSuccessBeep();
-        soundSynthesizer.speak(`Ticket validé ! ${res.ticket.dishName}`);
       }
 
       await recordMealValidatedInLedger(res.ticket);
