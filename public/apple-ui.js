@@ -1,20 +1,18 @@
-/* apple-ui.js — retour tactile (vibration légère) et comportements « app installée »
-   Chargé avec <script src="/apple-ui.js" defer></script> */
+/* apple-ui.js (v2) — retour haptique, comportement « app installée », images sans flash blanc
+   <script src="/apple-ui.js" defer></script> */
 (() => {
   'use strict';
 
   const root = document.documentElement;
+  const touchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-  // Marque l'app lancée depuis l'écran d'accueil (utile pour adapter le CSS)
   const standalone =
     window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   root.classList.toggle('is-standalone', standalone);
 
-  // Active l'état :active sur les anciens Safari
-  document.addEventListener('touchstart', () => {}, { passive: true });
+  document.addEventListener('touchstart', () => {}, { passive: true });   // active :active sur les vieux Safari
 
-  // Retour haptique
-  // Android : Vibration API. iOS (17.4+) : un interrupteur natif masqué qui déclenche le moteur Taptic.
+  /* ───────── Retour haptique ───────── */
   let iosSwitch = null;
   const iosTap = () => {
     if (!iosSwitch) {
@@ -31,23 +29,19 @@
     }
     iosSwitch.click();
   };
-
   const haptic = (ms = 8) => {
     try {
       if (typeof navigator.vibrate === 'function') navigator.vibrate(ms);
       else iosTap();
-    } catch {
-      /* appareil sans retour haptique : on ignore */
-    }
+    } catch { /* pas de haptique sur cet appareil */ }
   };
-  window.haptic = haptic; // utilisable ailleurs : window.haptic(25) après un paiement réussi
+  window.haptic = haptic;
 
-  // Vibration à chaque vrai toucher (pas pendant un défilement)
   const TARGETS = 'button:not(:disabled), [role="button"], [role="tab"], [role="switch"], a[href], summary';
   document.addEventListener(
     'click',
     (e) => {
-      if (!e.isTrusted || e.detail === 0) return;          // ignore les clics simulés et le clavier
+      if (!e.isTrusted || e.detail === 0) return;
       const el = e.target instanceof Element ? e.target.closest(TARGETS) : null;
       if (!el || el.hasAttribute('data-no-haptic')) return;
       haptic();
@@ -55,8 +49,64 @@
     { passive: true, capture: true }
   );
 
-  // Bloque le glisser-déposer des images, qui donne un effet « page web »
+  /* ───────── Comportement d'app ───────── */
+  // Pas de menu « copier / enregistrer l'image » à l'appui long (sur écran tactile seulement)
+  if (touchDevice) {
+    document.addEventListener('contextmenu', (e) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (t && !t.closest('input, textarea, [contenteditable], [data-selectable]')) e.preventDefault();
+    });
+  }
   document.addEventListener('dragstart', (e) => {
     if (e.target instanceof HTMLImageElement) e.preventDefault();
   });
+
+  /* ───────── Images : charger avant d'arriver à l'écran, afficher sans trou blanc ───────── */
+  const seen = new WeakSet();
+
+  // Les images « lazy » démarrent leur chargement 2,5 écrans avant d'être visibles
+  const io =
+    'IntersectionObserver' in window
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              entry.target.loading = 'eager';
+              io.unobserve(entry.target);
+            }
+          },
+          { rootMargin: '250% 0px' }
+        )
+      : null;
+
+  const prepare = (img) => {
+    if (seen.has(img)) return;
+    seen.add(img);
+    img.decoding = 'async';
+
+    if (!img.complete || img.naturalWidth === 0) {
+      img.classList.add('is-loading');
+      const done = (ok) => {
+        img.classList.remove('is-loading');
+        if (ok) img.classList.add('is-loaded');
+      };
+      img.addEventListener('load', () => done(true), { once: true });
+      img.addEventListener('error', () => done(false), { once: true });
+    }
+    if (io && img.loading === 'lazy') io.observe(img);
+  };
+
+  const scan = (node) => {
+    if (node instanceof HTMLImageElement) prepare(node);
+    else if (node instanceof Element) node.querySelectorAll('img').forEach(prepare);
+  };
+
+  const start = () => {
+    scan(document.body);
+    new MutationObserver((mutations) => {
+      for (const m of mutations) m.addedNodes.forEach(scan);
+    }).observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) start();
+  else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();

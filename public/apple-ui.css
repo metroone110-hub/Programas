@@ -1,38 +1,64 @@
-/* apple-ui.css — couche « app native iOS » pour Programas
-   À charger APRÈS le CSS de l'app. Ne change aucun composant : elle agit sur
-   tous les boutons, liens, champs et textes existants. */
+/* apple-ui.css — couche « app native iOS » pour Programas (v2)
+   À charger APRÈS le CSS de l'app. Agit sur les boutons, liens, champs, textes
+   et images existants, sans modifier les composants. */
 
 :root {
   --accent: #ea580c;
+  --label: #1d1d1f;
+  --label-secondary: rgba(60, 60, 67, 0.6);
+  --label-tertiary: rgba(60, 60, 67, 0.3);
+  --fill: #e9e9ee;
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* relâchement avec léger rebond */
   --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);    /* ouverture de feuille iOS */
+
+  /* Échelle de texte alignée sur les styles iOS (base 17 px), pour Tailwind v4 */
+  --text-xs: 0.765rem;   --text-xs--line-height: 1.385;   /* Footnote 13 */
+  --text-sm: 0.882rem;   --text-sm--line-height: 1.333;   /* Subhead 15 */
+  --text-base: 1rem;     --text-base--line-height: 1.294; /* Body 17 */
+  --text-xl: 1.176rem;   --text-xl--line-height: 1.25;    /* Title 3 : 20 */
+  --text-2xl: 1.294rem;  --text-2xl--line-height: 1.273;  /* Title 2 : 22 */
+  --text-3xl: 1.647rem;  --text-3xl--line-height: 1.214;  /* Title 1 : 28 */
+  --text-4xl: 2rem;      --text-4xl--line-height: 1.206;  /* Large Title : 34 */
 }
 
-/* ───────── Typographie : plus grande, et qui suit le réglage « Taille du texte » d'iOS ───────── */
+/* ───────── Typographie ───────── */
 html {
-  font-size: 106.25%;               /* 17 px : taille de texte standard d'iOS */
+  font-size: 106.25%;               /* 17 px : taille « Body » d'iOS */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 @supports (font: -apple-system-body) {
-  html { font: -apple-system-body; font-family: inherit; }
+  html { font: -apple-system-body; font-family: inherit; }   /* suit « Taille du texte » d'iOS */
 }
 body {
-  line-height: 1.4;
+  line-height: 1.294;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3 { letter-spacing: -0.022em; text-wrap: balance; }
+/* Note : la police système d'Apple règle elle-même l'espacement des lettres selon la taille.
+   Ne pas ajouter de letter-spacing manuel, ça le doublerait. */
+h1, h2, h3 { text-wrap: balance; }
 p { text-wrap: pretty; }
 .tabular, [data-price] { font-variant-numeric: tabular-nums; }
 
-/* Les micro-textes (10–12 px) deviennent lisibles */
-.text-xs            { font-size: 0.8rem;  line-height: 1.15rem; }
-.text-\[9px\],
-.text-\[10px\]      { font-size: 0.72rem; line-height: 1rem; }
-.text-\[11px\]      { font-size: 0.78rem; line-height: 1.1rem; }
-.text-\[12px\]      { font-size: 0.82rem; line-height: 1.15rem; }
+/* Les micro-textes en px fixes deviennent lisibles (mini 12 px, comme Caption 1) */
+.text-\[9px\], .text-\[10px\], .text-\[11px\] { font-size: 0.706rem; line-height: 1.333; }
+.text-\[12px\] { font-size: 0.765rem; line-height: 1.385; }
+
+/* Styles iOS prêts à l'emploi : class="t-headline" */
+.t-large-title { font-size: 2rem;     line-height: 1.206; font-weight: 700; }
+.t-title1      { font-size: 1.647rem; line-height: 1.214; font-weight: 700; }
+.t-title2      { font-size: 1.294rem; line-height: 1.273; font-weight: 700; }
+.t-title3      { font-size: 1.176rem; line-height: 1.25;  font-weight: 600; }
+.t-headline    { font-size: 1rem;     line-height: 1.294; font-weight: 600; }
+.t-body        { font-size: 1rem;     line-height: 1.294; font-weight: 400; }
+.t-callout     { font-size: 0.941rem; line-height: 1.3125; font-weight: 400; }
+.t-subhead     { font-size: 0.882rem; line-height: 1.333; font-weight: 400; }
+.t-footnote    { font-size: 0.765rem; line-height: 1.385; font-weight: 400; }
+.t-caption     { font-size: 0.706rem; line-height: 1.333; font-weight: 400; }
+.t-secondary   { color: var(--label-secondary); }
+.t-tertiary    { color: var(--label-tertiary); }
 
 /* ───────── Champs : 16 px minimum, sinon iOS zoome la page au toucher ───────── */
 input, select, textarea {
@@ -43,20 +69,24 @@ input, select, textarea {
 }
 input, textarea { caret-color: var(--accent); }
 
-/* ───────── Toucher : réactivité immédiate ───────── */
+/* ───────── Comportement d'application, pas de site web ───────── */
 html { -webkit-tap-highlight-color: transparent; }
-a, button, [role="button"], [role="tab"], summary, label, select {
-  touch-action: manipulation;      /* supprime le délai et le zoom au double-tap */
-}
-button, [role="button"], [role="tab"], a, img {
-  -webkit-touch-callout: none;     /* pas de menu au appui long */
+body {
+  overscroll-behavior: none;                 /* pas d'effet élastique ni de rechargement par tirage */
+  -webkit-touch-callout: none;
   -webkit-user-select: none;
-  user-select: none;
+  user-select: none;                         /* le texte ne se sélectionne plus par accident */
 }
+input, textarea, [contenteditable], [data-selectable], [data-selectable] * {
+  -webkit-user-select: text;
+  user-select: text;                         /* sauf dans les champs et là où tu mets data-selectable */
+}
+a, button, [role="button"], [role="tab"], summary, label, select { touch-action: manipulation; }
+img, a { -webkit-user-drag: none; }
 button { cursor: pointer; }
+button:disabled { cursor: default; }
 
-/* Appui : léger rétrécissement ; relâchement : petit rebond.
-   On utilise la propriété `scale`, qui ne touche pas aux `transform` existants. */
+/* Appui : léger rétrécissement ; relâchement : petit rebond (propriété `scale`, sans toucher à `transform`) */
 button:not(:disabled):not([data-no-press]),
 [role="button"]:not([data-no-press]),
 [role="tab"]:not([data-no-press]),
@@ -80,24 +110,68 @@ summary:active,
   scale: 0.97;
   transition-duration: 0.1s, 0.2s, 0.2s, 0.2s, 0.2s, 0.2s;
 }
-[data-press="strong"]:active { scale: 0.93; }   /* petits boutons ronds, icônes */
-button:disabled { cursor: default; }
+[data-press="strong"]:active { scale: 0.93; }
 
-/* Zone de toucher 44 pt pour les petites icônes : ajoute class="hit" au bouton */
 .hit { position: relative; }
-.hit::after { content: ""; position: absolute; inset: -8px; }
+.hit::after { content: ""; position: absolute; inset: -8px; }   /* zone de toucher 44 pt */
 
 /* ───────── Focus clavier uniquement ───────── */
 :focus { outline: none; }
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: inherit;
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: inherit; }
+
+/* ───────── Indicateur de chargement (le « spiral » qui tourne) ───────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner,
+[data-loading="true"]::after {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 6%, var(--spin, currentColor));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: spin 0.75s linear infinite;
 }
+.spinner { display: inline-block; }
+
+/* Bouton en cours d'action : contenu masqué (la largeur ne bouge pas), spinner au centre */
+[data-loading="true"] {
+  position: relative;
+  pointer-events: none;
+  color: transparent !important;
+  --spin: #fff;
+}
+[data-loading="true"] > * { opacity: 0; }
+[data-loading="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+[data-loading="true"][data-spinner="dark"] { --spin: var(--label); }
+
+/* Succès : coche qui se dessine ; échec : petite secousse */
+@keyframes draw-check { to { stroke-dashoffset: 0; } }
+.check-draw { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw-check 0.35s 0.05s var(--ease-ios) forwards; }
+@keyframes shake {
+  0%, 100% { translate: 0; } 20% { translate: -6px; } 40% { translate: 5px; }
+  60% { translate: -3px; } 80% { translate: 2px; }
+}
+.shake { animation: shake 0.4s ease-in-out; }
+
+/* ───────── Images : fond gris pendant le chargement, apparition douce, plus de blanc ───────── */
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes img-fade { from { opacity: 0.35; } to { opacity: 1; } }
+img { background-color: var(--fill); }
+img.is-loading {
+  color: transparent;
+  background-image: linear-gradient(100deg, var(--fill) 30%, #f5f5f7 50%, var(--fill) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+img.is-loaded { animation: img-fade 0.3s ease-out; }
 
 /* ───────── Défilement ───────── */
 html { scroll-behavior: smooth; }
-body { overscroll-behavior-y: none; }
 @media (hover: none) {
   ::-webkit-scrollbar { display: none; }
   * { scrollbar-width: none; }
@@ -105,15 +179,12 @@ body { overscroll-behavior-y: none; }
 .scroll-snap-x { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
 .scroll-snap-x > * { scroll-snap-align: start; }
 
-/* ───────── Zones sûres (encoche, barre d'accueil) ───────── */
+/* ───────── Zones sûres ───────── */
 .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px); }
-.px-safe {
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
-}
+.px-safe { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 
-/* ───────── Verre dépoli pour barres de navigation et onglets ───────── */
+/* ───────── Verre dépoli (barres de navigation, onglets) ───────── */
 .glass {
   background: rgba(255, 255, 255, 0.72);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -121,24 +192,22 @@ body { overscroll-behavior-y: none; }
   border-bottom: 0.5px solid rgba(60, 60, 67, 0.18);
 }
 .glass-bottom { border-bottom: 0; border-top: 0.5px solid rgba(60, 60, 67, 0.18); }
-
-/* ───────── Séparateur fin comme sur iOS ───────── */
 .hairline { border-width: 0; box-shadow: inset 0 -0.5px 0 rgba(60, 60, 67, 0.18); }
 
-/* ───────── Animations d'ouverture (feuilles, fenêtres) ───────── */
-@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
-@keyframes pop-in   { from { opacity: 0; scale: 0.94; } to { opacity: 1; scale: 1; } }
-.sheet-in   { animation: sheet-up 0.45s var(--ease-ios) both; }
-.fade-in    { animation: fade-in 0.25s ease-out both; }
-.pop-in     { animation: pop-in 0.3s var(--ease-ios) both; }
+/* ───────── Transitions d'écrans et de feuilles ───────── */
+@keyframes sheet-up   { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes fade-in    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in     { from { opacity: 0; scale: 0.94; } to { opacity: 1; scale: 1; } }
+@keyframes screen-in  { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+.sheet-in  { animation: sheet-up 0.45s var(--ease-ios) both; }
+.fade-in   { animation: fade-in 0.25s ease-out both; }
+.pop-in    { animation: pop-in 0.3s var(--ease-ios) both; }
+.screen-in { animation: screen-in 0.35s var(--ease-ios) both; }   /* à mettre sur le conteneur de chaque écran */
 
 /* ───────── Mouvement réduit ───────── */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   button:active, [role="button"]:active, a:active { scale: 1 !important; }
+  .spinner, [data-loading="true"]::after { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
 }

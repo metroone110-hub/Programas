@@ -302,7 +302,7 @@ export const TicketVisual: React.FC<Props> = ({
           <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
             <span className="text-slate-500 font-medium">Numéro de série :</span>
             <div className="flex items-center space-x-2">
-              <span className="font-mono font-bold text-slate-800">
+              <span data-selectable="true" className="font-mono font-bold text-slate-800 select-text">
                 {ticket.ticketNumber}
               </span>
               <button

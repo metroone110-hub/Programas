@@ -10,6 +10,7 @@ import {
   Zap
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { AsyncButton } from './AsyncButton';
 
 interface Props {
   user: UserProfile | null;
@@ -162,15 +163,15 @@ export const TicketCounterBox: React.FC<Props> = ({
           </div>
 
           {/* Buy Button */}
-          <button
-            type="button"
-            onClick={handleBuy}
+          <AsyncButton
+            onAction={handleBuy}
+            successLabel="Redirection..."
             className="w-full py-3.5 px-4 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-semibold text-sm rounded-xl shadow-md transition-all active:scale-98 cursor-pointer flex items-center justify-center space-x-2"
           >
             <Ticket className="w-4 h-4 text-white" />
             <span>Acheter {quantity} ticket{quantity > 1 ? 's' : ''} · {(quantity * 210).toLocaleString('fr-FR')} FCFA</span>
             <ChevronRight className="w-4 h-4 text-white/80" />
-          </button>
+          </AsyncButton>
 
           {/* Supported badges mini line */}
           <div className="flex items-center justify-center space-x-2 text-xs text-slate-400">

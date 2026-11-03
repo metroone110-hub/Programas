@@ -235,7 +235,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       <main className="relative z-10 flex-1 max-w-md w-full mx-auto px-4 py-8 flex flex-col justify-center">
         
         {/* Card Container */}
-        <div className="bg-[#121217] border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/80 backdrop-blur-xl relative overflow-hidden">
+        <div className="bg-[#121217] border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/80 backdrop-blur-xl relative overflow-hidden pop-in">
           
           {/* Top Tabs */}
           <div className="grid grid-cols-3 gap-1 p-1 bg-black/40 rounded-2xl border border-white/10 mb-6 text-xs font-bold">
@@ -372,6 +372,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
+                data-loading={isLoading ? "true" : undefined}
                 className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <span>{isLoading ? 'Vérification...' : 'Se connecter'}</span>
@@ -432,6 +433,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
+                data-loading={isLoading ? "true" : undefined}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <span>{isLoading ? 'Mise à jour...' : 'Réinitialiser & Se Connecter'}</span>
@@ -528,6 +530,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
+                data-loading={isLoading ? "true" : undefined}
                 className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <span>{isLoading ? 'Création...' : 'Créer mon compte'}</span>
@@ -588,6 +591,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading}
+                data-loading={isLoading ? "true" : undefined}
                 className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold text-sm rounded-2xl border border-amber-500/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 <span>{isLoading ? 'Connexion...' : 'Connexion administration'}</span>

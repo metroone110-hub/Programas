@@ -297,7 +297,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto font-sans">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-4 sm:my-8 animate-scaleUp">
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-4 sm:my-8 pop-in">
         
         {/* TOP BAR matching IMG_1194_0c2de57a.png */}
         <div className="px-5 pt-5 pb-3 flex items-center justify-between border-b border-slate-100">
@@ -601,6 +601,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
               <button
                 type="submit"
                 disabled={isLoading || !termsAccepted}
+                data-loading={isLoading ? "true" : undefined}
                 className="w-full py-4 px-6 bg-[#e11d48] hover:bg-[#be123c] text-white font-bold text-sm sm:text-base rounded-full shadow-lg shadow-rose-600/25 flex items-center justify-center space-x-2 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 {isLoading ? (
