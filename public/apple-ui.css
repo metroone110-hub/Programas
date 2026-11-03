@@ -1,175 +1,144 @@
-/* apple-ui.css — Expérience native iOS, typographie optimisée et retours tactiles */
+/* apple-ui.css — couche « app native iOS » pour Programas
+   À charger APRÈS le CSS de l'app. Ne change aucun composant : elle agit sur
+   tous les boutons, liens, champs et textes existants. */
 
 :root {
-  --ios-body-size: 17px;
-  --ios-accent: #ea580c;
-  --ios-glass-bg: rgba(255, 255, 255, 0.82);
-  --ios-glass-border: rgba(255, 255, 255, 0.4);
+  --accent: #ea580c;
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* relâchement avec léger rebond */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);    /* ouverture de feuille iOS */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ios-glass-bg: rgba(15, 23, 42, 0.85);
-    --ios-glass-border: rgba(255, 255, 255, 0.08);
-  }
-}
-
-/* 1. Écritures plus grandes et confortables comme les apps natives iOS */
+/* ───────── Typographie : plus grande, et qui suit le réglage « Taille du texte » d'iOS ───────── */
 html {
-  font-size: var(--ios-body-size);
+  font-size: 106.25%;               /* 17 px : taille de texte standard d'iOS */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
-
+@supports (font: -apple-system-body) {
+  html { font: -apple-system-body; font-family: inherit; }
+}
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Plus Jakarta Sans", system-ui, "Segoe UI", Roboto, sans-serif;
-  letter-spacing: -0.015em;
+  line-height: 1.4;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
+h1, h2, h3 { letter-spacing: -0.022em; text-wrap: balance; }
+p { text-wrap: pretty; }
+.tabular, [data-price] { font-variant-numeric: tabular-nums; }
 
-/* Agrandissement des petits textes (10px, 11px, 12px) pour une excellente lisibilité */
-.text-xs {
-  font-size: 0.8125rem !important; /* ~13.8px au lieu de 12px */
-  line-height: 1.35rem !important;
-}
+/* Les micro-textes (10–12 px) deviennent lisibles */
+.text-xs            { font-size: 0.8rem;  line-height: 1.15rem; }
+.text-\[9px\],
+.text-\[10px\]      { font-size: 0.72rem; line-height: 1rem; }
+.text-\[11px\]      { font-size: 0.78rem; line-height: 1.1rem; }
+.text-\[12px\]      { font-size: 0.82rem; line-height: 1.15rem; }
 
-.text-\[10px\],
-.text-\[11px\] {
-  font-size: 0.78rem !important; /* ~13.2px */
-  line-height: 1.25rem !important;
-}
-
-/* Champs de formulaire : minimum 16px pour éliminer le zoom automatique intempestif de Safari iOS */
-input,
-select,
-textarea {
-  font-size: max(16px, 1rem) !important;
+/* ───────── Champs : 16 px minimum, sinon iOS zoome la page au toucher ───────── */
+input, select, textarea {
+  font-size: max(16px, 1rem);
+  border-radius: 12px;
   -webkit-appearance: none;
+  appearance: none;
 }
+input, textarea { caret-color: var(--accent); }
 
-/* 2. Touches comme une vraie app avec léger rétrécissement et rebond */
-button:not([data-no-press]):not(:disabled),
+/* ───────── Toucher : réactivité immédiate ───────── */
+html { -webkit-tap-highlight-color: transparent; }
+a, button, [role="button"], [role="tab"], summary, label, select {
+  touch-action: manipulation;      /* supprime le délai et le zoom au double-tap */
+}
+button, [role="button"], [role="tab"], a, img {
+  -webkit-touch-callout: none;     /* pas de menu au appui long */
+  -webkit-user-select: none;
+  user-select: none;
+}
+button { cursor: pointer; }
+
+/* Appui : léger rétrécissement ; relâchement : petit rebond.
+   On utilise la propriété `scale`, qui ne touche pas aux `transform` existants. */
+button:not(:disabled):not([data-no-press]),
 [role="button"]:not([data-no-press]),
-a:not([data-no-press]),
-summary:not([data-no-press]) {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.12s ease;
-  user-select: none;
-  -webkit-user-select: none;
+[role="tab"]:not([data-no-press]),
+a[href]:not([data-no-press]),
+summary,
+[data-press] {
+  transition:
+    scale 0.38s var(--spring),
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
 }
-
-button:not([data-no-press]):not(:disabled):active,
+button:not(:disabled):not([data-no-press]):active,
 [role="button"]:not([data-no-press]):active,
-a:not([data-no-press]):active,
-summary:not([data-no-press]):active {
-  transform: scale(0.965);
-  opacity: 0.92;
+[role="tab"]:not([data-no-press]):active,
+a[href]:not([data-no-press]):active,
+summary:active,
+[data-press]:active {
+  scale: 0.97;
+  transition-duration: 0.1s, 0.2s, 0.2s, 0.2s, 0.2s, 0.2s;
+}
+[data-press="strong"]:active { scale: 0.93; }   /* petits boutons ronds, icônes */
+button:disabled { cursor: default; }
+
+/* Zone de toucher 44 pt pour les petites icônes : ajoute class="hit" au bouton */
+.hit { position: relative; }
+.hit::after { content: ""; position: absolute; inset: -8px; }
+
+/* ───────── Focus clavier uniquement ───────── */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: inherit;
 }
 
-/* Suppression des menus intempestifs sur appui long et glisser-déposer sur mobile */
-img,
-svg {
-  -webkit-touch-callout: none;
-  user-select: none;
-  -webkit-user-select: none;
+/* ───────── Défilement ───────── */
+html { scroll-behavior: smooth; }
+body { overscroll-behavior-y: none; }
+@media (hover: none) {
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}
+.scroll-snap-x { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+.scroll-snap-x > * { scroll-snap-align: start; }
+
+/* ───────── Zones sûres (encoche, barre d'accueil) ───────── */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px); }
+.px-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
-/* 3. Masquage propre des barres de défilement sur téléphone */
-::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-}
-
-* {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-/* 4. Classes utilitaires Apple iOS */
-
-/* Verre dépoli translucide façon iOS */
+/* ───────── Verre dépoli pour barres de navigation et onglets ───────── */
 .glass {
-  background-color: var(--ios-glass-bg) !important;
-  backdrop-filter: blur(20px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border-color: var(--ios-glass-border) !important;
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid rgba(60, 60, 67, 0.18);
 }
+.glass-bottom { border-bottom: 0; border-top: 0.5px solid rgba(60, 60, 67, 0.18); }
 
-/* Safe areas pour les encoches iPhone et la barre d'accueil */
-.pt-safe {
-  padding-top: max(env(safe-area-inset-top, 0px), 12px) !important;
-}
+/* ───────── Séparateur fin comme sur iOS ───────── */
+.hairline { border-width: 0; box-shadow: inset 0 -0.5px 0 rgba(60, 60, 67, 0.18); }
 
-.pb-safe {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px) !important;
-}
+/* ───────── Animations d'ouverture (feuilles, fenêtres) ───────── */
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in   { from { opacity: 0; scale: 0.94; } to { opacity: 1; scale: 1; } }
+.sheet-in   { animation: sheet-up 0.45s var(--ease-ios) both; }
+.fade-in    { animation: fade-in 0.25s ease-out both; }
+.pop-in     { animation: pop-in 0.3s var(--ease-ios) both; }
 
-.pl-safe {
-  padding-left: env(safe-area-inset-left, 0px) !important;
-}
-
-.pr-safe {
-  padding-right: env(safe-area-inset-right, 0px) !important;
-}
-
-/* Agrandit la zone cliquable sur les petites icônes sans modifier le design */
-.hit {
-  position: relative;
-}
-
-.hit::after {
-  content: '';
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  bottom: -10px;
-  left: -10px;
-}
-
-/* Animations de fenêtres natives */
-@keyframes appleSheetIn {
-  from {
-    transform: translateY(100%);
-    opacity: 0.8;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.sheet-in {
-  animation: appleSheetIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes applePopIn {
-  from {
-    transform: scale(0.93);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.pop-in {
-  animation: applePopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* 5. Respect du mode Mouvement Réduit */
+/* ───────── Mouvement réduit ───────── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  ::before,
-  ::after {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
+  button:active, [role="button"]:active, a:active { scale: 1 !important; }
 }
