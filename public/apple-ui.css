@@ -1,0 +1,175 @@
+/* apple-ui.css — Expérience native iOS, typographie optimisée et retours tactiles */
+
+:root {
+  --ios-body-size: 17px;
+  --ios-accent: #ea580c;
+  --ios-glass-bg: rgba(255, 255, 255, 0.82);
+  --ios-glass-border: rgba(255, 255, 255, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ios-glass-bg: rgba(15, 23, 42, 0.85);
+    --ios-glass-border: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* 1. Écritures plus grandes et confortables comme les apps natives iOS */
+html {
+  font-size: var(--ios-body-size);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Plus Jakarta Sans", system-ui, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.015em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Agrandissement des petits textes (10px, 11px, 12px) pour une excellente lisibilité */
+.text-xs {
+  font-size: 0.8125rem !important; /* ~13.8px au lieu de 12px */
+  line-height: 1.35rem !important;
+}
+
+.text-\[10px\],
+.text-\[11px\] {
+  font-size: 0.78rem !important; /* ~13.2px */
+  line-height: 1.25rem !important;
+}
+
+/* Champs de formulaire : minimum 16px pour éliminer le zoom automatique intempestif de Safari iOS */
+input,
+select,
+textarea {
+  font-size: max(16px, 1rem) !important;
+  -webkit-appearance: none;
+}
+
+/* 2. Touches comme une vraie app avec léger rétrécissement et rebond */
+button:not([data-no-press]):not(:disabled),
+[role="button"]:not([data-no-press]),
+a:not([data-no-press]),
+summary:not([data-no-press]) {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.12s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:not([data-no-press]):not(:disabled):active,
+[role="button"]:not([data-no-press]):active,
+a:not([data-no-press]):active,
+summary:not([data-no-press]):active {
+  transform: scale(0.965);
+  opacity: 0.92;
+}
+
+/* Suppression des menus intempestifs sur appui long et glisser-déposer sur mobile */
+img,
+svg {
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 3. Masquage propre des barres de défilement sur téléphone */
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+/* 4. Classes utilitaires Apple iOS */
+
+/* Verre dépoli translucide façon iOS */
+.glass {
+  background-color: var(--ios-glass-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-color: var(--ios-glass-border) !important;
+}
+
+/* Safe areas pour les encoches iPhone et la barre d'accueil */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 12px) !important;
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px) !important;
+}
+
+.pl-safe {
+  padding-left: env(safe-area-inset-left, 0px) !important;
+}
+
+.pr-safe {
+  padding-right: env(safe-area-inset-right, 0px) !important;
+}
+
+/* Agrandit la zone cliquable sur les petites icônes sans modifier le design */
+.hit {
+  position: relative;
+}
+
+.hit::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  bottom: -10px;
+  left: -10px;
+}
+
+/* Animations de fenêtres natives */
+@keyframes appleSheetIn {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sheet-in {
+  animation: appleSheetIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes applePopIn {
+  from {
+    transform: scale(0.93);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pop-in {
+  animation: applePopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 5. Respect du mode Mouvement Réduit */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

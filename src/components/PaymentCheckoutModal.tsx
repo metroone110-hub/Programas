@@ -147,6 +147,9 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       }
 
       try {
+        if (typeof (window as any).haptic === 'function') {
+          (window as any).haptic(25);
+        }
         confetti({
           particleCount: 90,
           spread: 70,
