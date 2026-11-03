@@ -50,7 +50,7 @@ import { ImageWithLoader } from './components/ImageWithLoader';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { CroukOfficialGalleryAndAbout } from './components/CroukOfficialGalleryAndAbout';
 import { TicketCounterBox } from './components/TicketCounterBox';
-import { ProgramasPochetteSplash } from './components/ProgramasPochetteSplash';
+import { TicketIntro } from './components/TicketIntro';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
@@ -467,15 +467,8 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full">
       
-      {/* 3D Holographic Animated Programas Pochette Splash Screen */}
-      {showSplash && (
-        <ProgramasPochetteSplash
-          onComplete={() => {
-            sessionStorage.setItem('programas_splash_shown_session', 'true');
-            setShowSplash(false);
-          }}
-        />
-      )}
+      {/* Intro animée fluide 60fps : ticket qui monte, prix qui grimpe à 200 F et talon qui se détache */}
+      <TicketIntro />
 
       {/* INTERFACE 1: BLACK GATEWAY PORTAL (INSCRIPTION & CONNEXION) */}
       <BlackGatewayPortal

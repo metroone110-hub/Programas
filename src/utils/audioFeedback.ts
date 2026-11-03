@@ -21,13 +21,37 @@ class SoundSynthesizer {
   }
 
   /**
-   * Authentic iPhone crystal "Cline" chime (Apple Pay / iOS confirmation style)
+   * Prime and unlock Web Audio on iOS Safari user gesture
+   */
+  public unlockAudio(): void {
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Authentic iPhone crystal "Cline" chime 🔔 (Apple Pay / iOS confirmation style)
    * High-definition multi-harmonic glass bell chime with exponential crystal decay.
    */
   public playSuccessBeep(): void {
     try {
       const ctx = this.getContext();
       if (!ctx) return;
+
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
 
       const now = ctx.currentTime;
 
@@ -37,26 +61,26 @@ class SoundSynthesizer {
       osc1.type = 'sine';
       osc1.frequency.setValueAtTime(1318.5, now);
       gain1.gain.setValueAtTime(0, now);
-      gain1.gain.linearRampToValueAtTime(0.35, now + 0.008);
+      gain1.gain.linearRampToValueAtTime(0.40, now + 0.006);
       gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
       osc1.connect(gain1);
       gain1.connect(ctx.destination);
       osc1.start(now);
       osc1.stop(now + 0.3);
 
-      // Note 2: Main bright crystal chime ("Cline!" - C7 ~ 2093.0 Hz)
+      // Note 2: Main bright crystal chime ("Cline! 🔔" - C7 ~ 2093.0 Hz)
       const tMain = now + 0.065;
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.type = 'sine';
       osc2.frequency.setValueAtTime(2093.0, tMain);
       gain2.gain.setValueAtTime(0, tMain);
-      gain2.gain.linearRampToValueAtTime(0.48, tMain + 0.006);
-      gain2.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.72);
+      gain2.gain.linearRampToValueAtTime(0.55, tMain + 0.005);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.75);
       osc2.connect(gain2);
       gain2.connect(ctx.destination);
       osc2.start(tMain);
-      osc2.stop(tMain + 0.75);
+      osc2.stop(tMain + 0.78);
 
       // Note 3: Shimmer crystal harmonic overtone (C8 ~ 4186.0 Hz)
       const osc3 = ctx.createOscillator();
@@ -64,12 +88,12 @@ class SoundSynthesizer {
       osc3.type = 'sine';
       osc3.frequency.setValueAtTime(4186.0, tMain);
       gain3.gain.setValueAtTime(0, tMain);
-      gain3.gain.linearRampToValueAtTime(0.12, tMain + 0.005);
-      gain3.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.45);
+      gain3.gain.linearRampToValueAtTime(0.18, tMain + 0.004);
+      gain3.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.48);
       osc3.connect(gain3);
       gain3.connect(ctx.destination);
       osc3.start(tMain);
-      osc3.stop(tMain + 0.48);
+      osc3.stop(tMain + 0.50);
 
       // Note 4: Warm mid bell resonance (G6 ~ 1567.98 Hz)
       const osc4 = ctx.createOscillator();
@@ -77,15 +101,30 @@ class SoundSynthesizer {
       osc4.type = 'sine';
       osc4.frequency.setValueAtTime(1567.98, tMain);
       gain4.gain.setValueAtTime(0, tMain);
-      gain4.gain.linearRampToValueAtTime(0.18, tMain + 0.006);
-      gain4.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.55);
+      gain4.gain.linearRampToValueAtTime(0.22, tMain + 0.005);
+      gain4.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.58);
       osc4.connect(gain4);
       gain4.connect(ctx.destination);
       osc4.start(tMain);
-      osc4.stop(tMain + 0.58);
+      osc4.stop(tMain + 0.60);
+
+      // Note 5: High sparkle harmonic (E8 ~ 5274.0 Hz)
+      const osc5 = ctx.createOscillator();
+      const gain5 = ctx.createGain();
+      osc5.type = 'sine';
+      osc5.frequency.setValueAtTime(5274.0, tMain);
+      gain5.gain.setValueAtTime(0, tMain);
+      gain5.gain.linearRampToValueAtTime(0.09, tMain + 0.004);
+      gain5.gain.exponentialRampToValueAtTime(0.0001, tMain + 0.35);
+      osc5.connect(gain5);
+      gain5.connect(ctx.destination);
+      osc5.start(tMain);
+      osc5.stop(tMain + 0.38);
 
       // Apple Taptic style haptic feedback
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (typeof window !== 'undefined' && typeof (window as any).haptic === 'function') {
+        (window as any).haptic(30);
+      } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate([35, 30, 45]);
       }
     } catch {

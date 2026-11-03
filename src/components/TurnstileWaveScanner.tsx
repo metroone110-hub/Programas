@@ -32,9 +32,9 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
   onTicketValidated,
   onRefreshStats 
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const animationFrameId = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -88,10 +88,45 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
     setTorchOn(false);
   }, []);
 
+  // Helper to reliably bind and play media stream on iOS Safari / WebKit
+  const bindStreamToVideo = useCallback((v: HTMLVideoElement | null, stream: MediaStream | null) => {
+    if (!v || !stream) return;
+    try {
+      v.setAttribute('playsinline', 'true');
+      v.setAttribute('webkit-playsinline', 'true');
+      v.setAttribute('autoplay', 'true');
+      v.muted = true;
+      v.defaultMuted = true;
+      v.playsInline = true;
+      v.autoplay = true;
+
+      if (v.srcObject !== stream) {
+        v.srcObject = stream;
+      }
+
+      const playAttempt = () => {
+        v.play().catch(pErr => {
+          if (pErr.name !== 'AbortError') {
+            console.warn('iOS video play notice:', pErr);
+          }
+        });
+      };
+
+      v.onloadedmetadata = playAttempt;
+      v.oncanplay = playAttempt;
+      playAttempt();
+    } catch (e) {
+      console.warn('bindStreamToVideo error:', e);
+    }
+  }, []);
+
   // Start Camera Stream with iOS Safari compatibility (prevents AbortError)
   const startCamera = useCallback(async () => {
     setCameraError(null);
     setVerdict({ status: 'idle', message: '' });
+
+    // Prime audio context on user gesture for instant iPhone "Cline" chime
+    soundSynthesizer.unlockAudio();
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -107,18 +142,26 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       }
 
       // Universal constraint without strict dimensions for WebKit / Safari iPhone
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false
-        });
-      } catch (e1) {
-        console.warn('Back camera failed, trying default camera:', e1);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false
-        });
+      let stream: MediaStream | null = null;
+      const constraintsToTry = [
+        { video: { facingMode: { exact: 'environment' } }, audio: false },
+        { video: { facingMode: 'environment' }, audio: false },
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      let lastErr: any = null;
+      for (const c of constraintsToTry) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(c);
+          if (stream) break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+
+      if (!stream) {
+        throw lastErr || new Error('Impossible d\'accéder à la caméra.');
       }
 
       streamRef.current = stream;
@@ -126,42 +169,30 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       setIsWaveModalOpen(true);
       setWaveTab('scan');
 
-      // Bind to video element
+      // Bind to video element immediately
+      bindStreamToVideo(videoRef.current, stream);
+
+      // Multiple fallback bindings to eliminate any React mount race conditions on iOS
+      requestAnimationFrame(() => {
+        bindStreamToVideo(videoRef.current, streamRef.current);
+      });
       setTimeout(() => {
-        const v = videoRef.current;
-        if (v) {
-          v.setAttribute('playsinline', 'true');
-          v.setAttribute('webkit-playsinline', 'true');
-          v.muted = true;
-          v.playsInline = true;
-          v.autoplay = true;
-          v.srcObject = stream;
-
-          const playSafe = () => {
-            v.play().catch(pErr => {
-              // Ignore benign iOS Safari AbortError during stream binding
-              if (pErr.name !== 'AbortError') {
-                console.warn('Video play note:', pErr);
-              }
-            });
-          };
-
-          v.onloadedmetadata = playSafe;
-          v.oncanplay = playSafe;
-          playSafe();
-        }
-      }, 50);
+        bindStreamToVideo(videoRef.current, streamRef.current);
+      }, 80);
+      setTimeout(() => {
+        bindStreamToVideo(videoRef.current, streamRef.current);
+      }, 250);
 
     } catch (err: any) {
       console.warn('Camera error:', err);
       setIsCameraActive(false);
       if (err.name === 'NotAllowedError') {
-        setCameraError('Accès à la caméra refusé. Autorisez la caméra dans les réglages de votre navigateur Safari.');
+        setCameraError('Accès à la caméra refusé. Autorisez la caméra dans Safari (Réglages iPhone > Safari > Appareil photo > Autoriser).');
       } else {
         setCameraError(err.message || 'Impossible d\'activer la caméra en direct.');
       }
     }
-  }, []);
+  }, [bindStreamToVideo]);
 
   // Toggle Torch / Flash
   const toggleTorch = async () => {
@@ -533,13 +564,22 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
           
           {/* Background Live Camera Video */}
           <video
-            ref={videoRef}
+            ref={(el) => {
+              videoRef.current = el;
+              if (el && streamRef.current) {
+                bindStreamToVideo(el, streamRef.current);
+              }
+            }}
             className={`w-full h-full object-cover absolute inset-0 ${
               isCameraActive && waveTab === 'scan' ? 'opacity-100' : 'opacity-0'
             }`}
             autoPlay
             playsInline
             muted
+            style={{
+              WebkitTransform: 'translateZ(0)',
+              transform: 'translateZ(0)'
+            }}
           />
 
           {/* TOP BAR: Close 'X' button & Torch */}
@@ -674,7 +714,17 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
               /* B. Live Viewfinder with Rounded Square Window (Exact Wave UI) */
               <div className="flex flex-col items-center">
                 {/* Central Rounded Square Cutout with dark mask around it */}
-                <div className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-[44px] border border-white/25 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] overflow-hidden flex items-center justify-center">
+                <div 
+                  onClick={() => {
+                    const v = videoRef.current;
+                    if (v && v.paused) {
+                      v.play().catch(() => {});
+                    } else if (!isCameraActive || !streamRef.current) {
+                      startCamera();
+                    }
+                  }}
+                  className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-[44px] border border-white/25 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] overflow-hidden flex items-center justify-center cursor-pointer"
+                >
                   
                   {/* Sweeping Green Laser Line matching Wave scanner */}
                   <div className="absolute inset-x-3 h-1 bg-gradient-to-r from-emerald-400 via-green-300 to-emerald-400 rounded-full shadow-[0_0_14px_#10b981] animate-scanLaser pointer-events-none"></div>
@@ -731,7 +781,9 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
                 type="button"
                 onClick={() => {
                   setWaveTab('scan');
-                  if (!isCameraActive) startCamera();
+                  if (!isCameraActive || !streamRef.current || (videoRef.current && videoRef.current.paused)) {
+                    startCamera();
+                  }
                 }}
                 className={`px-5 py-2.5 rounded-full font-black text-xs transition-all cursor-pointer ${
                   waveTab === 'scan'
