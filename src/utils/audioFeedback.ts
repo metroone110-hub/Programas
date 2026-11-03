@@ -123,9 +123,9 @@ class SoundSynthesizer {
 
       // Apple Taptic style haptic feedback
       if (typeof window !== 'undefined' && typeof (window as any).haptic === 'function') {
-        (window as any).haptic(30);
+        (window as any).haptic(35);
       } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([35, 30, 45]);
+        navigator.vibrate([40, 25, 50]);
       }
     } catch {
       // Audio fallback silent
@@ -195,3 +195,13 @@ class SoundSynthesizer {
 }
 
 export const soundSynthesizer = new SoundSynthesizer();
+
+// Automatically prime and unlock audio on first user touch anywhere in iOS / Android
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    soundSynthesizer.unlockAudio();
+  };
+  window.addEventListener('touchstart', unlock, { passive: true, once: true });
+  window.addEventListener('pointerdown', unlock, { passive: true, once: true });
+  window.addEventListener('click', unlock, { passive: true, once: true });
+}

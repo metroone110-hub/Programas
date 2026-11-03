@@ -51,6 +51,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { CroukOfficialGalleryAndAbout } from './components/CroukOfficialGalleryAndAbout';
 import { TicketCounterBox } from './components/TicketCounterBox';
 import { TicketIntro } from './components/TicketIntro';
+import { PinLock } from './components/PinLock';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
@@ -465,10 +466,10 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full">
-      
-      {/* Intro animée fluide 60fps : ticket qui monte, prix qui grimpe à 200 F et talon qui se détache */}
-      <TicketIntro />
+    <PinLock enabled={Boolean(user)} onForgot={handleLogout}>
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full">
+        {/* Intro animée fluide 60fps : ticket qui monte, prix qui grimpe à 200 F et talon qui se détache */}
+        <TicketIntro />
 
       {/* INTERFACE 1: BLACK GATEWAY PORTAL (INSCRIPTION & CONNEXION) */}
       <BlackGatewayPortal
@@ -771,6 +772,7 @@ export const App: React.FC = () => {
         user={user}
       />
 
-    </div>
+      </div>
+    </PinLock>
   );
 };

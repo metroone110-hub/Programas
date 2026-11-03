@@ -14,7 +14,8 @@ import {
   ZapOff,
   UserCheck,
   ShieldCheck,
-  ArrowRight
+  ArrowRight,
+  Bell
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { MealTicket } from '../types';
@@ -49,6 +50,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const [isAiAnalyzing, setIsAiAnalyzing] = useState<boolean>(false);
   const [lastScannedText, setLastScannedText] = useState<string | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
 
   // Manual code input
   const [manualCode, setManualCode] = useState<string>('');
@@ -85,42 +87,48 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
+    setIsVideoPlaying(false);
     setTorchOn(false);
   }, []);
 
-  // Helper to reliably bind and play media stream on iOS Safari / WebKit
-  const bindStreamToVideo = useCallback((v: HTMLVideoElement | null, stream: MediaStream | null) => {
-    if (!v || !stream) return;
+  // Reliable iOS Safari / WebKit video stream attacher
+  const attachStreamToVideo = useCallback((videoEl: HTMLVideoElement | null, stream: MediaStream | null) => {
+    if (!videoEl || !stream) return;
     try {
-      v.setAttribute('playsinline', 'true');
-      v.setAttribute('webkit-playsinline', 'true');
-      v.setAttribute('autoplay', 'true');
-      v.muted = true;
-      v.defaultMuted = true;
-      v.playsInline = true;
-      v.autoplay = true;
+      videoEl.muted = true;
+      videoEl.defaultMuted = true;
+      videoEl.playsInline = true;
+      videoEl.autoplay = true;
+      videoEl.setAttribute('playsinline', 'true');
+      videoEl.setAttribute('webkit-playsinline', 'true');
+      videoEl.setAttribute('muted', 'true');
+      videoEl.setAttribute('autoplay', 'true');
 
-      if (v.srcObject !== stream) {
-        v.srcObject = stream;
+      if (videoEl.srcObject !== stream) {
+        videoEl.srcObject = stream;
       }
 
-      const playAttempt = () => {
-        v.play().catch(pErr => {
-          if (pErr.name !== 'AbortError') {
-            console.warn('iOS video play notice:', pErr);
-          }
-        });
+      const tryPlay = () => {
+        videoEl.play()
+          .then(() => {
+            setIsVideoPlaying(true);
+          })
+          .catch((pErr) => {
+            if (pErr.name !== 'AbortError') {
+              console.warn('iOS video play notice:', pErr);
+            }
+          });
       };
 
-      v.onloadedmetadata = playAttempt;
-      v.oncanplay = playAttempt;
-      playAttempt();
+      videoEl.onloadedmetadata = tryPlay;
+      videoEl.oncanplay = tryPlay;
+      tryPlay();
     } catch (e) {
-      console.warn('bindStreamToVideo error:', e);
+      console.warn('attachStreamToVideo error:', e);
     }
   }, []);
 
-  // Start Camera Stream with iOS Safari compatibility (prevents AbortError)
+  // Start Camera Stream with iOS Safari full compatibility
   const startCamera = useCallback(async () => {
     setCameraError(null);
     setVerdict({ status: 'idle', message: '' });
@@ -141,16 +149,32 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         streamRef.current = null;
       }
 
-      // Universal constraint without strict dimensions for WebKit / Safari iPhone
-      let stream: MediaStream | null = null;
+      // Universal constraints tested for iPhone Safari, Chrome iOS and Android
+      // Note: Never use { facingMode: { exact: 'environment' } } as it throws OverconstrainedError on iPhone
       const constraintsToTry = [
-        { video: { facingMode: { exact: 'environment' } }, audio: false },
-        { video: { facingMode: 'environment' }, audio: false },
-        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-        { video: true, audio: false }
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        },
+        {
+          video: {
+            facingMode: 'environment'
+          },
+          audio: false
+        },
+        {
+          video: true,
+          audio: false
+        }
       ];
 
+      let stream: MediaStream | null = null;
       let lastErr: any = null;
+
       for (const c of constraintsToTry) {
         try {
           stream = await navigator.mediaDevices.getUserMedia(c);
@@ -169,30 +193,28 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       setIsWaveModalOpen(true);
       setWaveTab('scan');
 
-      // Bind to video element immediately
-      bindStreamToVideo(videoRef.current, stream);
-
-      // Multiple fallback bindings to eliminate any React mount race conditions on iOS
-      requestAnimationFrame(() => {
-        bindStreamToVideo(videoRef.current, streamRef.current);
-      });
-      setTimeout(() => {
-        bindStreamToVideo(videoRef.current, streamRef.current);
-      }, 80);
-      setTimeout(() => {
-        bindStreamToVideo(videoRef.current, streamRef.current);
-      }, 250);
-
+      // Bind to video ref when ready
+      if (videoRef.current) {
+        attachStreamToVideo(videoRef.current, stream);
+      }
     } catch (err: any) {
       console.warn('Camera error:', err);
       setIsCameraActive(false);
+      setIsVideoPlaying(false);
       if (err.name === 'NotAllowedError') {
         setCameraError('Accès à la caméra refusé. Autorisez la caméra dans Safari (Réglages iPhone > Safari > Appareil photo > Autoriser).');
       } else {
         setCameraError(err.message || 'Impossible d\'activer la caméra en direct.');
       }
     }
-  }, [bindStreamToVideo]);
+  }, [attachStreamToVideo]);
+
+  // Synchronize stream with video element when modal mounts
+  useEffect(() => {
+    if (isWaveModalOpen && isCameraActive && streamRef.current && videoRef.current) {
+      attachStreamToVideo(videoRef.current, streamRef.current);
+    }
+  }, [isWaveModalOpen, isCameraActive, attachStreamToVideo]);
 
   // Toggle Torch / Flash
   const toggleTorch = async () => {
@@ -560,53 +582,99 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       {/* IMMERSIVE WAVE FULLSCREEN SCANNER (EXACT WAVE DESIGN)     */}
       {/* ======================================================== */}
       {isWaveModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col justify-between overflow-hidden select-none animate-fadeIn font-sans">
+        <div 
+          onClick={() => {
+            const v = videoRef.current;
+            if (v && v.paused) {
+              v.play().then(() => setIsVideoPlaying(true)).catch(() => {});
+            }
+          }}
+          className="fixed inset-0 z-[100] bg-black flex flex-col justify-between overflow-hidden select-none animate-fadeIn font-sans"
+        >
           
           {/* Background Live Camera Video */}
           <video
-            ref={(el) => {
-              videoRef.current = el;
-              if (el && streamRef.current) {
-                bindStreamToVideo(el, streamRef.current);
-              }
-            }}
-            className={`w-full h-full object-cover absolute inset-0 ${
+            ref={videoRef}
+            className={`w-full h-full object-cover absolute inset-0 z-0 ${
               isCameraActive && waveTab === 'scan' ? 'opacity-100' : 'opacity-0'
             }`}
             autoPlay
             playsInline
             muted
-            style={{
-              WebkitTransform: 'translateZ(0)',
-              transform: 'translateZ(0)'
-            }}
+            // @ts-ignore
+            webkit-playsinline="true"
+            x5-playsinline="true"
           />
 
-          {/* TOP BAR: Close 'X' button & Torch */}
+          {/* iOS-friendly Viewfinder Dark Overlay Mask (prevents WebKit 9999px box-shadow GPU crash) */}
+          {waveTab === 'scan' && verdict.status === 'idle' && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" preserveAspectRatio="none">
+              <defs>
+                <mask id="wave-cutout-mask">
+                  <rect width="100%" height="100%" fill="white" />
+                  <rect
+                    x="50%"
+                    y="50%"
+                    width="288"
+                    height="288"
+                    rx="44"
+                    ry="44"
+                    transform="translate(-144, -144)"
+                    fill="black"
+                  />
+                </mask>
+              </defs>
+              <rect width="100%" height="100%" fill="rgba(0, 0, 0, 0.65)" mask="url(#wave-cutout-mask)" />
+            </svg>
+          )}
+
+          {/* TOP BAR: Close 'X' button, iPhone Cline Bell Test & Torch */}
           <div className="relative z-30 pt-10 sm:pt-8 px-6 flex items-center justify-between">
             {/* Top-Left Close Button (exact Wave style) */}
             <button
               type="button"
-              onClick={handleCloseWaveScanner}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCloseWaveScanner();
+              }}
               className="w-11 h-11 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-black/60 transition-colors active:scale-90 cursor-pointer"
               title="Fermer le scanner"
             >
               <X className="w-6 h-6 stroke-[2.5]" />
             </button>
 
-            {/* Top-Right Flash / Torch Toggle */}
-            <button
-              type="button"
-              onClick={toggleTorch}
-              className={`w-11 h-11 rounded-full backdrop-blur-md border transition-colors flex items-center justify-center active:scale-90 cursor-pointer ${
-                torchOn
-                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-lg shadow-amber-400/30'
-                  : 'bg-black/40 text-white border-white/20 hover:bg-black/60'
-              }`}
-              title={torchOn ? 'Éteindre la torche' : 'Allumer la torche'}
-            >
-              {torchOn ? <Zap className="w-5 h-5 fill-slate-950" /> : <ZapOff className="w-5 h-5" />}
-            </button>
+            {/* Top-Right Controls: Cline Bell test & Torch */}
+            <div className="flex items-center space-x-2">
+              {/* iPhone Bell Cline Chime Test */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  soundSynthesizer.playSuccessBeep();
+                }}
+                className="w-11 h-11 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-amber-300 flex items-center justify-center hover:bg-black/60 transition-colors active:scale-90 cursor-pointer"
+                title="Tester le son cloche Cline iPhone 🔔"
+              >
+                <Bell className="w-5 h-5" />
+              </button>
+
+              {/* Torch Toggle */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTorch();
+                }}
+                className={`w-11 h-11 rounded-full backdrop-blur-md border transition-colors flex items-center justify-center active:scale-90 cursor-pointer ${
+                  torchOn
+                    ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-lg shadow-amber-400/30'
+                    : 'bg-black/40 text-white border-white/20 hover:bg-black/60'
+                }`}
+                title={torchOn ? 'Éteindre la torche' : 'Allumer la torche'}
+              >
+                {torchOn ? <Zap className="w-5 h-5 fill-slate-950" /> : <ZapOff className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
 
           {/* CENTER VIEWPORT: Viewfinder cutout or Verdict Screen */}
@@ -633,6 +701,14 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
                       <AlertOctagon className="w-14 h-14 text-white stroke-[2.5]" />
                     </div>
                     <div className="absolute -inset-2 rounded-full border-4 border-red-400/40 animate-ping pointer-events-none" />
+                  </div>
+                )}
+
+                {/* iPhone Cline Bell confirmation badge */}
+                {verdict.status === 'valid' && (
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black">
+                    <Bell className="w-3.5 h-3.5 text-amber-600 animate-bounce" />
+                    <span>Cloche Cline iPhone Confirmée 🔔</span>
                   </div>
                 )}
 
@@ -713,33 +789,51 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
             ) : waveTab === 'scan' ? (
               /* B. Live Viewfinder with Rounded Square Window (Exact Wave UI) */
               <div className="flex flex-col items-center">
-                {/* Central Rounded Square Cutout with dark mask around it */}
+                {/* Central Rounded Square Cutout with corner brackets and laser */}
                 <div 
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const v = videoRef.current;
                     if (v && v.paused) {
-                      v.play().catch(() => {});
+                      v.play().then(() => setIsVideoPlaying(true)).catch(() => {});
                     } else if (!isCameraActive || !streamRef.current) {
                       startCamera();
                     }
                   }}
-                  className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-[44px] border border-white/25 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] overflow-hidden flex items-center justify-center cursor-pointer"
+                  className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-[44px] border border-white/25 overflow-hidden flex items-center justify-center cursor-pointer pointer-events-auto"
                 >
                   
                   {/* Sweeping Green Laser Line matching Wave scanner */}
                   <div className="absolute inset-x-3 h-1 bg-gradient-to-r from-emerald-400 via-green-300 to-emerald-400 rounded-full shadow-[0_0_14px_#10b981] animate-scanLaser pointer-events-none"></div>
 
                   {/* Corner indicator accents */}
-                  <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-white/60 rounded-tl-xl pointer-events-none"></div>
-                  <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-white/60 rounded-tr-xl pointer-events-none"></div>
-                  <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-white/60 rounded-bl-xl pointer-events-none"></div>
-                  <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-white/60 rounded-br-xl pointer-events-none"></div>
+                  <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-white/80 rounded-tl-xl pointer-events-none"></div>
+                  <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-white/80 rounded-tr-xl pointer-events-none"></div>
+                  <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-white/80 rounded-bl-xl pointer-events-none"></div>
+                  <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-white/80 rounded-br-xl pointer-events-none"></div>
                 </div>
 
                 {/* Subtitle text matching Wave screenshot */}
                 <p className="text-white text-sm sm:text-base font-medium text-center mt-7 drop-shadow-md px-4">
                   Scanner le code QR pour valider le ticket
                 </p>
+
+                {/* iOS Fallback Helper: If video stream paused by Safari, user can tap directly */}
+                {!isVideoPlaying && isCameraActive && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const v = videoRef.current;
+                      if (v) {
+                        v.play().then(() => setIsVideoPlaying(true)).catch(() => {});
+                      }
+                    }}
+                    className="mt-3 px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xs font-semibold animate-pulse"
+                  >
+                    Touchez l'écran si l'image est noire 📷
+                  </button>
+                )}
               </div>
             ) : (
               /* C. Manual Input Tab in Wave Interface */
@@ -779,7 +873,8 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
             <div className="bg-black/80 backdrop-blur-xl border border-white/20 p-1.5 rounded-full flex items-center shadow-2xl">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setWaveTab('scan');
                   if (!isCameraActive || !streamRef.current || (videoRef.current && videoRef.current.paused)) {
                     startCamera();
@@ -796,7 +891,10 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
 
               <button
                 type="button"
-                onClick={() => setWaveTab('manual')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setWaveTab('manual');
+                }}
                 className={`px-5 py-2.5 rounded-full font-black text-xs transition-all cursor-pointer ${
                   waveTab === 'manual'
                     ? 'bg-white text-slate-950 shadow-md scale-100'

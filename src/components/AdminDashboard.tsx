@@ -66,6 +66,7 @@ import {
   generateLedgerCsvData
 } from '../services/googleDriveService';
 import { compressImage } from '../utils/imageCompressor';
+import { soundSynthesizer } from '../utils/audioFeedback';
 
 interface Props {
   canteen: Canteen;
@@ -366,6 +367,11 @@ export const AdminDashboard: React.FC<Props> = ({
     setManualScanResult(null);
 
     const res = await verifyTurnstileTicket(scanTicketNumber.trim(), scanMatricule.trim());
+    if (res.status === 'valid') {
+      soundSynthesizer.playSuccessBeep();
+    } else {
+      soundSynthesizer.playFraudBeep();
+    }
     setManualScanResult(res);
     setIsVerifyingManual(false);
     loadRegistryData();
