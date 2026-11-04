@@ -11,10 +11,13 @@ import {
   GraduationCap,
   Search,
   Bell,
-  Ticket
+  Ticket,
+  Sparkles,
+  Lock
 } from 'lucide-react';
 import { Canteen, UserProfile } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
+import { lockAppNow } from './PinLock';
 
 interface Props {
   canteens: Canteen[];
@@ -30,6 +33,7 @@ interface Props {
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
   onOpenNotifications?: () => void;
+  onOpenGemini?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -45,7 +49,8 @@ export const Navbar: React.FC<Props> = ({
   onOpenCart,
   searchQuery = '',
   onSearchChange,
-  onOpenNotifications
+  onOpenNotifications,
+  onOpenGemini
 }) => {
   const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
 
@@ -97,20 +102,45 @@ export const Navbar: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Right: PWA Install & Admin Button */}
-          <div className="flex items-center space-x-2 flex-shrink-0">
+          {/* Right: Gemini AI, Admin, PWA & Lock Button */}
+          <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
+            {/* Gemini AI Assistant Button */}
+            {onOpenGemini && (
+              <button
+                type="button"
+                onClick={onOpenGemini}
+                className="px-2.5 py-1.5 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Discuter avec l'Assistant IA Gemini"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-orange-500 animate-pulse" />
+                <span className="hidden xs:inline">Gemini IA</span>
+              </button>
+            )}
+
             <PWAInstallButton />
 
             {/* Admin CROU Button */}
             <button
               type="button"
               onClick={onOpenAdmin}
-              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
               title="Accès Administration CROU"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Admin</span>
+              <span className="hidden xs:inline">Admin</span>
             </button>
+
+            {/* If logged in, lock with PIN button */}
+            {user && (
+              <button
+                type="button"
+                onClick={lockAppNow}
+                className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
+                title="Verrouiller l'application par code PIN"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {/* If logged in, logout option */}
             {user && (

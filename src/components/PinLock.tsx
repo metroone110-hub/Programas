@@ -107,6 +107,19 @@ export const PinLock: React.FC<Props> = ({ children, enabled = true, onForgot, l
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [mode, lockAfterMs]);
 
+  // Verrouillage manuel à la demande (ex: clic sur "Verrouiller l'app")
+  useEffect(() => {
+    const handleManualLock = () => {
+      if (enabled && readPin()) {
+        setPin('');
+        setMessage('');
+        setMode('locked');
+      }
+    };
+    window.addEventListener('programas:lock', handleManualLock);
+    return () => window.removeEventListener('programas:lock', handleManualLock);
+  }, [enabled]);
+
   // Le contenu de l'app est inactif (clic, clavier, lecteur d'écran) tant qu'elle est verrouillée
   useEffect(() => {
     if (content.current) (content.current as HTMLElement & { inert: boolean }).inert = mode !== 'open';
@@ -277,3 +290,11 @@ const Key: React.FC<{ label: string; onPress: () => void }> = ({ label, onPress 
     {label}
   </button>
 );
+
+/** Déclenche le verrouillage immédiat de l'application depuis n'importe quel composant */
+export const lockAppNow = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('programas:lock'));
+  }
+};
+

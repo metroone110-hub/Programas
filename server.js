@@ -2,6 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { handleGeminiChat, handleGeminiTicketScan } from './server/geminiService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,6 +114,54 @@ const server = http.createServer(async (req, res) => {
   if (safeUrl === '/api/webhook/jeko') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'success', received: true, timestamp: new Date().toISOString() }));
+    return;
+  }
+
+  // Gemini AI Chat Endpoint
+  if (safeUrl === '/api/gemini/chat' && req.method === 'POST') {
+    let bodyData = '';
+    req.on('data', chunk => { bodyData += chunk; });
+    req.on('end', async () => {
+      try {
+        const { prompt, history, context } = JSON.parse(bodyData || '{}');
+        if (!prompt) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Prompt requis' }));
+          return;
+        }
+        const text = await handleGeminiChat(prompt, history, context);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ text }));
+      } catch (err) {
+        console.error('Gemini chat error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || 'Erreur Gemini' }));
+      }
+    });
+    return;
+  }
+
+  // Gemini AI Optical Ticket Scanner Endpoint
+  if (safeUrl === '/api/gemini/scan-ticket' && req.method === 'POST') {
+    let bodyData = '';
+    req.on('data', chunk => { bodyData += chunk; });
+    req.on('end', async () => {
+      try {
+        const { base64Image } = JSON.parse(bodyData || '{}');
+        if (!base64Image) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Image requise' }));
+          return;
+        }
+        const result = await handleGeminiTicketScan(base64Image);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        console.error('Gemini ticket scan error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || 'Erreur scan IA' }));
+      }
+    });
     return;
   }
 

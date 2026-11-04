@@ -13,7 +13,8 @@ import {
   ShoppingBag,
   Ticket,
   CheckCircle2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Canteen, Dish, MealTicket, UserProfile, MealType } from './types';
@@ -52,6 +53,7 @@ import { CroukOfficialGalleryAndAbout } from './components/CroukOfficialGalleryA
 import { TicketCounterBox } from './components/TicketCounterBox';
 import { TicketIntro } from './components/TicketIntro';
 import { PinLock } from './components/PinLock';
+import { GeminiAssistantModal } from './components/GeminiAssistantModal';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
@@ -89,6 +91,7 @@ export const App: React.FC = () => {
 
   // Other Modals
   const [showMyTicketsModal, setShowMyTicketsModal] = useState<boolean>(false);
+  const [showGeminiModal, setShowGeminiModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
 
@@ -452,16 +455,18 @@ export const App: React.FC = () => {
   // If in admin view mode
   if (isAdminView && user?.role === 'admin') {
     return (
-      <AdminDashboard
-        canteen={selectedCanteen}
-        dishes={dishes}
-        onUpdateCanteen={handleUpdateCanteen}
-        onAddDish={handleAddDish}
-        onToggleDishAvailability={handleToggleDishAvailability}
-        onDeleteDish={handleDeleteDish}
-        onDeleteAllDishes={handleDeleteAllDishes}
-        onClose={() => setIsAdminView(false)}
-      />
+      <PinLock enabled={Boolean(user)} onForgot={handleLogout}>
+        <AdminDashboard
+          canteen={selectedCanteen}
+          dishes={dishes}
+          onUpdateCanteen={handleUpdateCanteen}
+          onAddDish={handleAddDish}
+          onToggleDishAvailability={handleToggleDishAvailability}
+          onDeleteDish={handleDeleteDish}
+          onDeleteAllDishes={handleDeleteAllDishes}
+          onClose={() => setIsAdminView(false)}
+        />
+      </PinLock>
     );
   }
 
@@ -503,6 +508,7 @@ export const App: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onOpenNotifications={() => setShowMyTicketsModal(true)}
+        onOpenGemini={() => setShowGeminiModal(true)}
       />
 
       {/* Main Content Area */}
@@ -770,6 +776,25 @@ export const App: React.FC = () => {
         cartCount={cartTotalItems}
         validTicketsCount={user?.savedTickets?.filter(t => t.status === 'valid').length || 0}
         user={user}
+      />
+
+      {/* Floating Gemini AI Quick Launcher */}
+      <button
+        type="button"
+        onClick={() => setShowGeminiModal(true)}
+        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 hover:from-orange-600 hover:to-amber-600 text-white px-3.5 py-2.5 rounded-full shadow-lg shadow-orange-500/30 border border-white/20 flex items-center space-x-2 text-xs font-black transition-all active:scale-95 cursor-pointer hover:shadow-xl select-none"
+        title="Poser une question à l'Assistant IA Gemini"
+      >
+        <Sparkles className="w-4 h-4 text-white animate-pulse" />
+        <span>Assistant IA ✦</span>
+      </button>
+
+      {/* Gemini AI Assistant Modal */}
+      <GeminiAssistantModal
+        isOpen={showGeminiModal}
+        onClose={() => setShowGeminiModal(false)}
+        dishes={dishes}
+        studentName={user?.displayName}
       />
 
       </div>

@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, QrCode, Ticket, CheckCircle2, Clock, Calendar, ArrowRight } from 'lucide-react';
+import { X, QrCode, Ticket, CheckCircle2, Clock, Calendar, ArrowRight, Lock } from 'lucide-react';
 import { MealTicket, UserProfile } from '../types';
+import { lockAppNow } from './PinLock';
 
 interface Props {
   isOpen: boolean;
@@ -91,10 +92,22 @@ export const MyTicketsModal: React.FC<Props> = ({ isOpen, onClose, user, onSelec
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-          <p className="text-[11px] text-slate-500">
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+          <p className="text-[11px] text-slate-500 flex-1">
             Présentez le QR code devant le scanner optique du tourniquet pour retirer votre plateau.
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              lockAppNow();
+            }}
+            className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 flex-shrink-0 cursor-pointer active:scale-95"
+            title="Verrouiller l'accès à mes tickets avec le code PIN"
+          >
+            <Lock className="w-3.5 h-3.5 text-slate-600" />
+            <span>Verrouiller 🔒</span>
+          </button>
         </div>
       </div>
     </div>
