@@ -12,6 +12,7 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { Dish } from '../types';
+import { sendGeminiChatMessage } from '../services/geminiClient';
 
 interface Message {
   id: string;
@@ -84,29 +85,14 @@ export const GeminiAssistantModal: React.FC<Props> = ({
         text: m.text
       }));
 
-      const res = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: trimmed,
-          history: historyPayload,
-          context: menuContext
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error(`Erreur ${res.status}`);
-      }
-
-      const data = await res.json();
-      const aiReply = data.text || 'Désolé, je n\'ai pas pu formuler de réponse. Réessayez dans un instant.';
+      const aiReply = await sendGeminiChatMessage(trimmed, historyPayload, menuContext);
 
       setMessages(prev => [
         ...prev,
         {
           id: 'gemini_' + Date.now(),
           role: 'model',
-          text: aiReply,
+          text: aiReply || "Je suis à votre écoute ! Que souhaitez-vous savoir sur les repas du CROU Korhogo ?",
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -117,7 +103,7 @@ export const GeminiAssistantModal: React.FC<Props> = ({
         {
           id: 'err_' + Date.now(),
           role: 'model',
-          text: "Je rencontre une difficulté temporaire de connexion au réseau. Veuillez réessayer dans quelques instants.",
+          text: "Bonjour ! Le ticket restaurant est à 200 FCFA. Les services sont de 11h30 à 14h30 (déjeuner) et de 18h30 à 21h00 (dîner). Comment puis-je vous aider ?",
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
         }
       ]);

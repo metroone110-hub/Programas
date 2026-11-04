@@ -213,79 +213,246 @@ export async function syncAllLocalAccountsToFirestore(): Promise<void> {
   }
 }
 
-/**
- * Réinitialisation du mot de passe étudiant (Résout "mot de passe oublié")
- */
-export async function resetStudentPassword(
-  matricule: string,
-  newPass: string
-): Promise<{ success: boolean; message: string; user?: UserProfile }> {
-  const cleanMatricule = (matricule || '').trim().toUpperCase();
-  const cleanPassword = (newPass || '').trim();
+export interface RecoveryAccountInfo {
+  matricule: string;
+  maskedName: string;
+  rawDisplayName: string;
+  hasPhone: boolean;
+  maskedPhone?: string;
+  rawPhone?: string;
+  campus?: string;
+}
 
-  if (!cleanMatricule) {
-    return { success: false, message: 'Veuillez saisir votre numéro de matricule.' };
-  }
-  if (!cleanPassword || cleanPassword.length < 4) {
-    return { success: false, message: 'Le mot de passe doit comporter au moins 4 caractères.' };
+export function maskStudentName(name: string): string {
+  if (!name) return 'É••••••';
+  return name.split(' ').map(part => {
+    if (part.length <= 1) return part;
+    if (part.length === 2) return part[0] + '•';
+    return part[0] + '•'.repeat(Math.min(part.length - 2, 4)) + part[part.length - 1];
+  }).join(' ');
+}
+
+export function maskPhoneNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '•• •• ••';
+  const last2 = digits.slice(-2);
+  const first2 = digits.slice(0, 2);
+  return `${first2} •• •• •• ${last2}`;
+}
+
+/**
+ * Recherche sécurisée d'un compte étudiant pour la récupération de mot de passe
+ */
+export async function lookupStudentForRecovery(matricule: string): Promise<{
+  success: boolean;
+  message?: string;
+  account?: RecoveryAccountInfo;
+}> {
+  const cleanMatricule = (matricule || '').trim().toUpperCase();
+  if (!cleanMatricule || cleanMatricule.length < 3) {
+    return { success: false, message: 'Veuillez saisir un numéro de matricule valide (ex: UPGC-2026-XXXX ou 32165498).' };
   }
 
   const safeId = sanitizeMatriculeId(cleanMatricule);
-  let studentDoc: any = null;
+  let studentData: any = null;
 
-  // 1. Check Firestore
+  // 1. Check Local Registry
+  const registry = getLocalStudentsRegistry();
+  if (registry[cleanMatricule]) {
+    studentData = registry[cleanMatricule];
+  }
+
+  // 2. Check Firestore via SDK
+  if (!studentData) {
+    try {
+      const sRef = doc(db, 'students', safeId);
+      const snap = await getDoc(sRef);
+      if (snap.exists()) {
+        studentData = snap.data();
+      }
+    } catch (e) {
+      console.warn('Firestore lookup error:', e);
+    }
+  }
+
+  // 3. Check Firestore via REST
+  if (!studentData) {
+    try {
+      const restDoc = await fetchStudentRest(cleanMatricule);
+      if (restDoc) {
+        studentData = restDoc;
+      }
+    } catch {}
+  }
+
+  if (!studentData) {
+    return {
+      success: false,
+      message: `Aucun compte étudiant trouvé pour le matricule "${cleanMatricule}". Vérifiez votre saisie ou créez un compte dans l'onglet Inscription.`
+    };
+  }
+
+  const rawName = studentData.displayName || studentData.name || 'Étudiant UPGC';
+  const rawPhone = studentData.phone || '';
+  const hasPhone = Boolean(rawPhone && rawPhone.trim().length >= 8);
+
+  return {
+    success: true,
+    account: {
+      matricule: cleanMatricule,
+      maskedName: maskStudentName(rawName),
+      rawDisplayName: rawName,
+      hasPhone,
+      maskedPhone: hasPhone ? maskPhoneNumber(rawPhone) : undefined,
+      rawPhone,
+      campus: studentData.campus || studentData.ufr || 'Campus UPGC Korhogo'
+    }
+  };
+}
+
+/**
+ * Réinitialisation sécurisée avec vérification anti-usurpation d'identité
+ */
+export async function verifyAndResetStudentPassword(params: {
+  matricule: string;
+  phoneInput?: string;
+  nameInput?: string;
+  securityCodeInput?: string;
+  expectedSecurityCode?: string;
+  newPass: string;
+}): Promise<{ success: boolean; message: string; user?: UserProfile }> {
+  const cleanMatricule = (params.matricule || '').trim().toUpperCase();
+  const cleanNewPass = (params.newPass || '').trim();
+
+  if (!cleanMatricule) {
+    return { success: false, message: 'Matricule manquant.' };
+  }
+  if (!cleanNewPass || cleanNewPass.length < 4) {
+    return { success: false, message: 'Le mot de passe doit comporter au moins 4 caractères.' };
+  }
+
+  const lookup = await lookupStudentForRecovery(cleanMatricule);
+  if (!lookup.success || !lookup.account) {
+    return { success: false, message: lookup.message || 'Compte introuvable.' };
+  }
+
+  const account = lookup.account;
+
+  // 1. Vérification du code de sécurité CROU à 6 chiffres
+  if (params.expectedSecurityCode) {
+    const inputCode = (params.securityCodeInput || '').replace(/\D/g, '');
+    const expected = (params.expectedSecurityCode || '').replace(/\D/g, '');
+    if (!inputCode || inputCode !== expected) {
+      return { success: false, message: 'Code de sécurité CROU incorrect. Veuillez saisir le code à 6 chiffres généré.' };
+    }
+  }
+
+  // 2. Vérification d'identité : Téléphone ou Nom complet
+  if (account.hasPhone && account.rawPhone) {
+    const regDigits = account.rawPhone.replace(/\D/g, '').slice(-8);
+    const inDigits = (params.phoneInput || '').replace(/\D/g, '').slice(-8);
+    if (!inDigits || inDigits.length < 8 || inDigits !== regDigits) {
+      // Fallback au nom complet si le téléphone a changé
+      const cleanInputName = (params.nameInput || '').trim().toLowerCase();
+      const cleanAccountName = (account.rawDisplayName || '').trim().toLowerCase();
+      const nameMatch = cleanInputName && cleanAccountName && (
+        cleanAccountName.includes(cleanInputName) || cleanInputName.includes(cleanAccountName)
+      );
+      if (!nameMatch) {
+        return { 
+          success: false, 
+          message: 'Le numéro de téléphone saisi ne correspond pas à celui lié à ce compte. Saisissez votre numéro exact ou votre nom complet.' 
+        };
+      }
+    }
+  } else {
+    // Si aucun téléphone n'était pré-enregistré : vérification obligatoire du nom complet enregistré
+    const cleanInputName = (params.nameInput || '').trim().toLowerCase();
+    const cleanAccountName = (account.rawDisplayName || '').trim().toLowerCase();
+    if (!cleanInputName || cleanInputName.length < 2) {
+      return { 
+        success: false, 
+        message: 'Veuillez saisir votre Nom complet tel qu\'enregistré pour confirmer que vous êtes le titulaire.' 
+      };
+    }
+
+    const inputParts = cleanInputName.split(/\s+/).filter(p => p.length >= 2);
+    const accountParts = cleanAccountName.split(/\s+/).filter(p => p.length >= 2);
+    const hasOverlap = inputParts.some(ip => accountParts.some(ap => ap.includes(ip) || ip.includes(ap)));
+
+    if (!hasOverlap && !cleanAccountName.includes(cleanInputName)) {
+      return {
+        success: false,
+        message: 'Le nom saisi ne correspond pas au titulaire enregistré pour ce matricule. Tentative de réinitialisation refusée.'
+      };
+    }
+  }
+
+  // Identité confirmée ! Mise à jour du mot de passe
+  const safeId = sanitizeMatriculeId(cleanMatricule);
+  const updatedPhone = params.phoneInput?.trim() || account.rawPhone || '';
+
+  // 1. Update Firestore
   try {
     const sRef = doc(db, 'students', safeId);
-    const snap = await getDoc(sRef);
-    if (snap.exists()) {
-      studentDoc = snap.data();
-      await setDoc(sRef, {
-        passwordHash: cleanPassword,
-        lastPasswordReset: new Date().toISOString()
-      }, { merge: true });
-    }
+    await setDoc(sRef, {
+      passwordHash: cleanNewPass,
+      phone: updatedPhone || undefined,
+      lastPasswordReset: new Date().toISOString()
+    }, { merge: true });
   } catch (err) {
     console.warn('Firestore password reset note:', err);
   }
 
   // 2. Update Local Registry
   const registry = getLocalStudentsRegistry();
-  const localStudent = registry[cleanMatricule];
-  if (localStudent || studentDoc) {
-    const base = studentDoc || localStudent || { matricule: cleanMatricule, displayName: 'Étudiant UPGC' };
-    registry[cleanMatricule] = {
-      ...base,
-      matricule: cleanMatricule,
-      passwordHash: cleanPassword
-    };
-    try {
-      localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
-    } catch {}
+  const existing = registry[cleanMatricule] || {};
+  registry[cleanMatricule] = {
+    ...existing,
+    matricule: cleanMatricule,
+    displayName: account.rawDisplayName || existing.displayName || 'Étudiant UPGC',
+    passwordHash: cleanNewPass,
+    phone: updatedPhone || existing.phone,
+    lastPasswordReset: new Date().toISOString()
+  };
 
-    const updatedProfile: UserProfile = {
-      uid: base.uid || cleanMatricule,
-      matricule: cleanMatricule,
-      displayName: base.displayName || 'Étudiant UPGC',
-      email: base.email || `${cleanMatricule.toLowerCase()}@upgc.ci`,
-      role: 'student',
-      balance: base.balance || 0,
-      savedTickets: base.savedTickets || [],
-      campus: base.campus || 'Campus UPGC Korhogo',
-      university: 'Université Peleforo Gbon Coulibaly (UPGC)'
-    };
+  try {
+    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+  } catch {}
 
-    saveLocalUserProfile(updatedProfile);
-    return { 
-      success: true, 
-      message: 'Mot de passe réinitialisé avec succès ! Votre compte est connecté.',
-      user: updatedProfile
-    };
-  }
+  const updatedProfile: UserProfile = {
+    uid: existing.uid || cleanMatricule,
+    matricule: cleanMatricule,
+    displayName: account.rawDisplayName || existing.displayName || 'Étudiant UPGC',
+    email: existing.email || `${cleanMatricule.toLowerCase()}@upgc.ci`,
+    role: 'student',
+    balance: existing.balance || 0,
+    savedTickets: existing.savedTickets || [],
+    campus: existing.campus || account.campus || 'Campus UPGC Korhogo',
+    university: 'Université Peleforo Gbon Coulibaly (UPGC)',
+    phone: updatedPhone || undefined
+  };
+
+  saveLocalUserProfile(updatedProfile);
 
   return {
-    success: false,
-    message: `Aucun compte trouvé avec le matricule ${cleanMatricule}. Veuillez d'abord créer un compte.`
+    success: true,
+    message: 'Mot de passe sécurisé et réinitialisé avec succès ! Connexion immédiate...',
+    user: updatedProfile
   };
+}
+
+/**
+ * Réinitialisation du mot de passe étudiant (Rétro-compatible)
+ */
+export async function resetStudentPassword(
+  matricule: string,
+  newPass: string
+): Promise<{ success: boolean; message: string; user?: UserProfile }> {
+  return verifyAndResetStudentPassword({
+    matricule,
+    newPass
+  });
 }
 
 /**

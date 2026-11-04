@@ -64,6 +64,7 @@ export interface UserProfile {
   balance: number; // In FCFA
   savedTickets: MealTicket[];
   createdAt?: string;
+  lastPasswordReset?: string;
 }
 
 export interface Transaction {
