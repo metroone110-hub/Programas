@@ -388,7 +388,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
     if (!file) return;
 
     setIsAiAnalyzing(true);
-    setVerdict({ status: 'idle', message: 'Analyse IA Google en cours...' });
+    setVerdict({ status: 'idle', message: 'Lecture optique du ticket en cours...' });
 
     try {
       const reader = new FileReader();

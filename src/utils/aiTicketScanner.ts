@@ -68,7 +68,7 @@ export async function scanTicketWithGeminiAI(base64Image: string): Promise<AITic
               parts: [
                 { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
                 {
-                  text: `Tu es le scanner optique IA de tickets du CROU Korhogo. Détecte le numéro de ticket (CROUK-2026-XXXXXX ou No 0162787). Réponds en JSON strict : {"detected": true, "ticketNumber": "CROUK-2026-XXXXXX", "isAuthenticFormat": true, "rawText": "ticket", "dishName": null, "matricule": null, "confidence": 0.95}`
+                  text: `Tu es le lecteur optique officiel de tickets du CROU Korhogo. Détecte le numéro de ticket (CROUK-2026-XXXXXX ou No 0162787). Réponds en JSON strict : {"detected": true, "ticketNumber": "CROUK-2026-XXXXXX", "isAuthenticFormat": true, "rawText": "ticket", "dishName": null, "matricule": null, "confidence": 0.95}`
                 }
               ]
             }

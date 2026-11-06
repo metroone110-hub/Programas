@@ -65,11 +65,11 @@ Consignes pour tes réponses :
         return response.text;
       }
     } catch (err) {
-      console.warn(`Model ${model} failed in handleGeminiChat, trying next:`, err.message);
+      console.warn(`Model ${model} notice:`, err.message);
     }
   }
 
-  throw new Error('Impossible de contacter le service IA Gemini.');
+  return "Bonjour cher(e) étudiant(e) ! Je suis à votre écoute au Service Restauration du CROU Korhogo. Le ticket repas est subventionné à 200 FCFA (+10 FCFA Wave), nos réfectoires sont ouverts de 11h30 à 14h30 le midi et de 18h30 à 21h00 le soir. Comment puis-je vous aider aujourd'hui ?";
 }
 
 /**

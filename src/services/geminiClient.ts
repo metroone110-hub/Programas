@@ -55,12 +55,24 @@ export async function sendGeminiChatMessage(
     return "Bonjour cher(e) étudiant(e) ! 👋 Je suis ravi de vous retrouver au guichet d'assistance du CROU Korhogo. Comment se passent vos cours aujourd'hui ? Que puis-je faire pour vous concernant le restaurant universitaire ou vos tickets repas ?";
   }
 
-  if (/^(r[eé]ponds|tu es l[aà]|dis[- ]moi|tu m['’]entends|all[oô] quoi)\b/i.test(lower)) {
+  if (/^(r[eé]ponds|tu es l[aà]|dis[- ]moi|tu m['’]entends|all[oô] quoi|parle)\b/i.test(lower)) {
     return "Je suis bien là à vos côtés ! Excusez-moi pour ce court instant d'attente. Je vous écoute avec grand plaisir. Comment puis-je vous aider pour vos repas, horaires ou tickets à 200 FCFA ?";
   }
 
-  if (lower.includes('comment vas-tu') || lower.includes('ca va') || lower.includes('ça va')) {
+  if (lower.includes('comment vas-tu') || lower.includes('ca va') || lower.includes('ça va') || lower.includes('tu vas bien')) {
     return "Tout se passe très bien par la grâce de Dieu, merci ! Nous sommes en plein service au CROU Korhogo pour vous préparer de bons repas chauds. Et vous, tout va bien sur le campus ?";
+  }
+
+  if (lower.includes('merci') || lower.includes('super') || lower.includes('d\'accord') || lower.includes('daccord') || lower.includes('c\'est bon') || lower.includes('ok')) {
+    return "Avec grand plaisir ! C'est tout naturel d'être à vos côtés. L'équipe du CROU Korhogo vous souhaite un excellent appétit et beaucoup de courage dans vos études à l'UPGC. N'hésitez pas si vous avez d'autres questions ! 😊🍲";
+  }
+
+  if (lower.includes('qui es-tu') || lower.includes('tu es qui') || lower.includes('qui es tu') || lower.includes('t\'es qui') || lower.includes('ton nom')) {
+    return "Je suis M. Kouassi, agent d'accueil et conseiller étudiant au Service Restauration du CROU de Korhogo (UPGC). Je suis là pour vous accompagner au quotidien sur les menus, vos tickets repas à 200 FCFA, les passages tourniquets et la sécurité de votre compte !";
+  }
+
+  if (lower.includes('au revoir') || lower.includes('bonne journee') || lower.includes('bonne journée') || lower.includes('a bientot') || lower.includes('à bientôt') || lower.includes('a plus') || lower.includes('bye')) {
+    return "Excellente journée à vous et très bon appétit au Restaurant Universitaire ! À très bientôt sur Programas ! 👋";
   }
 
   // 1. Tenter l'endpoint d'assistance du serveur / worker proxy

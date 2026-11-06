@@ -34,6 +34,7 @@ interface Props {
   onSearchChange?: (val: string) => void;
   onOpenNotifications?: () => void;
   onOpenGemini?: () => void;
+  onOpenSupport?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -50,9 +51,11 @@ export const Navbar: React.FC<Props> = ({
   searchQuery = '',
   onSearchChange,
   onOpenNotifications,
-  onOpenGemini
+  onOpenGemini,
+  onOpenSupport
 }) => {
   const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
+  const handleOpenSupport = onOpenSupport || onOpenGemini;
 
   return (
     <header 
@@ -105,12 +108,12 @@ export const Navbar: React.FC<Props> = ({
           {/* Right: Assistance CROU, Admin, PWA & Lock Button */}
           <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
             {/* Student Assistance Counselor Button */}
-            {onOpenGemini && (
+            {handleOpenSupport && (
               <button
                 type="button"
-                onClick={onOpenGemini}
+                onClick={handleOpenSupport}
                 className="px-2.5 py-1.5 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
-                title="Discuter avec le conseiller CROU Korhogo"
+                title="Discuter avec l'équipe d'accueil CROU Korhogo"
               >
                 <Headphones className="w-3.5 h-3.5 text-orange-500" />
                 <span className="hidden xs:inline">Assistance</span>
