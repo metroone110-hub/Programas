@@ -421,7 +421,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
             if (soundEnabled) soundSynthesizer.playFraudBeep();
             setVerdict({
               status: 'invalid',
-              message: 'L\'IA n\'a pas pu identifier de ticket CROU valide sur cette photo. Rapprochez l\'objectif du QR code.'
+              message: 'Le lecteur optique n\'a pas détecté de ticket CROU lisible sur cette photo. Rapprochez bien l\'objectif du QR code.'
             });
           }
           setIsAiAnalyzing(false);

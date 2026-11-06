@@ -20,15 +20,13 @@ import {
   UserCheck,
   RefreshCw,
   Hash,
-  Shield
+  Shield,
+  X
 } from 'lucide-react';
 import { 
   registerStudentWithMatricule, 
   loginStudentWithMatricule, 
-  loginAdminDirect,
-  lookupStudentForRecovery,
-  verifyAndResetStudentPassword,
-  RecoveryAccountInfo
+  loginAdminDirect
 } from '../services/studentAuth';
 import { UserProfile } from '../types';
 
@@ -43,7 +41,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   onSuccess,
   onGuestAccess 
 }) => {
-  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'admin' | 'forgot_password'>('login');
+  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'admin'>('login');
   
   // Student Login State (Remembered credentials from previous sessions)
   const [loginMatricule, setLoginMatricule] = useState(() => {
@@ -62,17 +60,8 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   });
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Multi-Step Secure Recovery State (Anti-Usurpation)
-  const [recoveryStep, setRecoveryStep] = useState<1 | 2 | 3>(1);
-  const [recoveryAccount, setRecoveryAccount] = useState<RecoveryAccountInfo | null>(null);
-  const [forgotMatricule, setForgotMatricule] = useState('');
-  const [verifyPhone, setVerifyPhone] = useState('');
-  const [verifyName, setVerifyName] = useState('');
-  const [securityCodeInput, setSecurityCodeInput] = useState('');
-  const [generatedSecurityCode, setGeneratedSecurityCode] = useState('');
-  const [forgotNewPass, setForgotNewPass] = useState('');
-  const [forgotConfirmPass, setForgotConfirmPass] = useState('');
-  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  // Security notice for forgotten password (students must contact CROU administrators)
+  const [showForgotHelpModal, setShowForgotHelpModal] = useState(false);
   
   // Student Register State
   const [regMatricule, setRegMatricule] = useState('');
@@ -170,135 +159,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Erreur lors de la connexion.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Étape 1 : Vérification de l'existence du matricule
-  const handleLookupMatriculeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setIsLoading(true);
-
-    try {
-      const cleanMat = forgotMatricule.trim().toUpperCase();
-      if (!cleanMat) {
-        setErrorMsg('Veuillez entrer votre numéro de matricule étudiant.');
-        setIsLoading(false);
-        return;
-      }
-
-      const res = await lookupStudentForRecovery(cleanMat);
-      if (res.success && res.account) {
-        setRecoveryAccount(res.account);
-        // Générer un code temporaire de sécurité CROU-K à 6 chiffres
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedSecurityCode(code);
-        setSecurityCodeInput('');
-        setVerifyPhone('');
-        setVerifyName('');
-        setRecoveryStep(2);
-      } else {
-        setErrorMsg(res.message || 'Matricule introuvable. Vérifiez votre saisie ou créez un compte.');
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Erreur réseau.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Étape 2 : Vérification de l'identité du titulaire (anti-usurpation)
-  const handleVerifyIdentitySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-
-    if (!recoveryAccount) {
-      setRecoveryStep(1);
-      return;
-    }
-
-    // 1. Vérification du code de sécurité CROU-K à 6 chiffres
-    const cleanCode = securityCodeInput.replace(/\D/g, '');
-    if (cleanCode !== generatedSecurityCode) {
-      setErrorMsg('Code de sécurité incorrect. Veuillez saisir les 6 chiffres affichés ci-dessous.');
-      return;
-    }
-
-    // 2. Vérification Téléphone ou Nom complet
-    if (recoveryAccount.hasPhone && recoveryAccount.rawPhone) {
-      const regDigits = recoveryAccount.rawPhone.replace(/\D/g, '').slice(-8);
-      const inDigits = verifyPhone.replace(/\D/g, '').slice(-8);
-      if (!inDigits || inDigits.length < 8 || inDigits !== regDigits) {
-        const cleanNameIn = verifyName.trim().toLowerCase();
-        const cleanNameAcc = (recoveryAccount.rawDisplayName || '').trim().toLowerCase();
-        const matchesName = cleanNameIn && cleanNameAcc && (
-          cleanNameAcc.includes(cleanNameIn) || cleanNameIn.includes(cleanNameAcc)
-        );
-        if (!matchesName) {
-          setErrorMsg('Numéro de téléphone incorrect. Il ne correspond pas au compte enregistré.');
-          return;
-        }
-      }
-    } else {
-      // Aucun téléphone pré-enregistré : validation stricte du nom complet
-      const cleanNameIn = verifyName.trim().toLowerCase();
-      const cleanNameAcc = (recoveryAccount.rawDisplayName || '').trim().toLowerCase();
-      if (!cleanNameIn || cleanNameIn.length < 2) {
-        setErrorMsg('Veuillez saisir votre Nom complet pour confirmer votre identité.');
-        return;
-      }
-      const inParts = cleanNameIn.split(/\s+/).filter(p => p.length >= 2);
-      const accParts = cleanNameAcc.split(/\s+/).filter(p => p.length >= 2);
-      const hasMatch = inParts.some(ip => accParts.some(ap => ap.includes(ip) || ip.includes(ap)));
-      if (!hasMatch && !cleanNameAcc.includes(cleanNameIn)) {
-        setErrorMsg('Le nom saisi ne correspond pas au titulaire enregistré pour ce matricule.');
-        return;
-      }
-    }
-
-    // Tout est vérifié avec succès -> passage à l'étape 3
-    setRecoveryStep(3);
-  };
-
-  // Étape 3 : Enregistrement du nouveau mot de passe
-  const handleFinalPasswordResetSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-
-    if (!forgotNewPass || forgotNewPass.length < 4) {
-      setErrorMsg('Le mot de passe doit comporter au moins 4 caractères (6+ recommandé).');
-      return;
-    }
-
-    if (forgotNewPass !== forgotConfirmPass) {
-      setErrorMsg('Les deux mots de passe ne correspondent pas.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const res = await verifyAndResetStudentPassword({
-        matricule: forgotMatricule,
-        phoneInput: verifyPhone.trim() || undefined,
-        nameInput: verifyName.trim() || undefined,
-        securityCodeInput: securityCodeInput,
-        expectedSecurityCode: generatedSecurityCode,
-        newPass: forgotNewPass.trim()
-      });
-
-      if (res.success && res.user) {
-        setSuccessNotice('Votre mot de passe a été sécurisé et mis à jour ! Connexion immédiate...');
-        setTimeout(() => {
-          onSuccess(res.user!);
-        }, 900);
-      } else {
-        setErrorMsg(res.message || 'Impossible de réinitialiser le mot de passe.');
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Erreur réseau.');
     } finally {
       setIsLoading(false);
     }
@@ -483,11 +343,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setForgotMatricule(loginMatricule);
-                      setActiveTab('forgot_password');
-                      setErrorMsg(null);
-                    }}
+                    onClick={() => setShowForgotHelpModal(true)}
                     className="text-xs text-amber-400 hover:text-amber-300 hover:underline cursor-pointer transition-colors"
                   >
                     Mot de passe oublié ?
@@ -505,314 +361,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
-          )}
-
-          {/* TAB: RÉINITIALISATION MOT DE PASSE SÉCURISÉE EN 3 ÉTAPES (ANTI-USURPATION) */}
-          {activeTab === 'forgot_password' && (
-            <div className="space-y-4">
-              {/* Stepper Header */}
-              <div className="flex items-center justify-between px-1 pb-1 border-b border-white/10">
-                <div className={`flex items-center space-x-1.5 text-xs font-bold ${recoveryStep >= 1 ? 'text-amber-400' : 'text-slate-500'}`}>
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${recoveryStep === 1 ? 'bg-amber-500 text-black font-extrabold' : recoveryStep > 1 ? 'bg-emerald-500 text-white' : 'bg-white/10'}`}>
-                    {recoveryStep > 1 ? '✓' : '1'}
-                  </span>
-                  <span>Matricule</span>
-                </div>
-                <div className={`h-0.5 flex-1 mx-2 ${recoveryStep >= 2 ? 'bg-amber-500' : 'bg-white/10'}`}></div>
-                <div className={`flex items-center space-x-1.5 text-xs font-bold ${recoveryStep >= 2 ? 'text-amber-400' : 'text-slate-500'}`}>
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${recoveryStep === 2 ? 'bg-amber-500 text-black font-extrabold' : recoveryStep > 2 ? 'bg-emerald-500 text-white' : 'bg-white/10'}`}>
-                    {recoveryStep > 2 ? '✓' : '2'}
-                  </span>
-                  <span>Identité</span>
-                </div>
-                <div className={`h-0.5 flex-1 mx-2 ${recoveryStep >= 3 ? 'bg-amber-500' : 'bg-white/10'}`}></div>
-                <div className={`flex items-center space-x-1.5 text-xs font-bold ${recoveryStep >= 3 ? 'text-amber-400' : 'text-slate-500'}`}>
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${recoveryStep === 3 ? 'bg-amber-500 text-black font-extrabold' : 'bg-white/10'}`}>
-                    3
-                  </span>
-                  <span>Nouveau code</span>
-                </div>
-              </div>
-
-              {/* ÉTAPE 1 : IDENTIFICATION DU MATRICULE */}
-              {recoveryStep === 1 && (
-                <form onSubmit={handleLookupMatriculeSubmit} className="space-y-4">
-                  <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-xs text-amber-200">
-                    <span className="font-bold flex items-center space-x-1 mb-1 text-amber-300">
-                      <ShieldCheck className="w-4 h-4 text-amber-400 inline" />
-                      <span>Protection Anti-Usurpation CROU-K</span>
-                    </span>
-                    Pour protéger vos tickets et soldes de cantine, la réinitialisation requiert la preuve de propriété du compte étudiant.
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                      Numéro de Matricule Étudiant *
-                    </label>
-                    <div className="relative">
-                      <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                      <input
-                        type="text"
-                        value={forgotMatricule}
-                        onChange={(e) => setForgotMatricule(e.target.value.toUpperCase())}
-                        placeholder="Ex: UPGC-2026-0842 ou 32165498"
-                        className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono tracking-wider uppercase transition-all"
-                        required
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    data-loading={isLoading ? "true" : undefined}
-                    className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
-                  >
-                    <span>{isLoading ? 'Recherche...' : 'Vérifier l\'existence du compte'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setActiveTab('login'); setErrorMsg(null); }}
-                    className="w-full py-2 text-center text-xs text-slate-400 hover:text-white transition-colors"
-                  >
-                    ← Retour à la connexion
-                  </button>
-                </form>
-              )}
-
-              {/* ÉTAPE 2 : VÉRIFICATION D'IDENTITÉ ANTI-USURPATION */}
-              {recoveryStep === 2 && recoveryAccount && (
-                <form onSubmit={handleVerifyIdentitySubmit} className="space-y-4">
-                  {/* Fiche d'identité masquée */}
-                  <div className="p-3 bg-slate-900/80 border border-amber-500/30 rounded-2xl text-xs space-y-1.5">
-                    <div className="flex items-center justify-between text-amber-300 font-bold">
-                      <span className="flex items-center space-x-1">
-                        <UserCheck className="w-4 h-4 text-emerald-400" />
-                        <span>Compte Détecté : {recoveryAccount.matricule}</span>
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-md">Vérifié</span>
-                    </div>
-                    <div className="text-slate-300">
-                      Titulaire : <strong className="text-white font-mono">{recoveryAccount.maskedName}</strong>
-                    </div>
-                    <div className="text-slate-400 text-[11px]">
-                      UFR : {recoveryAccount.campus || 'Université Peleforo Gbon Coulibaly'}
-                    </div>
-                    {recoveryAccount.hasPhone && (
-                      <div className="text-slate-400 text-[11px]">
-                        Téléphone lié : <span className="font-mono text-amber-300">{recoveryAccount.maskedPhone}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-slate-300 font-medium">
-                    Pour attester que vous êtes le vrai titulaire de ce compte :
-                  </p>
-
-                  {/* Champ Téléphone si présent sur le compte */}
-                  {recoveryAccount.hasPhone ? (
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                        Confirmez votre numéro de téléphone Wave / Mobile *
-                      </label>
-                      <div className="relative">
-                        <Smartphone className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                        <input
-                          type="tel"
-                          value={verifyPhone}
-                          onChange={(e) => setVerifyPhone(e.target.value)}
-                          placeholder="Ex: 07 08 12 34 56 ou 05 01 ..."
-                          className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono tracking-wider transition-all"
-                          required
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                          Confirmez votre Nom complet tel qu'enregistré *
-                        </label>
-                        <div className="relative">
-                          <User className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                          <input
-                            type="text"
-                            value={verifyName}
-                            onChange={(e) => setVerifyName(e.target.value)}
-                            placeholder="Votre nom complet pour valider l'accès"
-                            className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition-all"
-                            required
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                          Votre numéro de mobile / Wave (Pour sécuriser votre compte) *
-                        </label>
-                        <div className="relative">
-                          <Smartphone className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                          <input
-                            type="tel"
-                            value={verifyPhone}
-                            onChange={(e) => setVerifyPhone(e.target.value)}
-                            placeholder="Ex: 07 08 12 34 56"
-                            className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono transition-all"
-                            required
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Code de Sécurité Temporaire CROU-K à 6 chiffres */}
-                  <div className="p-3.5 bg-gradient-to-br from-amber-950/50 to-orange-950/40 border border-amber-500/40 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between text-xs text-amber-300 font-bold">
-                      <span className="flex items-center space-x-1.5">
-                        <Hash className="w-4 h-4 text-amber-400" />
-                        <span>Code de Validation Sécurisé CROU-K</span>
-                      </span>
-                      <span className="text-base font-black font-mono tracking-widest px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg">
-                        {generatedSecurityCode}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Saisissez ce code de sécurité à 6 chiffres pour valider la session en cours :
-                    </p>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={securityCodeInput}
-                      onChange={(e) => setSecurityCodeInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder="• • • • • •"
-                      className="w-full py-2.5 px-4 bg-black/70 border border-amber-400/40 rounded-xl text-center text-lg font-mono font-bold tracking-widest text-amber-300 placeholder:text-slate-600 focus:outline-none focus:border-amber-400 transition-all"
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 cursor-pointer"
-                  >
-                    <span>Valider mon Identité & Continuer</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setRecoveryStep(1); setErrorMsg(null); }}
-                    className="w-full py-2 text-center text-xs text-slate-400 hover:text-white transition-colors"
-                  >
-                    ← Changer de matricule
-                  </button>
-                </form>
-              )}
-
-              {/* ÉTAPE 3 : CRÉATION DU NOUVEAU MOT DE PASSE */}
-              {recoveryStep === 3 && recoveryAccount && (
-                <form onSubmit={handleFinalPasswordResetSubmit} className="space-y-4">
-                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-xs text-emerald-200 flex items-center space-x-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                    <div>
-                      <strong className="block text-emerald-300 font-bold">Identité confirmée avec succès !</strong>
-                      Titulaire authentifié : {recoveryAccount.rawDisplayName}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                      Nouveau Mot de Passe *
-                    </label>
-                    <div className="relative">
-                      <KeyRound className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        value={forgotNewPass}
-                        onChange={(e) => setForgotNewPass(e.target.value)}
-                        placeholder="Au moins 4 caractères (6+ recommandé)"
-                        className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition-all"
-                        required
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPass(!showPass)}
-                        className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white"
-                      >
-                        {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    {/* Jauge de force du mot de passe */}
-                    {forgotNewPass.length > 0 && (
-                      <div className="mt-2 flex items-center space-x-2 text-[11px]">
-                        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden flex">
-                          <div 
-                            className={`h-full transition-all ${
-                              forgotNewPass.length < 4 ? 'w-1/3 bg-red-500' :
-                              forgotNewPass.length < 6 ? 'w-2/3 bg-amber-500' : 'w-full bg-emerald-500'
-                            }`}
-                          />
-                        </div>
-                        <span className={
-                          forgotNewPass.length < 4 ? 'text-red-400 font-bold' :
-                          forgotNewPass.length < 6 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'
-                        }>
-                          {forgotNewPass.length < 4 ? 'Trop court' : forgotNewPass.length < 6 ? 'Moyen' : 'Sécurisé'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                      Confirmer le Nouveau Mot de Passe *
-                    </label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                      <input
-                        type={showConfirmPass ? 'text' : 'password'}
-                        value={forgotConfirmPass}
-                        onChange={(e) => setForgotConfirmPass(e.target.value)}
-                        placeholder="Répétez votre mot de passe"
-                        className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition-all"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPass(!showConfirmPass)}
-                        className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white"
-                      >
-                        {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    data-loading={isLoading ? "true" : undefined}
-                    className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
-                  >
-                    <span>{isLoading ? 'Sécurisation...' : 'Enregistrer & Se Connecter'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setRecoveryStep(2); setErrorMsg(null); }}
-                    className="w-full py-2 text-center text-xs text-slate-400 hover:text-white transition-colors"
-                  >
-                    ← Étape précédente
-                  </button>
-                </form>
-              )}
-            </div>
           )}
 
           {/* TAB 2: INSCRIPTION SIMPLE ÉTUDIANT (Matricule + Mot de passe + Nom) */}
@@ -1013,6 +561,65 @@ export const BlackGatewayPortal: React.FC<Props> = ({
           <span>Système Garanti Anti-Fraude & Billet Tourniquet 2026</span>
         </div>
       </footer>
+
+      {/* MODAL: INFORMATION SÉCURITÉ MOT DE PASSE OUBLIÉ */}
+      {showForgotHelpModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl relative text-left">
+            <button
+              type="button"
+              onClick={() => setShowForgotHelpModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center mb-4 shadow-inner">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-extrabold text-white mb-2">
+              Mot de passe oublié ?
+            </h3>
+
+            <div className="p-3.5 bg-amber-950/50 border border-amber-500/30 rounded-2xl text-xs text-amber-200 mb-4 leading-relaxed">
+              <p className="font-bold text-amber-300 mb-1 flex items-center gap-1.5">
+                <Shield className="w-4 h-4 text-amber-400" />
+                <span>Protection stricte contre les failles :</span>
+              </p>
+              Pour éviter tout risque d'usurpation et protéger vos tickets de cantine, la réinitialisation de mot de passe en ligne est désactivée.
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed mb-6">
+              <p>
+                Si vous avez oublié vos accès, <strong className="text-white">veuillez vous adresser directement aux responsables de Programas</strong> au réfectoire :
+              </p>
+              <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
+                <div className="flex items-center space-x-2 text-white font-semibold">
+                  <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span>Guichet Restauration CROU Korhogo (UPGC)</span>
+                </div>
+                <div className="flex items-center space-x-2 text-slate-400 text-[11px]">
+                  <GraduationCap className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <span>Présentez-vous muni(e) de votre carte d'étudiant</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Un responsable vérifiera votre identité sur le registre officiel et réinitialisera votre mot de passe immédiatement en main propre.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowForgotHelpModal(false)}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-orange-600/20 active:scale-98 cursor-pointer"
+            >
+              J'ai compris
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

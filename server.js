@@ -117,8 +117,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Gemini AI Chat Endpoint
-  if (safeUrl === '/api/gemini/chat' && req.method === 'POST') {
+  // Support & Student Assistance Chat Endpoint
+  if ((safeUrl === '/api/gemini/chat' || safeUrl === '/api/support/chat') && req.method === 'POST') {
     let bodyData = '';
     req.on('data', chunk => { bodyData += chunk; });
     req.on('end', async () => {

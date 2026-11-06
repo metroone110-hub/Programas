@@ -2,7 +2,8 @@
  * Cloudflare Worker for CROU Resto U (UPGC Korhogo)
  * Handles:
  * - Rate Limiting (coarseLimit & rateLimit with Durable Objects)
- * - Gemini AI Endpoints (/api/gemini/chat & /api/gemini/scan-ticket)
+ * - Support & Assistance Endpoints (/api/support/chat & /api/gemini/chat)
+ * - Optical Ticket Verification (/api/gemini/scan-ticket)
  * - Jeko Partner API Payment Requests (/api/jeko/payment_requests)
  * - Jeko Partner API Status Verification (/api/jeko/payment_requests/:id)
  * - Jeko Webhooks (/api/webhook/jeko)
@@ -37,9 +38,9 @@ export default {
       });
     }
 
-    // 1. Gemini AI Chat Endpoint
-    if (url.pathname === '/api/gemini/chat' && request.method === 'POST') {
-      const tooMany = await rateLimit(env, request, 'aiChat');
+    // 1. Support & Student Assistance Chat Endpoint (Direct human counseling)
+    if ((url.pathname === '/api/support/chat' || url.pathname === '/api/gemini/chat') && request.method === 'POST') {
+      const tooMany = await rateLimit(env, request, 'login');
       if (tooMany) return tooMany;
 
       try {
@@ -78,7 +79,7 @@ export default {
                 contents,
                 systemInstruction: {
                   parts: [{
-                    text: `Tu es l'Assistant IA Gemini officiel de Programas (CROU Korhogo UPGC). Repas officiel subventionné à 200 FCFA (+10 F frais de service). Horaires : 11h30-14h30 et 18h30-21h00. Aide les étudiants avec bienveillance, politesse et clarté.`
+                    text: `Tu es M. Kouassi, conseiller officiel et humain du Service Restauration du CROU de Korhogo (UPGC). Tu réponds aux étudiants comme un conseiller chaleureux, bienveillant, poli, compréhensif et professionnel d'Afrique de l'Ouest (Côte d'Ivoire). Ne dis JAMAIS que tu es une intelligence artificielle, un modèle de langue ou un robot. Le ticket repas est subventionné à 200 FCFA (+10 FCFA Wave = 210 FCFA). Horaires du réfectoire : déjeuner 11h30-14h30, dîner 18h30-21h00. Aide les étudiants avec clarté et gentillesse.`
                   }]
                 }
               })
@@ -109,7 +110,7 @@ export default {
       }
     }
 
-    // 2. Gemini AI Optical Ticket Scanner Endpoint
+    // 2. Optical Ticket Scanner Endpoint
     if (url.pathname === '/api/gemini/scan-ticket' && request.method === 'POST') {
       const tooMany = await rateLimit(env, request, 'validate');
       if (tooMany) return tooMany;
@@ -138,7 +139,7 @@ export default {
                     parts: [
                       { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
                       {
-                        text: `Tu es le système IA de vision de Programas CROU Korhogo. Extrais le numéro de ticket (CROUK-2026-XXXXXX ou No 0162787). Réponds strictement par un JSON valide : {"detected": true, "ticketNumber": "CROUK-2026-XXXXXX", "isAuthenticFormat": true, "rawText": "ticket crou", "dishName": null, "matricule": null, "confidence": 0.95}`
+                        text: `Tu es le scanner optique automatisé de Programas CROU Korhogo. Extrais le numéro de ticket (CROUK-2026-XXXXXX ou No 0162787). Réponds strictement par un JSON valide : {"detected": true, "ticketNumber": "CROUK-2026-XXXXXX", "isAuthenticFormat": true, "rawText": "ticket crou", "dishName": null, "matricule": null, "confidence": 0.95}`
                       }
                     ]
                   }
@@ -285,7 +286,7 @@ export default {
           }), {
             status: 200,
             headers: { 
-              'Content-Type': 'application/json',
+              'Content-Type': 'application/json', 
               'Access-Control-Allow-Origin': '*'
             }
           });

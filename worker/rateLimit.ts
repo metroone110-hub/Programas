@@ -35,11 +35,11 @@
 //       // …
 //     },
 //   };
+import { DurableObject } from 'cloudflare:workers';
 
 export interface RateLimitEnv {
-  LIMITER?: any;
-  API_LIMITER?: any;
-  [key: string]: any;
+  LIMITER: DurableObjectNamespace<RateLimiter>;
+  API_LIMITER?: RateLimit;
 }
 
 /** Règles : `limit` requêtes maximum par fenêtre de `windowMs`. */
@@ -47,17 +47,17 @@ export const RULES = {
   // Avant vérification du jeton Google, la clé est l'adresse IP. Les réseaux mobiles partagent souvent
   // une même IP entre beaucoup de personnes : on reste large pour ne pas bloquer des étudiants honnêtes.
   login: { limit: 20, windowMs: 60_000 },
+  pin: { limit: 15, windowMs: 60_000 },
   // Après connexion, la clé est l'identifiant de l'utilisateur : ces règles peuvent être strictes.
   purchase: { limit: 10, windowMs: 3_600_000 },
   ticketView: { limit: 60, windowMs: 60_000 },
   validate: { limit: 60, windowMs: 60_000 },
   admin: { limit: 60, windowMs: 60_000 },
-  aiChat: { limit: 30, windowMs: 60_000 },
 } as const;
 
 export type RuleName = keyof typeof RULES;
 
-const clientIp = (request: Request) => request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for') ?? 'unknown';
+const clientIp = (request: Request) => request.headers.get('cf-connecting-ip') ?? 'unknown';
 
 const tooManyRequests = (retryAfterSeconds: number, limit?: number) =>
   new Response(
@@ -89,9 +89,6 @@ export async function coarseLimit(env: RateLimitEnv, request: Request): Promise<
   }
 }
 
-// Fallback in-memory cache for node / dev / environments without Cloudflare Durable Objects
-const inMemoryCache = new Map<string, { count: number; resetAt: number }>();
-
 /**
  * Niveau 2 : compteur exact.
  * @param subject identifiant de l'utilisateur (depuis le JWT vérifié). À défaut, l'adresse IP est utilisée.
@@ -104,39 +101,16 @@ export async function rateLimit(
   subject?: string,
   failOpen = true
 ): Promise<Response | null> {
+  if (!env || !env.LIMITER) return null;
   const { limit, windowMs } = RULES[rule];
   const key = `${rule}:${subject ?? clientIp(request)}`;
-
-  // If Cloudflare Durable Object LIMITER is available
-  if (env && env.LIMITER && typeof env.LIMITER.idFromName === 'function') {
-    try {
-      const stub = env.LIMITER.get(env.LIMITER.idFromName(key));
-      const result = await stub.hit(limit, windowMs);
-      return result.allowed ? null : tooManyRequests(result.retryAfter, limit);
-    } catch (err) {
-      console.error(`rateLimit(${rule}): erreur du limiteur DO`, err);
-      return failOpen ? null : tooManyRequests(10);
-    }
-  }
-
-  // Graceful in-memory sliding window fallback
   try {
-    const now = Date.now();
-    let state = inMemoryCache.get(key);
-    if (!state || state.resetAt <= now) {
-      state = { count: 0, resetAt: now + windowMs };
-    }
-    state.count += 1;
-    inMemoryCache.set(key, state);
-
-    if (state.count > limit) {
-      const retryAfter = Math.max(1, Math.ceil((state.resetAt - now) / 1000));
-      return tooManyRequests(retryAfter, limit);
-    }
-    return null;
+    const stub = env.LIMITER.get(env.LIMITER.idFromName(key));
+    const result = await stub.hit(limit, windowMs);
+    return result.allowed ? null : tooManyRequests(result.retryAfter, limit);
   } catch (err) {
-    console.error(`rateLimit(${rule}) fallback error:`, err);
-    return null;
+    console.error(`rateLimit(${rule}): erreur du limiteur`, err);
+    return failOpen ? null : tooManyRequests(10);
   }
 }
 
@@ -146,21 +120,14 @@ interface WindowState {
 }
 
 /** Un objet par clé (ex. « login:41.12.8.9 ») : un compteur qui survit même si l'objet est mis en veille. */
-export class RateLimiter {
-  ctx: any;
-  constructor(ctx: any, _env: any) {
-    this.ctx = ctx;
-  }
-
+export class RateLimiter extends DurableObject {
   async hit(limit: number, windowMs: number): Promise<{ allowed: boolean; remaining: number; retryAfter: number }> {
     const now = Date.now();
-    let state = await this.ctx.storage.get('w') as WindowState | undefined;
+    let state = await this.ctx.storage.get<WindowState>('w');
 
     if (!state || state.resetAt <= now) {
       state = { count: 0, resetAt: now + windowMs };
-      if (this.ctx.storage.setAlarm) {
-        await this.ctx.storage.setAlarm(state.resetAt + 1000); // nettoyage automatique après la fenêtre
-      }
+      await this.ctx.storage.setAlarm(state.resetAt + 1000); // nettoyage automatique après la fenêtre
     }
     state.count += 1;
     await this.ctx.storage.put('w', state);
@@ -173,9 +140,7 @@ export class RateLimiter {
   }
 
   async alarm() {
-    const state = await this.ctx.storage.get('w') as WindowState | undefined;
-    if (!state || state.resetAt <= Date.now()) {
-      await this.ctx.storage.deleteAll();
-    }
+    const state = await this.ctx.storage.get<WindowState>('w');
+    if (!state || state.resetAt <= Date.now()) await this.ctx.storage.deleteAll();
   }
 }

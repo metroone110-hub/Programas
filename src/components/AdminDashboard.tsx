@@ -31,7 +31,8 @@ import {
   ExternalLink,
   FileSpreadsheet,
   UploadCloud,
-  Check
+  Check,
+  KeyRound
 } from 'lucide-react';
 import { Dish, Canteen, CrowdLevel, UserProfile, MealTicket } from '../types';
 import { ImageWithLoader } from './ImageWithLoader';
@@ -42,7 +43,8 @@ import {
   getFraudAuditLogs, 
   FraudAuditLog,
   subscribeToStudentsRegistry,
-  syncAllLocalAccountsToFirestore
+  syncAllLocalAccountsToFirestore,
+  resetStudentPassword
 } from '../services/studentAuth';
 import { 
   DailyLedgerStats,
@@ -122,6 +124,9 @@ export const AdminDashboard: React.FC<Props> = ({
   const [matriculeSearch, setMatriculeSearch] = useState('');
   const [fraudLogs, setFraudLogs] = useState<FraudAuditLog[]>([]);
   const [isRefreshingRegistry, setIsRefreshingRegistry] = useState(false);
+  const [resettingStudent, setResettingStudent] = useState<UserProfile | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [resetStatus, setResetStatus] = useState<{ loading: boolean; message?: string; error?: string }>({ loading: false });
 
   // Google Drive Integration State
   const [driveUser, setDriveUser] = useState<any>(() => getCachedDriveUser());
@@ -376,6 +381,31 @@ export const AdminDashboard: React.FC<Props> = ({
     setIsVerifyingManual(false);
     loadRegistryData();
     loadLedgerData();
+  };
+
+  const handleAdminResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resettingStudent || !newPasswordInput.trim()) return;
+    setResetStatus({ loading: true });
+
+    try {
+      const res = await resetStudentPassword(resettingStudent.matricule || resettingStudent.uid, newPasswordInput.trim());
+      if (res.success) {
+        setResetStatus({ 
+          loading: false, 
+          message: `Mot de passe réinitialisé avec succès pour ${resettingStudent.displayName || resettingStudent.matricule} !` 
+        });
+        setTimeout(() => {
+          setResettingStudent(null);
+          setNewPasswordInput('');
+          setResetStatus({ loading: false });
+        }, 1600);
+      } else {
+        setResetStatus({ loading: false, error: res.message || 'Erreur lors de la réinitialisation.' });
+      }
+    } catch (err: any) {
+      setResetStatus({ loading: false, error: err.message || 'Erreur réseau.' });
+    }
   };
 
   const canteenDishes = dishes.filter(d => 
@@ -1061,12 +1091,13 @@ export const AdminDashboard: React.FC<Props> = ({
                       <th className="py-3 px-4">Tickets Actifs</th>
                       <th className="py-3 px-4">Tickets Consommés</th>
                       <th className="py-3 px-4">Statut Anti-Fraude</th>
+                      <th className="py-3 px-4 text-right">Action Responsable</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-slate-400">
+                        <td colSpan={7} className="py-8 text-center text-slate-400">
                           Aucun étudiant correspondant au matricule recherché.
                         </td>
                       </tr>
@@ -1098,6 +1129,21 @@ export const AdminDashboard: React.FC<Props> = ({
                                 <UserCheck className="w-3 h-3 text-emerald-600" />
                                 <span>Authentifié UPGC</span>
                               </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setResettingStudent(st);
+                                  setNewPasswordInput('');
+                                  setResetStatus({ loading: false });
+                                }}
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                title="Réinitialiser le mot de passe de cet étudiant"
+                              >
+                                <KeyRound className="w-3 h-3 text-amber-600" />
+                                <span>Réinitialiser MDP</span>
+                              </button>
                             </td>
                           </tr>
                         );
@@ -1632,6 +1678,100 @@ export const AdminDashboard: React.FC<Props> = ({
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RÉINITIALISATION MOT DE PASSE ÉTUDIANT PAR LE RESPONSABLE PROGRAMAS */}
+      {resettingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl relative border border-slate-200 text-left">
+            <button
+              type="button"
+              onClick={() => { setResettingStudent(null); setResetStatus({ loading: false }); }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
+              <KeyRound className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-extrabold text-slate-900 mb-1 font-cabinet">
+              Réinitialisation Mot de Passe Étudiant
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Guichet Responsable Programas • CROU Korhogo
+            </p>
+
+            {/* Fiche Étudiant */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1 mb-4">
+              <div className="flex items-center justify-between font-bold">
+                <span className="text-slate-500">Matricule :</span>
+                <span className="font-mono text-orange-600 font-extrabold">{resettingStudent.matricule || resettingStudent.uid}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Étudiant :</span>
+                <span className="font-bold text-slate-900">{resettingStudent.displayName}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                <span>Solde actuel :</span>
+                <span className="font-bold text-emerald-700">{resettingStudent.balance} FCFA</span>
+              </div>
+            </div>
+
+            {resetStatus.message && (
+              <div className="p-3 mb-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{resetStatus.message}</span>
+              </div>
+            )}
+
+            {resetStatus.error && (
+              <div className="p-3 mb-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <span>{resetStatus.error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminResetPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Nouveau Mot de Passe Temporaire ou Définitif *
+                </label>
+                <input
+                  type="text"
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="Ex: Pass2026 ou 123456"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono font-bold"
+                  required
+                  autoFocus
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Communiquez ce mot de passe à l'étudiant après vérification de sa carte d'étudiant.
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={resetStatus.loading || !newPasswordInput.trim()}
+                  className="flex-1 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-98 disabled:opacity-50 cursor-pointer flex items-center justify-center space-x-1.5"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>{resetStatus.loading ? 'Enregistrement...' : 'Valider & Définir le Mot de Passe'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setResettingStudent(null); setResetStatus({ loading: false }); }}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -14,7 +14,7 @@ import {
   Ticket,
   CheckCircle2,
   X,
-  Sparkles
+  Headphones
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Canteen, Dish, MealTicket, UserProfile, MealType } from './types';
@@ -778,15 +778,18 @@ export const App: React.FC = () => {
         user={user}
       />
 
-      {/* Floating Gemini AI Quick Launcher */}
+      {/* Floating CROU Student Support Desk Launcher */}
       <button
         type="button"
         onClick={() => setShowGeminiModal(true)}
-        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 hover:from-orange-600 hover:to-amber-600 text-white px-3.5 py-2.5 rounded-full shadow-lg shadow-orange-500/30 border border-white/20 flex items-center space-x-2 text-xs font-black transition-all active:scale-95 cursor-pointer hover:shadow-xl select-none"
-        title="Poser une question à l'Assistant IA Gemini"
+        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 hover:from-black hover:to-slate-800 text-white px-3.5 py-2.5 rounded-full shadow-lg shadow-black/40 border border-orange-500/40 flex items-center space-x-2 text-xs font-bold transition-all active:scale-95 cursor-pointer hover:shadow-xl select-none"
+        title="Discuter avec le Conseiller CROU Korhogo"
       >
-        <Sparkles className="w-4 h-4 text-white animate-pulse" />
-        <span>Assistant IA ✦</span>
+        <div className="relative flex items-center justify-center">
+          <Headphones className="w-4 h-4 text-orange-400" />
+          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+        </div>
+        <span className="tracking-wide">Assistance CROU</span>
       </button>
 
       {/* Gemini AI Assistant Modal */}

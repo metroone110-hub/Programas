@@ -12,7 +12,7 @@ import {
   Search,
   Bell,
   Ticket,
-  Sparkles,
+  Headphones,
   Lock
 } from 'lucide-react';
 import { Canteen, UserProfile } from '../types';
@@ -102,18 +102,18 @@ export const Navbar: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Right: Gemini AI, Admin, PWA & Lock Button */}
+          {/* Right: Assistance CROU, Admin, PWA & Lock Button */}
           <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
-            {/* Gemini AI Assistant Button */}
+            {/* Student Assistance Counselor Button */}
             {onOpenGemini && (
               <button
                 type="button"
                 onClick={onOpenGemini}
-                className="px-2.5 py-1.5 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
-                title="Discuter avec l'Assistant IA Gemini"
+                className="px-2.5 py-1.5 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Discuter avec le conseiller CROU Korhogo"
               >
-                <Sparkles className="w-3.5 h-3.5 text-orange-500 animate-pulse" />
-                <span className="hidden xs:inline">Gemini IA</span>
+                <Headphones className="w-3.5 h-3.5 text-orange-500" />
+                <span className="hidden xs:inline">Assistance</span>
               </button>
             )}
 

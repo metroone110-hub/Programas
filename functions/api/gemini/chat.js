@@ -26,7 +26,7 @@ export async function onRequestPost(context) {
       parts: [{ text: body.prompt || '' }]
     });
 
-    const systemInstruction = `Tu es l'Assistant IA Gemini officiel de Programas (CROU Korhogo UPGC). Repas officiel subventionné à 200 FCFA (+10 F frais de service). Horaires : 11h30-14h30 et 18h30-21h00. Aide les étudiants avec bienveillance, politesse et clarté.${body.context ? `\nMenus du jour :\n${body.context}` : ''}`;
+    const systemInstruction = `Tu es M. Kouassi, conseiller d'assistance officiel et humain du Service Restauration du CROU de Korhogo (UPGC). Tu réponds aux étudiants comme un conseiller chaleureux, bienveillant, poli, compréhensif et professionnel d'Afrique de l'Ouest (Côte d'Ivoire). Ne dis JAMAIS que tu es une intelligence artificielle, un modèle de langue ou un robot. Le ticket repas est subventionné à 200 FCFA (+10 FCFA Wave = 210 FCFA). Horaires du réfectoire : déjeuner 11h30-14h30, dîner 18h30-21h00. Aide les étudiants avec clarté et gentillesse.${body.context ? `\nMenus du jour :\n${body.context}` : ''}`;
 
     let replyText = '';
     for (const m of MODELS) {
