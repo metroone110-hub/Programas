@@ -65,6 +65,9 @@ export interface UserProfile {
   savedTickets: MealTicket[];
   createdAt?: string;
   lastPasswordReset?: string;
+  isBlocked?: boolean;
+  blockedReason?: string;
+  blockedAt?: string;
 }
 
 export interface Transaction {

@@ -504,6 +504,14 @@ export async function loginStudentWithMatricule(
     };
   }
 
+  // Strict Security Check: Compte verrouillé suite à 5 tentatives PIN erronées
+  if (firestoreStudent.isBlocked) {
+    return {
+      success: false,
+      error: `⚠️ Compte verrouillé pour votre sécurité : 5 tentatives consécutives de code PIN erronées ont été détectées. Veuillez vous adresser directement aux responsables de Programas au Guichet Restauration CROU Korhogo muni(e) de votre carte d'étudiant pour réactiver votre accès.`
+    };
+  }
+
   // Strict Password Verification against the registered account in Firestore
   const targetPass = (firestoreStudent.passwordHash || '').trim();
   const isPasswordMatch = targetPass === cleanPass;
@@ -511,7 +519,7 @@ export async function loginStudentWithMatricule(
   if (!isPasswordMatch) {
     return { 
       success: false, 
-      error: 'Mot de passe incorrect pour ce matricule. Veuillez vérifier votre saisie ou cliquer sur "Mot de passe oublié ?".' 
+      error: 'Mot de passe incorrect pour ce matricule. En cas d\'oubli, veuillez vous adresser aux responsables de Programas au Guichet Restauration CROU.' 
     };
   }
 
@@ -1260,5 +1268,167 @@ export async function signInStudentDirect(data: {
 export function verifyAdminPassword(password: string): boolean {
   const p = (password || '').trim();
   return p === 'upgc2026' || p === 'Azert75@' || p === 'Azerty75@';
+}
+
+/**
+ * Verrouiller définitivement le compte d'un étudiant suite à 5 tentatives de code PIN erronées
+ */
+export async function blockStudentAccount(
+  matricule: string,
+  reason: string = 'Compte bloqué suite à 5 tentatives de code PIN erronées.'
+): Promise<{ success: boolean; message: string }> {
+  const cleanMat = (matricule || '').trim().toUpperCase();
+  if (!cleanMat) return { success: false, message: 'Matricule requis' };
+
+  const safeId = sanitizeMatriculeId(cleanMat);
+  const now = new Date().toISOString();
+
+  // 1. Mettre à jour le profil dans le registre local
+  const registry = getLocalStudentsRegistry();
+  let studentName = cleanMat;
+  if (registry[cleanMat]) {
+    registry[cleanMat].isBlocked = true;
+    registry[cleanMat].blockedReason = reason;
+    registry[cleanMat].blockedAt = now;
+    studentName = registry[cleanMat].displayName || cleanMat;
+  }
+  Object.values(registry).forEach((s: UserProfile) => {
+    if (s.matricule?.toUpperCase() === cleanMat || s.uid?.toUpperCase() === cleanMat || sanitizeMatriculeId(s.matricule || '') === safeId) {
+      s.isBlocked = true;
+      s.blockedReason = reason;
+      s.blockedAt = now;
+      studentName = s.displayName || studentName;
+    }
+  });
+  try {
+    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+  } catch {}
+
+  // 2. Mettre à jour la session utilisateur active si présente
+  try {
+    const rawUser = localStorage.getItem(STORAGE_KEY);
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.matricule?.toUpperCase() === cleanMat || u.uid?.toUpperCase() === cleanMat) {
+        u.isBlocked = true;
+        u.blockedReason = reason;
+        u.blockedAt = now;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      }
+    }
+  } catch {}
+
+  // 3. Persister dans Firestore (REST + SDK)
+  try {
+    await saveStudentRest({
+      matricule: cleanMat,
+      isBlocked: true,
+      blockedReason: reason,
+      blockedAt: now
+    } as any);
+  } catch {}
+
+  try {
+    const sRef = doc(db, 'students', safeId);
+    await setDoc(sRef, {
+      isBlocked: true,
+      blockedReason: reason,
+      blockedAt: now
+    }, { merge: true });
+  } catch (err) {
+    console.warn('blockStudentAccount Firestore SDK note:', err);
+  }
+
+  // 4. Enregistrer un rapport d'alerte dans les logs de fraude
+  try {
+    recordFraudLog({
+      matricule: cleanMat,
+      studentName: studentName,
+      ticketNumber: 'PIN-BRUTE-FORCE',
+      reason: `Compte bloqué : 5 erreurs consécutives de code PIN. Contact aux responsables Programas obligatoire.`,
+      severity: 'critical'
+    });
+  } catch {}
+
+  return {
+    success: true,
+    message: 'Compte étudiant verrouillé avec succès.'
+  };
+}
+
+/**
+ * Déverrouiller le compte d'un étudiant par un responsable Programas (Admin)
+ */
+export async function unblockStudentAccount(
+  matricule: string
+): Promise<{ success: boolean; message: string }> {
+  const cleanMat = (matricule || '').trim().toUpperCase();
+  if (!cleanMat) return { success: false, message: 'Matricule requis' };
+
+  const safeId = sanitizeMatriculeId(cleanMat);
+
+  // 1. Mettre à jour dans le registre local
+  const registry = getLocalStudentsRegistry();
+  if (registry[cleanMat]) {
+    registry[cleanMat].isBlocked = false;
+    delete registry[cleanMat].blockedReason;
+    delete registry[cleanMat].blockedAt;
+  }
+  Object.values(registry).forEach((s: UserProfile) => {
+    if (s.matricule?.toUpperCase() === cleanMat || s.uid?.toUpperCase() === cleanMat || sanitizeMatriculeId(s.matricule || '') === safeId) {
+      s.isBlocked = false;
+      delete s.blockedReason;
+      delete s.blockedAt;
+    }
+  });
+  try {
+    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+  } catch {}
+
+  // 2. Mettre à jour la session utilisateur active si présente
+  try {
+    const rawUser = localStorage.getItem(STORAGE_KEY);
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.matricule?.toUpperCase() === cleanMat || u.uid?.toUpperCase() === cleanMat) {
+        u.isBlocked = false;
+        u.blockedReason = undefined;
+        u.blockedAt = undefined;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      }
+    }
+  } catch {}
+
+  // 3. Persister dans Firestore (REST + SDK)
+  try {
+    await saveStudentRest({
+      matricule: cleanMat,
+      isBlocked: false,
+      blockedReason: '',
+      blockedAt: ''
+    } as any);
+  } catch {}
+
+  try {
+    const sRef = doc(db, 'students', safeId);
+    await setDoc(sRef, {
+      isBlocked: false,
+      blockedReason: null,
+      blockedAt: null
+    }, { merge: true });
+  } catch (err) {
+    console.warn('unblockStudentAccount Firestore SDK note:', err);
+  }
+
+  // Réinitialiser les compteurs d'échecs PIN en local
+  try {
+    localStorage.removeItem('programas_pin_fails');
+    localStorage.removeItem('programas_pin');
+  } catch {}
+
+  return {
+    success: true,
+    message: `Le compte ${cleanMat} a été débloqué avec succès.`
+  };
 }
 

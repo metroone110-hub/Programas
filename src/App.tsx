@@ -94,6 +94,7 @@ export const App: React.FC = () => {
   const [showGeminiModal, setShowGeminiModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
+  const [blockedAlertMessage, setBlockedAlertMessage] = useState<string | null>(null);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'cart' | 'tickets' | 'profile'>('home');
@@ -455,7 +456,17 @@ export const App: React.FC = () => {
   // If in admin view mode
   if (isAdminView && user?.role === 'admin') {
     return (
-      <PinLock enabled={Boolean(user)} onForgot={handleLogout}>
+      <PinLock 
+        enabled={Boolean(user)} 
+        userMatricule={user?.matricule || user?.uid}
+        userName={user?.displayName}
+        onForgot={handleLogout}
+        onAccountBlocked={(mat, reason) => {
+          handleLogout();
+          setBlockedAlertMessage(reason);
+          setShowBlackPortal(true);
+        }}
+      >
         <AdminDashboard
           canteen={selectedCanteen}
           dishes={dishes}
@@ -471,7 +482,17 @@ export const App: React.FC = () => {
   }
 
   return (
-    <PinLock enabled={Boolean(user)} onForgot={handleLogout}>
+    <PinLock 
+      enabled={Boolean(user)} 
+      userMatricule={user?.matricule || user?.uid}
+      userName={user?.displayName}
+      onForgot={handleLogout}
+      onAccountBlocked={(mat, reason) => {
+        handleLogout();
+        setBlockedAlertMessage(reason);
+        setShowBlackPortal(true);
+      }}
+    >
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-orange-500 selection:text-white relative w-full max-w-full">
         {/* Intro animée fluide 60fps : ticket qui monte, prix qui grimpe à 200 F et talon qui se détache */}
         <TicketIntro />
@@ -799,6 +820,50 @@ export const App: React.FC = () => {
         dishes={dishes}
         studentName={user?.displayName}
       />
+
+      {/* MODAL: ALERTE COMPTE BLOQUÉ SUITE À 5 ERREURS PIN */}
+      {blockedAlertMessage && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 border border-red-500/50 rounded-3xl p-6 shadow-2xl relative text-left">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mb-4">
+              <ShieldCheck className="w-6 h-6 text-red-500" />
+            </div>
+
+            <h3 className="text-base font-extrabold text-white mb-2">
+              ⚠️ Compte Étudiant Verrouillé
+            </h3>
+
+            <div className="p-3.5 bg-red-950/60 border border-red-500/30 rounded-2xl text-xs text-red-200 mb-4 leading-relaxed">
+              <p className="font-bold text-red-300 mb-1">
+                Sécurité activée : 5 tentatives de code PIN erronées consécutives.
+              </p>
+              Pour protéger vos tickets repas et votre solde, votre compte a été bloqué. Toute nouvelle connexion est désormais refusée.
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed mb-6">
+              <p>
+                Pour réactiver l'accès à votre compte, <strong className="text-white">veuillez vous adresser directement aux responsables de Programas</strong> :
+              </p>
+              <div className="p-3 bg-white/5 border border-white/10 rounded-2xl space-y-1.5 font-medium">
+                <div className="flex items-center space-x-2 text-white">
+                  <span>🏛️ Guichet Restauration CROU Korhogo (UPGC)</span>
+                </div>
+                <div className="text-slate-400 text-[11px]">
+                  <span>Muni(e) de votre carte d'étudiant pour vérification</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setBlockedAlertMessage(null)}
+              className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-98 cursor-pointer"
+            >
+              J'ai compris
+            </button>
+          </div>
+        </div>
+      )}
 
       </div>
     </PinLock>

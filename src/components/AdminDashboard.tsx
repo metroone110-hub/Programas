@@ -32,7 +32,8 @@ import {
   FileSpreadsheet,
   UploadCloud,
   Check,
-  KeyRound
+  KeyRound,
+  Unlock
 } from 'lucide-react';
 import { Dish, Canteen, CrowdLevel, UserProfile, MealTicket } from '../types';
 import { ImageWithLoader } from './ImageWithLoader';
@@ -44,7 +45,8 @@ import {
   FraudAuditLog,
   subscribeToStudentsRegistry,
   syncAllLocalAccountsToFirestore,
-  resetStudentPassword
+  resetStudentPassword,
+  unblockStudentAccount
 } from '../services/studentAuth';
 import { 
   DailyLedgerStats,
@@ -405,6 +407,19 @@ export const AdminDashboard: React.FC<Props> = ({
       }
     } catch (err: any) {
       setResetStatus({ loading: false, error: err.message || 'Erreur réseau.' });
+    }
+  };
+
+  const handleAdminUnblockStudent = async (student: UserProfile) => {
+    const mat = student.matricule || student.uid;
+    const confirm = window.confirm(`Débloquer le compte de ${student.displayName} (${mat}) ? Cela réinitialisera les compteurs d'échecs de sécurité.`);
+    if (!confirm) return;
+    try {
+      const res = await unblockStudentAccount(mat);
+      alert(res.message);
+      loadRegistryData();
+    } catch (err: any) {
+      alert('Erreur: ' + (err.message || err));
     }
   };
 
@@ -1125,25 +1140,45 @@ export const AdminDashboard: React.FC<Props> = ({
                               {usedCount} repas
                             </td>
                             <td className="py-3 px-4">
-                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <UserCheck className="w-3 h-3 text-emerald-600" />
-                                <span>Authentifié UPGC</span>
-                              </span>
+                              {st.isBlocked ? (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-300">
+                                  <AlertOctagon className="w-3 h-3 text-red-600" />
+                                  <span>Compte Bloqué (5 PIN)</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <UserCheck className="w-3 h-3 text-emerald-600" />
+                                  <span>Authentifié UPGC</span>
+                                </span>
+                              )}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setResettingStudent(st);
-                                  setNewPasswordInput('');
-                                  setResetStatus({ loading: false });
-                                }}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
-                                title="Réinitialiser le mot de passe de cet étudiant"
-                              >
-                                <KeyRound className="w-3 h-3 text-amber-600" />
-                                <span>Réinitialiser MDP</span>
-                              </button>
+                              <div className="flex items-center justify-end space-x-1.5">
+                                {st.isBlocked && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminUnblockStudent(st)}
+                                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                    title="Débloquer le compte de cet étudiant"
+                                  >
+                                    <Unlock className="w-3 h-3 text-white" />
+                                    <span>Débloquer</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResettingStudent(st);
+                                    setNewPasswordInput('');
+                                    setResetStatus({ loading: false });
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                  title="Réinitialiser le mot de passe de cet étudiant"
+                                >
+                                  <KeyRound className="w-3 h-3 text-amber-600" />
+                                  <span>Réinitialiser MDP</span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

@@ -15,7 +15,8 @@
 // Attention : c'est un verrou de confort (téléphone prêté, curieux). Il ne remplace pas la sécurité du serveur :
 // un paiement doit toujours être autorisé côté serveur.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Delete } from 'lucide-react';
+import { Delete, ShieldAlert } from 'lucide-react';
+import { blockStudentAccount } from '../services/studentAuth';
 
 const PIN_KEY = 'programas_pin';
 const FAIL_KEY = 'programas_pin_fails';
@@ -59,7 +60,10 @@ interface Props {
   children: React.ReactNode;
   /** false tant que l'utilisateur n'est pas connecté : aucun code n'est demandé */
   enabled?: boolean;
+  userMatricule?: string;
+  userName?: string;
   onForgot?: () => void;
+  onAccountBlocked?: (matricule: string, reason: string) => void;
   lockAfterMs?: number;
   maxAttempts?: number;
 }
@@ -70,7 +74,16 @@ const TEXT: Record<'setup' | 'confirm' | 'locked', { title: string; hint: string
   locked: { title: 'Saisis ton code', hint: 'Programas est verrouillé' },
 };
 
-export const PinLock: React.FC<Props> = ({ children, enabled = true, onForgot, lockAfterMs = 30_000, maxAttempts = 5 }) => {
+export const PinLock: React.FC<Props> = ({ 
+  children, 
+  enabled = true, 
+  userMatricule,
+  userName,
+  onForgot, 
+  onAccountBlocked,
+  lockAfterMs = 30_000, 
+  maxAttempts = 5 
+}) => {
   const [mode, setMode] = useState<Mode>('checking');
   const [pin, setPin] = useState('');
   const [first, setFirst] = useState('');
@@ -171,8 +184,20 @@ export const PinLock: React.FC<Props> = ({ children, enabled = true, onForgot, l
           const fails = Number(localStorage.getItem(FAIL_KEY) ?? 0) + 1;
           localStorage.setItem(FAIL_KEY, String(fails));
           if (fails >= maxAttempts) {
-            await fail('Trop d’erreurs. Reconnecte-toi.');
+            const blockReason = 'Compte verrouillé suite à 5 tentatives consécutives de code PIN erronées.';
+            if (userMatricule) {
+              try {
+                await blockStudentAccount(userMatricule, blockReason);
+              } catch (bErr) {
+                console.error('Error blocking student account on PinLock:', bErr);
+              }
+            }
+            await fail('5 erreurs consécutives ! Compte bloqué pour sécurité.');
+            await wait(1400);
             wipePin();
+            if (onAccountBlocked && userMatricule) {
+              onAccountBlocked(userMatricule, blockReason);
+            }
             onForgot?.();
           } else {
             const left = maxAttempts - fails;

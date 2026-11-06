@@ -66,7 +66,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   // Student Register State
   const [regMatricule, setRegMatricule] = useState('');
   const [regName, setRegName] = useState('');
-  const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regUfr, setRegUfr] = useState('UFR Sciences Sociales');
   
@@ -122,7 +121,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
         matricule: regMatricule,
         password: regPassword,
         name: regName,
-        phone: regPhone.trim() || undefined,
         ufr: regUfr
       });
 
@@ -396,23 +394,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     placeholder="Ex: Koffi Kouamé Emmanuel"
                     className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
                     required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center justify-between">
-                  <span>Numéro de téléphone mobile (Wave)</span>
-                  <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 bg-amber-500/20 rounded">Recommandé</span>
-                </label>
-                <div className="relative">
-                  <Smartphone className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="tel"
-                    value={regPhone}
-                    onChange={(e) => setRegPhone(e.target.value)}
-                    placeholder="Ex: 07 08 12 34 56 (Protège vos tickets)"
-                    className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-mono"
                   />
                 </div>
               </div>
