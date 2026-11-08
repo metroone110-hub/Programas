@@ -130,4 +130,44 @@ class TicketService extends ChangeNotifier {
       'message': 'Passage accordé ! Bon appétit.'
     };
   }
+
+  Future<Map<String, dynamic>> transferTicket({
+    required String ticketNumber,
+    required String recipientMatricule,
+  }) async {
+    final user = authService.currentUser;
+    if (user == null) {
+      return {'success': false, 'message': 'Utilisateur non connecté.'};
+    }
+
+    if (user.isBlocked) {
+      return {'success': false, 'message': 'Compte bloqué.'};
+    }
+
+    final cleanNum = ticketNumber.trim().toUpperCase();
+    final cleanRecipient = recipientMatricule.trim().toUpperCase();
+
+    if (cleanRecipient.isEmpty || cleanRecipient.length < 4) {
+      return {'success': false, 'message': 'Matricule étudiant destinataire invalide.'};
+    }
+
+    if (cleanRecipient == (user.matricule ?? '').toUpperCase()) {
+      return {'success': false, 'message': 'Vous ne pouvez pas transférer un ticket à vous-même.'};
+    }
+
+    final index = user.savedTickets.indexWhere((t) => t.ticketNumber.toUpperCase() == cleanNum && t.status == 'valid');
+    if (index == -1) {
+      return {'success': false, 'message': 'Ticket valide introuvable.'};
+    }
+
+    final ticket = user.savedTickets[index];
+    final updatedList = List<MealTicket>.from(user.savedTickets)..removeAt(index);
+    await authService.updateUser(user.copyWith(savedTickets: updatedList));
+    notifyListeners();
+
+    return {
+      'success': true,
+      'message': 'Ticket ${ticket.ticketNumber} transféré avec succès au matricule $cleanRecipient !'
+    };
+  }
 }

@@ -103,6 +103,9 @@ class MealTicket {
   final String? studentMatricule;
   final String? studentName;
   final String? usedAt;
+  final String? transferredFrom;
+  final String? transferredTo;
+  final String? transferredAt;
 
   MealTicket({
     required this.id,
@@ -118,6 +121,9 @@ class MealTicket {
     this.studentMatricule,
     this.studentName,
     this.usedAt,
+    this.transferredFrom,
+    this.transferredTo,
+    this.transferredAt,
   });
 
   factory MealTicket.fromJson(Map<String, dynamic> json) {
@@ -135,6 +141,9 @@ class MealTicket {
       studentMatricule: json['studentMatricule'],
       studentName: json['studentName'],
       usedAt: json['usedAt'],
+      transferredFrom: json['transferredFrom'],
+      transferredTo: json['transferredTo'],
+      transferredAt: json['transferredAt'],
     );
   }
 
@@ -153,6 +162,9 @@ class MealTicket {
       'studentMatricule': studentMatricule,
       'studentName': studentName,
       'usedAt': usedAt,
+      'transferredFrom': transferredFrom,
+      'transferredTo': transferredTo,
+      'transferredAt': transferredAt,
     };
   }
 }
