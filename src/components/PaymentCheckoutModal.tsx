@@ -296,15 +296,16 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto font-sans">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-4 sm:my-8 pop-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-hidden font-sans">
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] my-auto pop-in">
         
-        {/* TOP BAR matching IMG_1194_0c2de57a.png */}
-        <div className="px-5 pt-5 pb-3 flex items-center justify-between border-b border-slate-100">
+        {/* STICKY TOP BAR - Toujours visible en haut, ne disparaît jamais au scroll */}
+        <div className="sticky top-0 z-30 px-5 py-4 bg-white/95 backdrop-blur-md flex items-center justify-between border-b border-slate-100 shadow-xs flex-shrink-0">
           <button
             type="button"
             onClick={flowState === 'awaiting_payment' ? () => setFlowState('form') : handleResetAndClose}
-            className="flex items-center space-x-1.5 text-slate-800 hover:text-slate-900 font-semibold text-sm cursor-pointer transition-colors"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer transition-all active:scale-95"
+            title="Revenir en arrière"
           >
             <ArrowLeft className="w-4 h-4 text-slate-800" />
             <span>Retour</span>
@@ -312,7 +313,7 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
 
           {/* Centered Amount in Red Bold */}
           <div className="text-center">
-            <span className="text-lg sm:text-xl font-extrabold text-[#e11d48] tracking-tight">
+            <span className="text-base sm:text-lg font-black text-[#e11d48] tracking-tight">
               {currentFinalAmount.toLocaleString('fr-FR')} F CFA
             </span>
           </div>
@@ -320,15 +321,16 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={handleResetAndClose}
-            className="p-1 hover:bg-slate-100 rounded-full text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
-            aria-label="Fermer"
+            className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 flex items-center justify-center transition-all cursor-pointer shadow-xs border border-slate-200"
+            aria-label="Fermer la fenêtre de paiement"
+            title="Fermer la fenêtre"
           >
-            <X className="w-5 h-5 text-slate-700" />
+            <X className="w-5 h-5 text-slate-900 stroke-[2.5]" />
           </button>
         </div>
 
-        {/* BODY */}
-        <div className="p-5 sm:p-6 space-y-5">
+        {/* BODY (Déroulable) */}
+        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
           {errorMessage && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start space-x-2 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />

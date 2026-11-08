@@ -202,15 +202,27 @@ export const BlackGatewayPortal: React.FC<Props> = ({
             </span>
           </div>
           {onGuestAccess && (
-            <button
-              type="button"
-              onClick={onGuestAccess}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold"
-              title="Fermer et voir les menus"
-            >
-              <span>Voir le Menu</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={onGuestAccess}
+                className="hidden sm:inline-flex px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-all cursor-pointer items-center space-x-1 text-xs font-bold"
+                title="Fermer et voir les menus"
+              >
+                <span>Voir le Menu</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={onGuestAccess}
+                className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer"
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                <X className="w-5 h-5 text-white stroke-[2.5]" />
+              </button>
+            </div>
           )}
         </div>
       </header>

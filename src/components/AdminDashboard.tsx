@@ -449,27 +449,39 @@ export const AdminDashboard: React.FC<Props> = ({
         style={{ paddingTop: 'max(14px, env(safe-area-inset-top, 14px))' }}
       >
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center justify-between gap-3 w-full sm:w-auto">
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={onClose}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer flex-shrink-0"
+                title="Retour à l'application"
+                aria-label="Retour à l'application"
+              >
+                <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
+              </button>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-base font-black font-cabinet text-white">
+                    Administration Restau. U • CROU Korhogo
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    Compte Vérifié
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  {canteen.name} • UPGC Korhogo
+                </p>
+              </div>
+            </div>
+
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-300 hover:text-white"
-              title="Retour à l'application"
+              className="sm:hidden w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer flex-shrink-0"
+              title="Quitter"
+              aria-label="Quitter l'administration"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <X className="w-5 h-5 stroke-[2.5]" />
             </button>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-base font-black font-cabinet text-white">
-                  Administration Restau. U • CROU Korhogo
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  Compte Vérifié
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                {canteen.name} • UPGC Korhogo
-              </p>
-            </div>
           </div>
 
           {/* Navigation Tabs */}

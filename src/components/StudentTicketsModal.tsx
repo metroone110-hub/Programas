@@ -68,10 +68,13 @@ export const StudentTicketsModal: React.FC<Props> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-300 hover:text-white"
+            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer flex-shrink-0"
+            aria-label="Fermer"
+            title="Fermer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 text-white stroke-[2.5]" />
           </button>
         </div>
 

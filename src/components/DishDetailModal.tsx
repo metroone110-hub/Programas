@@ -59,10 +59,13 @@ export const DishDetailModal: React.FC<Props> = ({
             {dish.mealType === 'dejeuner' ? '☀️ Déjeuner (11h30 - 14h30)' : '🌙 Dîner (18h30 - 21h00)'}
           </span>
           <button
+            type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-black/70 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-md transition-colors pointer-events-auto shadow-md cursor-pointer"
+            className="w-10 h-10 rounded-full bg-slate-900/85 hover:bg-black text-white flex items-center justify-center backdrop-blur-md transition-all active:scale-95 pointer-events-auto shadow-lg border border-white/25 cursor-pointer"
+            aria-label="Fermer"
+            title="Fermer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 text-white stroke-[2.5]" />
           </button>
         </div>
 

@@ -162,11 +162,11 @@ export const TicketTransferModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-6 animate-scaleUp">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden">
+      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] my-auto animate-scaleUp">
         
-        {/* Header */}
-        <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-6 text-white flex items-center justify-between">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 flex-shrink-0 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-5 sm:p-6 text-white flex items-center justify-between shadow-xs">
           <div className="flex items-center space-x-3">
             <div className="p-2.5 bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl text-white">
               <Send className="w-6 h-6 text-amber-200" />
@@ -182,15 +182,18 @@ export const TicketTransferModal: React.FC<Props> = ({
           </div>
 
           <button
+            type="button"
             onClick={handleResetAndClose}
-            className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/80 hover:text-white"
+            className="w-10 h-10 rounded-full bg-black/25 hover:bg-black/40 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer flex-shrink-0"
+            aria-label="Fermer"
+            title="Fermer la fenêtre"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 text-white stroke-[2.5]" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6">
+        {/* Content Body (Scrollable) */}
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1">
           {successInfo ? (
             /* Success confirmation screen */
             <div className="text-center py-4 space-y-4">
