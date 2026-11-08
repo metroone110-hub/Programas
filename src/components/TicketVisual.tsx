@@ -36,7 +36,7 @@ export const TicketVisual: React.FC<Props> = ({
   onTransferTicket,
   showActions = true 
 }) => {
-  const [viewMode, setViewMode] = useState<'photo' | 'qrcode'>('photo');
+  const [viewMode, setViewMode] = useState<'photo' | 'qrcode'>('qrcode');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isZoomed, setIsZoomed] = useState<boolean>(false);
@@ -278,22 +278,23 @@ export const TicketVisual: React.FC<Props> = ({
         {/* Ticket Details Box */}
         <div className="p-4 space-y-3 bg-white">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                Plat Commandé
-              </span>
-              <h4 className="font-bold text-slate-900 text-sm leading-snug">
-                {ticket.dishName}
-              </h4>
-              <p className="text-xs text-slate-500 flex items-center space-x-1 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-orange-500" />
-                <span>{ticket.canteenName}</span>
-              </p>
+            <div className="min-w-0 flex-1">
               {ticket.transferredFrom && (
-                <div className="mt-1.5 inline-flex items-center space-x-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md text-[10px] font-bold text-amber-800">
-                  <span>🎁 Reçu de : {ticket.transferredFrom}</span>
+                <div className="mb-2 px-3 py-1.5 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-300 rounded-xl flex items-center space-x-1.5 text-xs font-bold text-amber-950">
+                  <span className="text-sm">🎁</span>
+                  <span className="truncate">Offert par : <strong className="text-orange-950 font-black">{ticket.transferredFrom}</strong></span>
                 </div>
               )}
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                Repas & Restaurant
+              </span>
+              <h4 className="font-extrabold text-slate-900 text-sm sm:text-base leading-snug">
+                {ticket.dishName || 'Ticket Repas CROU Korhogo'}
+              </h4>
+              <p className="text-xs text-slate-500 flex items-center space-x-1 mt-0.5">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                <span className="truncate">{ticket.canteenName || 'Restaurant Universitaire UPGC'}</span>
+              </p>
             </div>
 
             <div className="text-right flex-shrink-0">

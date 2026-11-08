@@ -188,24 +188,18 @@ export const StudentTicketsModal: React.FC<Props> = ({
                   </div>
 
                   <div className="flex items-center space-x-3 my-2">
-                    <div className="w-14 h-9 rounded-lg overflow-hidden border border-slate-200 bg-slate-900 flex-shrink-0 relative">
-                      <img
-                        src="/assets/aistudio/IMG_1038_80198fc0.jpeg"
-                        alt="Ticket Officiel CROU"
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-black/20"></div>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                      <Ticket className="w-6 h-6" />
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <h5 className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-orange-600 transition-colors truncate">
-                        {t.dishName}
+                        {t.dishName || 'Ticket Repas CROU Korhogo'}
                       </h5>
                       <p className="text-[11px] text-slate-500 truncate">
-                        {t.canteenName}
+                        {t.canteenName || 'Restaurant Universitaire UPGC'}
                       </p>
                       {t.transferredFrom && (
-                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-1 inline-block truncate max-w-full">
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 mt-1 inline-block truncate max-w-full">
                           🎁 Reçu de : {t.transferredFrom}
                         </span>
                       )}

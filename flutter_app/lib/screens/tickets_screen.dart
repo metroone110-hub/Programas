@@ -317,6 +317,21 @@ class _TicketsScreenState extends State<TicketsScreen> with SingleTickerProvider
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (ticket.transferredFrom != null) ...[
+                      const SizedBox(height: 3),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Text(
+                          '🎁 Reçu de : ${ticket.transferredFrom}',
+                          style: const TextStyle(fontSize: 10, color: Color(0xFF92400E), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       'Émis le ${ticket.purchaseDate}',
