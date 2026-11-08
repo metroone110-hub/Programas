@@ -14,7 +14,8 @@ import {
   FileText,
   BadgeCheck,
   Eye,
-  Ticket
+  Ticket,
+  Send
 } from 'lucide-react';
 import { MealTicket } from '../types';
 import { generateTicketQRCodeDataURL } from '../utils/qrcode';
@@ -25,12 +26,14 @@ const OFFICIAL_CROU_TICKET_IMG = '/assets/aistudio/IMG_1038_80198fc0.jpeg';
 interface Props {
   ticket: MealTicket;
   onMarkAsUsed?: (ticketId: string) => void;
+  onTransferTicket?: (ticket: MealTicket) => void;
   showActions?: boolean;
 }
 
 export const TicketVisual: React.FC<Props> = ({ 
   ticket, 
   onMarkAsUsed,
+  onTransferTicket,
   showActions = true 
 }) => {
   const [viewMode, setViewMode] = useState<'photo' | 'qrcode'>('photo');
@@ -286,6 +289,11 @@ export const TicketVisual: React.FC<Props> = ({
                 <MapPin className="w-3.5 h-3.5 text-orange-500" />
                 <span>{ticket.canteenName}</span>
               </p>
+              {ticket.transferredFrom && (
+                <div className="mt-1.5 inline-flex items-center space-x-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md text-[10px] font-bold text-amber-800">
+                  <span>🎁 Reçu de : {ticket.transferredFrom}</span>
+                </div>
+              )}
             </div>
 
             <div className="text-right flex-shrink-0">
@@ -317,11 +325,11 @@ export const TicketVisual: React.FC<Props> = ({
           </div>
 
           {/* Status & Instructions - Validation is done ONLY by CROU turnstile/scanner */}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
             {!isUsed ? (
               <div className="flex-1 py-2.5 px-3 bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 text-center">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span>Ticket valide • Présentez au scanner du Restau U</span>
+                <span>Ticket valide • Scanner Restau U</span>
               </div>
             ) : (
               <div className="flex-1 py-2.5 px-3 bg-slate-100 text-slate-500 text-xs font-bold rounded-xl text-center">
@@ -329,23 +337,37 @@ export const TicketVisual: React.FC<Props> = ({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.share) {
-                  navigator.share({
-                    title: `Ticket Repas CROU - ${ticket.ticketNumber}`,
-                    text: `Ticket repas ${ticket.dishName} au ${ticket.canteenName} - Code: ${ticket.ticketNumber}`
-                  }).catch(() => {});
-                } else {
-                  handleCopyTicketNumber();
-                }
-              }}
-              className="p-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 transition-colors"
-              title="Partager le ticket"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center space-x-2">
+              {!isUsed && onTransferTicket && (
+                <button
+                  type="button"
+                  onClick={() => onTransferTicket(ticket)}
+                  className="flex-1 sm:flex-initial py-2.5 px-3 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                  title="Offrir ce ticket à un camarade"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Offrir</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: `Ticket Repas CROU - ${ticket.ticketNumber}`,
+                      text: `Ticket repas ${ticket.dishName} au ${ticket.canteenName} - Code: ${ticket.ticketNumber}`
+                    }).catch(() => {});
+                  } else {
+                    handleCopyTicketNumber();
+                  }
+                }}
+                className="p-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 transition-colors cursor-pointer"
+                title="Partager le ticket"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 

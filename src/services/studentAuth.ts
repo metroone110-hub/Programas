@@ -1432,3 +1432,208 @@ export async function unblockStudentAccount(
   };
 }
 
+/**
+ * Recherche un étudiant par son numéro de matricule pour prévisualiser le destinataire
+ */
+export async function lookupStudentByMatricule(matricule: string): Promise<UserProfile | null> {
+  const clean = (matricule || '').trim().toUpperCase();
+  if (!clean || clean.length < 3) return null;
+
+  const localRegistry = getLocalStudentsRegistry();
+  if (localRegistry[clean]) return localRegistry[clean];
+
+  try {
+    const restStudent = await fetchStudentRest(clean);
+    if (restStudent) return restStudent;
+  } catch {}
+
+  try {
+    const snap = await getDoc(doc(db, 'students', sanitizeMatriculeId(clean)));
+    if (snap.exists()) {
+      return snap.data() as UserProfile;
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Transfère un ticket repas d'un étudiant à un camarade / proche via son numéro de matricule.
+ * - Vérifie que l'expéditeur possède le ticket avec status === 'valid'
+ * - Vérifie le matricule du destinataire
+ * - Met à jour l'expéditeur (retrait du ticket) dans Firestore et local
+ * - Met à jour le destinataire (ajout du ticket avec QR code valide) dans Firestore et local
+ * - Met à jour le document ticket dans la collection 'tickets'
+ */
+export async function transferMealTicketToStudent(
+  senderProfile: UserProfile,
+  ticketIdOrNumber: string,
+  recipientMatricule: string,
+  optionalNote?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  updatedSender?: UserProfile;
+  transferredTicket?: MealTicket;
+  recipientName?: string;
+  recipientMatricule?: string;
+}> {
+  const senderMat = (senderProfile.matricule || senderProfile.uid || '').trim().toUpperCase();
+  const cleanRecipientMat = (recipientMatricule || '').trim().toUpperCase();
+
+  if (!cleanRecipientMat || cleanRecipientMat.length < 4) {
+    return {
+      success: false,
+      error: 'Veuillez saisir un numéro de matricule étudiant valide (au moins 4 caractères, ex: 32165498 ou UPGC-2026-XXXX).'
+    };
+  }
+
+  if (senderMat && cleanRecipientMat === senderMat) {
+    return {
+      success: false,
+      error: 'Vous ne pouvez pas vous transférer un ticket à vous-même.'
+    };
+  }
+
+  // Vérifier la présence du ticket valide chez l'expéditeur
+  const senderTickets = senderProfile.savedTickets || [];
+  const ticketIndex = senderTickets.findIndex(
+    t => (t.id === ticketIdOrNumber || t.ticketNumber === ticketIdOrNumber) && t.status === 'valid'
+  );
+
+  if (ticketIndex === -1) {
+    return {
+      success: false,
+      error: "Ce ticket n'est plus disponible dans votre compte ou a déjà été utilisé."
+    };
+  }
+
+  const ticketToTransfer = senderTickets[ticketIndex];
+
+  // 1. Rechercher le destinataire (Local Registry + REST + Firestore)
+  let recipientFound: UserProfile | null = null;
+  const localRegistry = getLocalStudentsRegistry();
+  if (localRegistry[cleanRecipientMat]) {
+    recipientFound = localRegistry[cleanRecipientMat];
+  }
+
+  if (!recipientFound) {
+    try {
+      recipientFound = await fetchStudentRest(cleanRecipientMat);
+    } catch {}
+  }
+
+  if (!recipientFound) {
+    try {
+      const snap = await getDoc(doc(db, 'students', sanitizeMatriculeId(cleanRecipientMat)));
+      if (snap.exists()) {
+        recipientFound = snap.data() as UserProfile;
+      }
+    } catch {}
+  }
+
+  // Si l'étudiant destinataire n'a pas encore créé son compte dans l'app,
+  // nous créons son profil récepteur afin que dès sa première connexion, le ticket soit présent !
+  const recipientName = recipientFound?.displayName || `Étudiant (${cleanRecipientMat})`;
+  const recipientUid = recipientFound?.uid || cleanRecipientMat;
+
+  // 2. Construire le ticket réassigné avec QR code valide
+  const newQrData = JSON.stringify({
+    app: 'CROUK_RESTO_U',
+    tkt: ticketToTransfer.ticketNumber,
+    mat: cleanRecipientMat,
+    cnt: ticketToTransfer.canteenId,
+    dish: ticketToTransfer.dishName,
+    date: ticketToTransfer.date,
+    prc: ticketToTransfer.price,
+    ts: Date.now()
+  });
+
+  const transferredTicket: MealTicket = {
+    ...ticketToTransfer,
+    studentId: recipientUid,
+    studentName: recipientName,
+    studentMatricule: cleanRecipientMat,
+    qrCodeData: newQrData,
+    transferredFrom: senderProfile.displayName || senderMat || 'Un camarade',
+    transferredTo: cleanRecipientMat,
+    transferredAt: new Date().toISOString()
+  };
+
+  // 3. Mettre à jour l'expéditeur (retrait immédiat du ticket)
+  const updatedSenderTickets = senderTickets.filter((_, idx) => idx !== ticketIndex);
+  const updatedSender: UserProfile = {
+    ...senderProfile,
+    savedTickets: updatedSenderTickets
+  };
+
+  saveLocalUserProfile(updatedSender);
+  if (senderMat) {
+    try {
+      localStorage.setItem(`crou_student_vault_${senderMat}`, JSON.stringify(updatedSenderTickets));
+    } catch {}
+    updateStudentInLocalRegistry(updatedSender);
+    saveStudentRest(updatedSender).catch(() => {});
+    try {
+      const senderRef = doc(db, 'students', sanitizeMatriculeId(senderMat));
+      await setDoc(senderRef, { ...updatedSender, savedTickets: updatedSenderTickets }, { merge: true });
+    } catch {}
+  }
+
+  // 4. Mettre à jour le destinataire (crédit immédiat du ticket dans ses tickets)
+  const existingRecipientTickets: MealTicket[] = Array.isArray(recipientFound?.savedTickets) 
+    ? recipientFound.savedTickets 
+    : (() => {
+        try {
+          const raw = localStorage.getItem(`crou_student_vault_${cleanRecipientMat}`);
+          return raw ? JSON.parse(raw) : [];
+        } catch {
+          return [];
+        }
+      })();
+
+  const updatedRecipientTickets = [
+    transferredTicket,
+    ...existingRecipientTickets.filter(t => t.ticketNumber !== transferredTicket.ticketNumber)
+  ];
+
+  const updatedRecipient: UserProfile = {
+    ...(recipientFound || {
+      uid: cleanRecipientMat,
+      email: `${cleanRecipientMat.toLowerCase()}@upgc.ci`,
+      role: 'student',
+      balance: 0,
+      university: 'Université Peleforo Gbon Coulibaly (UPGC)',
+      campus: 'Campus UPGC Korhogo'
+    }),
+    matricule: cleanRecipientMat,
+    displayName: recipientName,
+    savedTickets: updatedRecipientTickets
+  };
+
+  try {
+    localStorage.setItem(`crou_student_vault_${cleanRecipientMat}`, JSON.stringify(updatedRecipientTickets));
+  } catch {}
+  updateStudentInLocalRegistry(updatedRecipient);
+  saveStudentRest(updatedRecipient).catch(() => {});
+  try {
+    const recRef = doc(db, 'students', sanitizeMatriculeId(cleanRecipientMat));
+    await setDoc(recRef, { ...updatedRecipient, savedTickets: updatedRecipientTickets }, { merge: true });
+  } catch {}
+
+  // 5. Mettre à jour la collection centrale 'tickets' dans Firestore
+  saveTicketRest(transferredTicket).catch(() => {});
+  try {
+    await setDoc(doc(db, 'tickets', transferredTicket.id), transferredTicket, { merge: true });
+    await setDoc(doc(db, 'tickets', transferredTicket.ticketNumber), transferredTicket, { merge: true });
+  } catch {}
+
+  return {
+    success: true,
+    updatedSender,
+    transferredTicket,
+    recipientName,
+    recipientMatricule: cleanRecipientMat
+  };
+}
+

@@ -1,5 +1,5 @@
 import firebaseConfig from '../../firebase-applet-config.json';
-import { UserProfile, MealTicket } from '../types';
+import { UserProfile, MealTicket, Dish } from '../types';
 
 const config = firebaseConfig as any;
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId || '(default)'}/documents`;
@@ -284,3 +284,156 @@ export async function saveTicketRest(ticket: MealTicket): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Récupère tous les plats du menu en temps réel via l'API REST officielle Firestore
+ * Utilise runQuery pour récupérer immédiatement tous les documents de crou_dishes.
+ */
+export async function fetchDishesRest(): Promise<Dish[]> {
+  // 1. Try local server endpoint /api/dishes if available
+  try {
+    const apiRes = await fetch('/api/dishes', { method: 'GET', cache: 'no-store' });
+    if (apiRes.ok) {
+      const data = await apiRes.json();
+      if (Array.isArray(data?.dishes) && data.dishes.length > 0) {
+        return data.dishes;
+      }
+    }
+  } catch {}
+
+  // 2. Direct Firestore HTTPS REST API
+  const url = `${BASE_URL}:runQuery?key=${API_KEY}`;
+  const queryPayload = {
+    structuredQuery: {
+      from: [{ collectionId: 'crou_dishes' }]
+    }
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(queryPayload)
+    });
+
+    if (res.ok) {
+      const rows = await res.json();
+      const dishes: Dish[] = [];
+      if (Array.isArray(rows)) {
+        rows.forEach((r: any) => {
+          if (r.document) {
+            const raw = fromFirestoreRestDoc(r.document);
+            if (raw && (raw.name || raw.id)) {
+              const docName = r.document.name || '';
+              const docId = docName.split('/').pop() || raw.id;
+              const rawMeal = (raw.mealType || '').toString().toLowerCase();
+              const normalizedMeal = (rawMeal === 'diner' || rawMeal === 'soir') ? 'diner' : 'dejeuner';
+              const rawCat = (raw.category || '').toString();
+              const normalizedCat = (rawCat === 'entree' || rawCat === 'dessert' || rawCat === 'boisson') ? rawCat : 'plat_principal';
+
+              dishes.push({
+                id: raw.id || docId,
+                name: raw.name || 'Plat CROU',
+                description: raw.description || '',
+                category: normalizedCat as any,
+                price: typeof raw.price === 'number' ? raw.price : 200,
+                regularPrice: typeof raw.regularPrice === 'number' ? raw.regularPrice : 500,
+                mealType: normalizedMeal,
+                imageUrl: raw.imageUrl || '',
+                isAvailable: raw.isAvailable !== false,
+                canteenId: raw.canteenId || 'all',
+                tags: Array.isArray(raw.tags) ? raw.tags : ['Distribution Officielle', 'Resto U'],
+                rating: typeof raw.rating === 'number' ? raw.rating : 5.0,
+                ratingCount: typeof raw.ratingCount === 'number' ? raw.ratingCount : 1
+              });
+            }
+          }
+        });
+      }
+      return dishes;
+    }
+  } catch (err) {
+    console.warn('REST fetch dishes error:', err);
+  }
+  return [];
+}
+
+/**
+ * Sauvegarde un plat dans Firestore via REST (garantie instantanée tous appareils)
+ */
+export async function saveDishRest(dish: Dish): Promise<boolean> {
+  if (!dish || !dish.id) return false;
+  const docId = dish.id.trim();
+
+  // 1. Try /api/dishes endpoint if available
+  try {
+    const apiRes = await fetch('/api/dishes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dish)
+    });
+    if (apiRes.ok) {
+      return true;
+    }
+  } catch {}
+
+  // 2. Direct Firestore HTTPS REST API
+  const url = `${BASE_URL}/crou_dishes/${encodeURIComponent(docId)}?key=${API_KEY}`;
+
+  const cleanMeal = ((dish.mealType as string) === 'diner' || (dish.mealType as string) === 'soir') ? 'diner' : 'dejeuner';
+  const cleanCat = (dish.category === 'entree' || dish.category === 'dessert' || dish.category === 'boisson') ? dish.category : 'plat_principal';
+
+  const payload = {
+    fields: toFirestoreRestFields({
+      id: docId,
+      name: dish.name,
+      description: dish.description || '',
+      category: cleanCat,
+      price: dish.price || 200,
+      regularPrice: dish.regularPrice || 500,
+      mealType: cleanMeal,
+      imageUrl: dish.imageUrl || '',
+      isAvailable: dish.isAvailable !== false,
+      canteenId: dish.canteenId || 'all',
+      tags: dish.tags || ['Distribution Officielle', 'Resto U'],
+      rating: dish.rating || 5.0,
+      ratingCount: dish.ratingCount || 1,
+      updatedAt: new Date().toISOString()
+    })
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST save dish error:', err);
+    return false;
+  }
+}
+
+/**
+ * Supprime un plat de Firestore via REST
+ */
+export async function deleteDishRest(dishId: string): Promise<boolean> {
+  if (!dishId) return false;
+  // 1. Try /api/dishes/:id
+  try {
+    await fetch(`/api/dishes/${encodeURIComponent(dishId.trim())}`, { method: 'DELETE' });
+  } catch {}
+
+  // 2. Direct Firestore REST
+  const url = `${BASE_URL}/crou_dishes/${encodeURIComponent(dishId.trim())}?key=${API_KEY}`;
+
+  try {
+    const res = await fetch(url, { method: 'DELETE' });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST delete dish error:', err);
+    return false;
+  }
+}
+

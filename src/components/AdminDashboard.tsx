@@ -76,10 +76,10 @@ interface Props {
   canteen: Canteen;
   dishes: Dish[];
   onUpdateCanteen: (updated: Canteen) => void;
-  onAddDish: (dish: Dish) => void;
-  onToggleDishAvailability: (dishId: string) => void;
-  onDeleteDish: (dishId: string) => void;
-  onDeleteAllDishes?: () => void;
+  onAddDish: (dish: Dish) => void | Promise<any>;
+  onToggleDishAvailability: (dishId: string) => void | Promise<any>;
+  onDeleteDish: (dishId: string) => void | Promise<any>;
+  onDeleteAllDishes?: () => void | Promise<any>;
   onClose: () => void;
 }
 
@@ -355,12 +355,16 @@ export const AdminDashboard: React.FC<Props> = ({
         ratingCount: 1
       };
 
-      onAddDish(newDish);
+      await onAddDish(newDish);
       setName('');
       setDescription('');
       setImageUrl('');
       setActionSuccessNotice(`Plat "${newDish.name}" publié et synchronisé sur tous les appareils.`);
       setTimeout(() => setActionSuccessNotice(null), 3000);
+    } catch (publishErr: any) {
+      console.error('Erreur publication:', publishErr);
+      setActionSuccessNotice(`Erreur de publication : ${publishErr?.message || 'Vérifiez votre connexion internet'}`);
+      setTimeout(() => setActionSuccessNotice(null), 4000);
     } finally {
       setIsPublishing(false);
     }

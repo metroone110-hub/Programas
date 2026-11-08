@@ -7,7 +7,8 @@ import {
   ShoppingBag, 
   ArrowRight, 
   ShieldCheck, 
-  Ticket
+  Ticket,
+  Send
 } from 'lucide-react';
 import { Dish, UserProfile } from '../types';
 import { ImageWithLoader } from './ImageWithLoader';
@@ -26,6 +27,7 @@ interface Props {
   onClearCart: () => void;
   onCheckout: () => void;
   user: UserProfile | null;
+  onOpenTransfer?: () => void;
 }
 
 export const CartDrawer: React.FC<Props> = ({
@@ -36,7 +38,8 @@ export const CartDrawer: React.FC<Props> = ({
   onRemoveItem,
   onClearCart,
   onCheckout,
-  user
+  user,
+  onOpenTransfer
 }) => {
   if (!isOpen) return null;
 
@@ -83,7 +86,7 @@ export const CartDrawer: React.FC<Props> = ({
           {/* Cart Items List */}
           <div className="p-6 overflow-y-auto flex-1 space-y-4">
             {items.length === 0 ? (
-              <div className="py-16 text-center space-y-4">
+              <div className="py-12 text-center space-y-4">
                 <div className="w-16 h-16 rounded-3xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto shadow-inner">
                   <ShoppingBag className="w-8 h-8" />
                 </div>
@@ -91,12 +94,28 @@ export const CartDrawer: React.FC<Props> = ({
                 <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
                   Sélectionnez vos plats au menu officiel du CROU Korhogo pour commander vos tickets subventionnés à 200 FCFA.
                 </p>
-                <button
-                  onClick={onClose}
-                  className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl transition-all shadow-md active:scale-95"
-                >
-                  Voir les plats du jour
-                </button>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+                  <button
+                    onClick={onClose}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                  >
+                    Voir les plats du jour
+                  </button>
+
+                  {user && (user.savedTickets || []).some(t => t.status === 'valid') && onOpenTransfer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenTransfer();
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95 cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Offrir un ticket ({user.savedTickets.filter(t => t.status === 'valid').length})</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               items.map((item) => (

@@ -8,10 +8,12 @@ import {
   Clock, 
   Search, 
   ArrowRight,
-  Filter
+  Filter,
+  Send
 } from 'lucide-react';
 import { MealTicket, UserProfile } from '../types';
 import { TicketVisual } from './TicketVisual';
+import { TicketTransferModal } from './TicketTransferModal';
 
 interface Props {
   isOpen: boolean;
@@ -19,6 +21,7 @@ interface Props {
   user: UserProfile;
   onSelectTicket?: (ticket: MealTicket) => void;
   onMarkTicketUsed?: (ticketId: string) => void;
+  onTransferSuccess?: (updatedUser: UserProfile, transferredTicket: MealTicket, recipientMatricule: string) => void;
 }
 
 export const StudentTicketsModal: React.FC<Props> = ({
@@ -26,10 +29,13 @@ export const StudentTicketsModal: React.FC<Props> = ({
   onClose,
   user,
   onSelectTicket,
-  onMarkTicketUsed
+  onMarkTicketUsed,
+  onTransferSuccess
 }) => {
   const [filter, setFilter] = useState<'all' | 'valid' | 'used'>('valid');
   const [selectedTicket, setSelectedTicket] = useState<MealTicket | null>(null);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
+  const [ticketToTransfer, setTicketToTransfer] = useState<MealTicket | null>(null);
 
   if (!isOpen) return null;
 
@@ -70,11 +76,11 @@ export const StudentTicketsModal: React.FC<Props> = ({
         </div>
 
         {/* Filter Pills */}
-        <div className="px-6 pt-4 flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="px-6 pt-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div className="flex items-center space-x-2">
             <button
               onClick={() => { setFilter('valid'); setSelectedTicket(null); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 filter === 'valid'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -86,7 +92,7 @@ export const StudentTicketsModal: React.FC<Props> = ({
 
             <button
               onClick={() => { setFilter('used'); setSelectedTicket(null); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 filter === 'used'
                   ? 'bg-slate-800 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -98,7 +104,7 @@ export const StudentTicketsModal: React.FC<Props> = ({
 
             <button
               onClick={() => { setFilter('all'); setSelectedTicket(null); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 filter === 'all'
                   ? 'bg-orange-600 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -107,6 +113,21 @@ export const StudentTicketsModal: React.FC<Props> = ({
               Tous ({tickets.length})
             </button>
           </div>
+
+          {validTickets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setTicketToTransfer(validTickets[0]);
+                setIsTransferModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm cursor-pointer ml-auto"
+              title="Offrir un ticket à un camarade"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Offrir un ticket</span>
+            </button>
+          )}
         </div>
 
         {/* Content Area */}
@@ -115,7 +136,7 @@ export const StudentTicketsModal: React.FC<Props> = ({
             <div className="space-y-4">
               <button
                 onClick={() => setSelectedTicket(null)}
-                className="text-xs font-bold text-orange-600 hover:underline flex items-center space-x-1"
+                className="text-xs font-bold text-orange-600 hover:underline flex items-center space-x-1 cursor-pointer"
               >
                 <span>← Retour à la liste de tickets</span>
               </button>
@@ -123,6 +144,10 @@ export const StudentTicketsModal: React.FC<Props> = ({
               <TicketVisual 
                 ticket={selectedTicket} 
                 onMarkAsUsed={onMarkTicketUsed} 
+                onTransferTicket={(t) => {
+                  setTicketToTransfer(t);
+                  setIsTransferModalOpen(true);
+                }}
               />
             </div>
           ) : filteredTickets.length === 0 ? (
@@ -179,12 +204,34 @@ export const StudentTicketsModal: React.FC<Props> = ({
                       <p className="text-[11px] text-slate-500 truncate">
                         {t.canteenName}
                       </p>
+                      {t.transferredFrom && (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-1 inline-block truncate max-w-full">
+                          🎁 Reçu de : {t.transferredFrom}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                     <span className="font-mono text-[11px] text-slate-500">{t.ticketNumber}</span>
-                    <span className="font-bold text-orange-600">{t.price} FCFA</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-orange-600">{t.price} FCFA</span>
+                      {t.status === 'valid' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTicketToTransfer(t);
+                            setIsTransferModalOpen(true);
+                          }}
+                          className="px-2 py-0.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[10px] font-bold rounded-lg transition-colors flex items-center space-x-1 cursor-pointer"
+                          title="Offrir ce ticket à un proche"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Offrir</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -197,13 +244,32 @@ export const StudentTicketsModal: React.FC<Props> = ({
           <span>Présentez le QR code au tourniquet de la cantine</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+            className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
           >
             Fermer
           </button>
         </div>
 
       </div>
+
+      {/* Ticket Transfer Modal */}
+      <TicketTransferModal
+        isOpen={isTransferModalOpen}
+        onClose={() => {
+          setIsTransferModalOpen(false);
+          setTicketToTransfer(null);
+        }}
+        user={user}
+        initialTicket={ticketToTransfer}
+        onTransferSuccess={(updatedUser, transferredTicket, recipientMatricule) => {
+          setIsTransferModalOpen(false);
+          setTicketToTransfer(null);
+          setSelectedTicket(null);
+          if (onTransferSuccess) {
+            onTransferSuccess(updatedUser, transferredTicket, recipientMatricule);
+          }
+        }}
+      />
     </div>
   );
 };

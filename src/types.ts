@@ -49,6 +49,9 @@ export interface MealTicket {
   qrCodeData: string;
   purchaseTime: string;
   usedTime?: string;
+  transferredFrom?: string;
+  transferredTo?: string;
+  transferredAt?: string;
 }
 
 export interface UserProfile {

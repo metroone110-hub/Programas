@@ -7,7 +7,8 @@ import {
   QrCode, 
   CheckCircle2, 
   ChevronRight,
-  Zap
+  Zap,
+  Send
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { AsyncButton } from './AsyncButton';
@@ -17,13 +18,15 @@ interface Props {
   onBuyTickets: (quantity: number, totalAmount: number) => void;
   onOpenAuth: () => void;
   onOpenMyTickets: () => void;
+  onOpenTransfer?: () => void;
 }
 
 export const TicketCounterBox: React.FC<Props> = ({
   user,
   onBuyTickets,
   onOpenAuth,
-  onOpenMyTickets
+  onOpenMyTickets,
+  onOpenTransfer
 }) => {
   const [quantity, setQuantity] = useState<number>(1);
 
@@ -178,17 +181,29 @@ export const TicketCounterBox: React.FC<Props> = ({
             <span>Paiement sécurisé : Wave, Orange, MTN, Moov, Djamo</span>
           </div>
 
-          {/* User Tickets Shortcut if connected */}
+          {/* User Tickets Shortcut & Transfer if connected */}
           {user && (
-            <div className="pt-2 border-t border-slate-700/60 text-center">
+            <div className="pt-2 border-t border-slate-700/60 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={onOpenMyTickets}
-                className="text-xs text-orange-300 hover:text-white font-medium inline-flex items-center space-x-1.5 transition-colors cursor-pointer"
+                className="text-xs text-orange-300 hover:text-white font-medium inline-flex items-center space-x-1.5 transition-colors cursor-pointer py-1"
               >
                 <QrCode className="w-3.5 h-3.5" />
-                <span>Mes tickets disponibles ({validTicketsCount}) →</span>
+                <span>Mes tickets ({validTicketsCount})</span>
               </button>
+
+              {onOpenTransfer && (
+                <button
+                  type="button"
+                  onClick={onOpenTransfer}
+                  className="text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-medium inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                  title="Transférer un ticket restaurant à un étudiant par matricule"
+                >
+                  <Send className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Offrir un ticket</span>
+                </button>
+              )}
             </div>
           )}
 

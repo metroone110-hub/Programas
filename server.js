@@ -165,6 +165,126 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Dishes Cloud Sync Endpoints (/api/dishes)
+  if (safeUrl === '/api/dishes' || safeUrl.startsWith('/api/dishes/')) {
+    const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/gen-lang-client-0578572037/databases/ai-studio-croumenurestou-b39ac6a3-5006-4e33-b867-e7ef5f24a19c/documents';
+    const FIRESTORE_API_KEY = 'AIzaSyAwxZhgcBaVbCaKTcqHo2V4ihZpnaQ6SDQ';
+
+    if (req.method === 'GET') {
+      try {
+        const fsRes = await fetch(`${FIRESTORE_BASE}:runQuery?key=${FIRESTORE_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'crou_dishes' }] } })
+        });
+        if (fsRes.ok) {
+          const rows = await fsRes.json();
+          const dishes = [];
+          if (Array.isArray(rows)) {
+            for (const r of rows) {
+              if (r.document && r.document.fields) {
+                const f = r.document.fields;
+                const docName = r.document.name || '';
+                const docId = docName.split('/').pop();
+                const rawMeal = (f.mealType?.stringValue || '').toLowerCase();
+                const rawCat = (f.category?.stringValue || '').toLowerCase();
+
+                dishes.push({
+                  id: f.id?.stringValue || docId,
+                  name: f.name?.stringValue || 'Plat CROU',
+                  description: f.description?.stringValue || '',
+                  category: (rawCat === 'entree' || rawCat === 'dessert' || rawCat === 'boisson') ? rawCat : 'plat_principal',
+                  price: f.price?.integerValue ? parseInt(f.price.integerValue, 10) : (f.price?.doubleValue || 200),
+                  regularPrice: f.regularPrice?.integerValue ? parseInt(f.regularPrice.integerValue, 10) : 500,
+                  mealType: (rawMeal === 'diner' || rawMeal === 'soir') ? 'diner' : 'dejeuner',
+                  imageUrl: f.imageUrl?.stringValue || '',
+                  isAvailable: f.isAvailable?.booleanValue !== false,
+                  canteenId: f.canteenId?.stringValue || 'all',
+                  tags: f.tags?.arrayValue?.values?.map(v => v.stringValue).filter(Boolean) || ['Distribution Officielle', 'Resto U'],
+                  rating: f.rating?.doubleValue || 5.0,
+                  ratingCount: f.ratingCount?.integerValue ? parseInt(f.ratingCount.integerValue, 10) : 1
+                });
+              }
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache, no-store' });
+          res.end(JSON.stringify({ dishes }));
+          return;
+        }
+      } catch (err) {
+        console.error('Server get dishes error:', err);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ dishes: [] }));
+      return;
+    }
+
+    if (req.method === 'POST') {
+      let bodyData = '';
+      req.on('data', chunk => { bodyData += chunk; });
+      req.on('end', async () => {
+        try {
+          const dish = JSON.parse(bodyData || '{}');
+          if (!dish || !dish.id) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing dish id' }));
+            return;
+          }
+          const rawMeal = ((dish.mealType || '')).toString().toLowerCase();
+          const cleanMeal = (rawMeal === 'diner' || rawMeal === 'soir') ? 'diner' : 'dejeuner';
+          const rawCat = ((dish.category || '')).toString();
+          const cleanCat = (rawCat === 'entree' || rawCat === 'dessert' || rawCat === 'boisson') ? rawCat : 'plat_principal';
+
+          const docId = dish.id.trim();
+          const patchUrl = `${FIRESTORE_BASE}/crou_dishes/${encodeURIComponent(docId)}?key=${FIRESTORE_API_KEY}`;
+          const fsRes = await fetch(patchUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                id: { stringValue: docId },
+                name: { stringValue: dish.name || 'Plat CROU' },
+                description: { stringValue: dish.description || '' },
+                category: { stringValue: cleanCat },
+                price: { integerValue: String(dish.price || 200) },
+                regularPrice: { integerValue: String(dish.regularPrice || 500) },
+                mealType: { stringValue: cleanMeal },
+                imageUrl: { stringValue: dish.imageUrl || '' },
+                isAvailable: { booleanValue: dish.isAvailable !== false },
+                canteenId: { stringValue: dish.canteenId || 'all' },
+                tags: { arrayValue: { values: (dish.tags || ['Distribution Officielle', 'Resto U']).map(t => ({ stringValue: t })) } },
+                rating: { doubleValue: dish.rating || 5.0 },
+                ratingCount: { integerValue: String(dish.ratingCount || 1) },
+                updatedAt: { stringValue: new Date().toISOString() }
+              }
+            })
+          });
+
+          res.writeHead(fsRes.ok ? 200 : fsRes.status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: fsRes.ok }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      const dishId = safeUrl.replace('/api/dishes/', '').trim();
+      if (dishId) {
+        try {
+          await fetch(`${FIRESTORE_BASE}/crou_dishes/${encodeURIComponent(dishId)}?key=${FIRESTORE_API_KEY}`, {
+            method: 'DELETE'
+          });
+        } catch (e) {}
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+  }
+
   // Prevent directory traversal
   if (!filePath.startsWith(DIST_DIR)) {
     res.writeHead(403);

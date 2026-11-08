@@ -54,6 +54,7 @@ import { TicketCounterBox } from './components/TicketCounterBox';
 import { TicketIntro } from './components/TicketIntro';
 import { PinLock } from './components/PinLock';
 import { GeminiAssistantModal } from './components/GeminiAssistantModal';
+import { TicketTransferModal } from './components/TicketTransferModal';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
@@ -61,7 +62,10 @@ export const App: React.FC = () => {
   const [canteens, setCanteens] = useState<Canteen[]>(INITIAL_CANTEENS);
   const [selectedCanteen, setSelectedCanteen] = useState<Canteen>(INITIAL_CANTEENS[0]);
   const [dishes, setDishes] = useState<Dish[]>(() => getLocalCachedDishes());
-  const [selectedMealType, setSelectedMealType] = useState<MealType>('dejeuner');
+  const [selectedMealType, setSelectedMealType] = useState<MealType>(() => {
+    const hour = new Date().getHours();
+    return hour >= 15 ? 'diner' : 'dejeuner';
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -91,6 +95,8 @@ export const App: React.FC = () => {
 
   // Other Modals
   const [showMyTicketsModal, setShowMyTicketsModal] = useState<boolean>(false);
+  const [showTransferModal, setShowTransferModal] = useState<boolean>(false);
+  const [transferModalTicket, setTransferModalTicket] = useState<MealTicket | null>(null);
   const [showGeminiModal, setShowGeminiModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
@@ -381,6 +387,15 @@ export const App: React.FC = () => {
     }
   };
 
+  // Peer-to-Peer Meal Ticket Transfer Success Handler
+  const handleTransferSuccess = (updatedUser: UserProfile, transferredTicket: MealTicket, recipientMatricule: string) => {
+    setUser(updatedUser);
+    if (activeTicket && (activeTicket.id === transferredTicket.id || activeTicket.ticketNumber === transferredTicket.ticketNumber)) {
+      setActiveTicket(null);
+    }
+    showToast(`🎁 Ticket ${transferredTicket.ticketNumber} transféré avec succès à l'étudiant (${recipientMatricule}) !`);
+  };
+
   // Dedicated Ticket Purchasing Handler (CROU Subvention 200 FCFA/ticket)
   const handleBuyTickets = (quantity: number, totalAmount: number) => {
     if (!user) {
@@ -407,6 +422,7 @@ export const App: React.FC = () => {
       showToast(`Plat "${newDish.name}" publié et synchronisé sur tous les appareils.`);
     } else {
       showToast(`Erreur : ${res.error || 'Erreur lors de la synchronisation cloud'}`);
+      throw new Error(res.error || 'Erreur lors de la synchronisation cloud');
     }
   };
 
@@ -442,9 +458,17 @@ export const App: React.FC = () => {
     const matchesCanteen = !dish.canteenId || 
                           dish.canteenId === 'all' || 
                           dish.canteenId === selectedCanteen.id ||
-                          (selectedCanteen.id.startsWith('resto-upgc') && dish.canteenId.startsWith('resto-upgc'));
-    const matchesMeal = dish.mealType === selectedMealType;
-    const matchesCategory = selectedCategory === 'all' || dish.category === selectedCategory;
+                          dish.canteenId === '' ||
+                          (selectedCanteen.id.startsWith('resto-upgc') && (dish.canteenId.startsWith('resto-upgc') || dish.canteenId === 'all'));
+    
+    const dishMeal = (dish.mealType || '').toString().toLowerCase();
+    const matchesMeal = (selectedMealType === 'dejeuner' && (dishMeal === 'dejeuner' || dishMeal === 'midi' || dishMeal === '')) ||
+                        (selectedMealType === 'diner' && (dishMeal === 'diner' || dishMeal === 'soir'));
+
+    const matchesCategory = selectedCategory === 'all' || 
+                            dish.category === selectedCategory ||
+                            (selectedCategory === 'plat_principal' && ((dish.category as string) === 'Plats' || (dish.category as string) === 'plat_principal'));
+
     const matchesSearch = !searchQuery || 
                           dish.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           dish.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -542,6 +566,14 @@ export const App: React.FC = () => {
           onBuyTickets={handleBuyTickets}
           onOpenAuth={() => setShowBlackPortal(true)}
           onOpenMyTickets={() => setShowMyTicketsModal(true)}
+          onOpenTransfer={() => {
+            if (!user) {
+              setShowBlackPortal(true);
+              return;
+            }
+            setTransferModalTicket(null);
+            setShowTransferModal(true);
+          }}
         />
 
         {/* MENU DU JOUR */}
@@ -573,24 +605,38 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedMealType('dejeuner')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                className={`px-3.5 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                   selectedMealType === 'dejeuner'
                     ? 'bg-white text-slate-900 shadow-xs font-semibold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>Déjeuner (11h30 – 14h30)</span>
+                <span>Midi (11h30 – 14h30)</span>
+                {dishes.filter(d => d.mealType === 'dejeuner').length > 0 && (
+                  <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
+                    selectedMealType === 'dejeuner' ? 'bg-orange-100 text-orange-700' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {dishes.filter(d => d.mealType === 'dejeuner').length}
+                  </span>
+                )}
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedMealType('diner')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                className={`px-3.5 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                   selectedMealType === 'diner'
                     ? 'bg-white text-slate-900 shadow-xs font-semibold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>Dîner (18h30 – 21h00)</span>
+                <span>Soir (18h30 – 21h00)</span>
+                {dishes.filter(d => d.mealType === 'diner').length > 0 && (
+                  <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
+                    selectedMealType === 'diner' ? 'bg-orange-100 text-orange-700' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {dishes.filter(d => d.mealType === 'diner').length}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -747,6 +793,11 @@ export const App: React.FC = () => {
         onClearCart={() => setCart([])}
         onCheckout={handleCheckoutCart}
         user={user}
+        onOpenTransfer={() => {
+          setShowCartDrawer(false);
+          setTransferModalTicket(null);
+          setShowTransferModal(true);
+        }}
       />
 
       {/* Dish Detail Modal matching IMG_0875.webp Screen 2 */}
@@ -780,6 +831,7 @@ export const App: React.FC = () => {
             setShowMyTicketsModal(false);
             setActiveTicket(ticket);
           }}
+          onTransferSuccess={handleTransferSuccess}
         />
       )}
 
@@ -788,7 +840,26 @@ export const App: React.FC = () => {
         ticket={activeTicket}
         onClose={() => setActiveTicket(null)}
         onMarkAsUsed={handleMarkTicketUsed}
+        onTransferTicket={(ticket) => {
+          setActiveTicket(null);
+          setTransferModalTicket(ticket);
+          setShowTransferModal(true);
+        }}
       />
+
+      {/* Peer-to-Peer Meal Ticket Transfer Modal between Students */}
+      {user && (
+        <TicketTransferModal
+          isOpen={showTransferModal}
+          onClose={() => {
+            setShowTransferModal(false);
+            setTransferModalTicket(null);
+          }}
+          user={user}
+          initialTicket={transferModalTicket}
+          onTransferSuccess={handleTransferSuccess}
+        />
+      )}
 
       {/* Mobile Floating Bottom Navigation Dock (matching IMG_1079) */}
       <MobileBottomNav

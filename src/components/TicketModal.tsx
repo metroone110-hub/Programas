@@ -7,9 +7,10 @@ interface Props {
   ticket: MealTicket | null;
   onClose: () => void;
   onMarkAsUsed?: (ticketId: string) => void;
+  onTransferTicket?: (ticket: MealTicket) => void;
 }
 
-export const TicketModal: React.FC<Props> = ({ ticket, onClose, onMarkAsUsed }) => {
+export const TicketModal: React.FC<Props> = ({ ticket, onClose, onMarkAsUsed, onTransferTicket }) => {
   if (!ticket) return null;
 
   return (
@@ -17,7 +18,7 @@ export const TicketModal: React.FC<Props> = ({ ticket, onClose, onMarkAsUsed }) 
       <div className="relative w-full max-w-md my-auto">
         <button
           onClick={onClose}
-          className="absolute -top-11 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10 flex items-center space-x-1 text-xs font-bold px-3"
+          className="absolute -top-11 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10 flex items-center space-x-1 text-xs font-bold px-3 cursor-pointer"
           aria-label="Fermer"
         >
           <span>Fermer</span>
@@ -27,6 +28,7 @@ export const TicketModal: React.FC<Props> = ({ ticket, onClose, onMarkAsUsed }) 
         <TicketVisual
           ticket={ticket}
           onMarkAsUsed={onMarkAsUsed}
+          onTransferTicket={onTransferTicket}
           showActions={true}
         />
       </div>
