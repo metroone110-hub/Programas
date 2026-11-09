@@ -174,19 +174,19 @@ export const StudentTicketsModal: React.FC<Props> = ({
                   className={`p-4 rounded-2xl border transition-all cursor-pointer relative group text-left ${
                     t.status === 'valid'
                       ? 'border-orange-200 hover:border-orange-400 bg-white hover:shadow-md'
-                      : 'border-slate-200 bg-slate-50 opacity-75'
+                      : 'border-2 border-red-300 bg-red-50/50 hover:border-red-400'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
                       {t.mealType === 'dejeuner' ? '☀️ Déjeuner' : '🌙 Dîner'}
                     </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
                       t.status === 'valid'
                         ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-slate-200 text-slate-600'
+                        : 'bg-red-600 text-white'
                     }`}>
-                      {t.status === 'valid' ? 'Prêt à scanner' : 'Utilisé'}
+                      {t.status === 'valid' ? 'Prêt à scanner' : '🔴 Utilisé'}
                     </span>
                   </div>
 

@@ -772,13 +772,31 @@ export async function syncStudentTicketsWithFirestore(user: UserProfile): Promis
       if (rawVault) vaultTickets = JSON.parse(rawVault);
     } catch {}
 
-    // Merge all without loss
+    // Merge all without loss - RÈGLE DE SÉCURITÉ : Un ticket 'used' reste 'used' de manière irrévocable
     const mergedMap = new Map<string, MealTicket>();
-    (user.savedTickets || []).forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-    restTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-    studentDocTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-    firestoreTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-    vaultTickets.forEach(t => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+    const processTicket = (t: MealTicket) => {
+      if (!t) return;
+      const key = t.ticketNumber || t.id;
+      if (!key) return;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, t);
+      } else {
+        const prev = mergedMap.get(key)!;
+        const isUsed = prev.status === 'used' || t.status === 'used';
+        mergedMap.set(key, {
+          ...prev,
+          ...t,
+          status: isUsed ? 'used' : 'valid',
+          usedTime: prev.usedTime || t.usedTime
+        });
+      }
+    };
+
+    (user.savedTickets || []).forEach(processTicket);
+    restTickets.forEach(processTicket);
+    studentDocTickets.forEach(processTicket);
+    firestoreTickets.forEach(processTicket);
+    vaultTickets.forEach(processTicket);
     const mergedList = Array.from(mergedMap.values());
 
     if (mergedList.length > 0) {
@@ -1510,6 +1528,41 @@ export async function transferMealTicketToStudent(
 
   const ticketToTransfer = senderTickets[ticketIndex];
 
+  // RÈGLE CRITIQUE DE SÉCURITÉ : Vérification temps réel dans la base centrale Firestore
+  // Si le ticket a déjà été scanné au tourniquet, le transfert est IMMÉDIATEMENT BLOQUÉ
+  try {
+    let cloudTkt: MealTicket | null = null;
+    const snapTkt = await getDoc(doc(db, 'tickets', ticketToTransfer.ticketNumber));
+    if (snapTkt.exists()) {
+      cloudTkt = snapTkt.data() as MealTicket;
+    } else if (ticketToTransfer.id) {
+      const snapId = await getDoc(doc(db, 'tickets', ticketToTransfer.id));
+      if (snapId.exists()) {
+        cloudTkt = snapId.data() as MealTicket;
+      }
+    }
+
+    if (cloudTkt && cloudTkt.status === 'used') {
+      // Synchroniser immédiatement en rouge chez l'expéditeur
+      const fixedSenderList = senderTickets.map(t => 
+        (t.ticketNumber === ticketToTransfer.ticketNumber || t.id === ticketToTransfer.id)
+          ? { ...t, status: 'used' as const, usedTime: cloudTkt!.usedTime || 'service précédent' }
+          : t
+      );
+      const updatedSenderProfile: UserProfile = { ...senderProfile, savedTickets: fixedSenderList };
+      saveLocalUserProfile(updatedSenderProfile);
+      if (senderMat) {
+        updateStudentInLocalRegistry(updatedSenderProfile);
+      }
+      return {
+        success: false,
+        error: `🚨 Transfert impossible : Ce ticket (${ticketToTransfer.ticketNumber}) a déjà été scanné et consommé au restaurant universitaire à ${cloudTkt.usedTime || 'ce service'}.`
+      };
+    }
+  } catch (err) {
+    console.warn('Vérification Firestore ticket transfert:', err);
+  }
+
   // 1. Rechercher le destinataire (Local Registry + REST + Firestore)
   let recipientFound: UserProfile | null = null;
   const localRegistry = getLocalStudentsRegistry();
@@ -1636,4 +1689,71 @@ export async function transferMealTicketToStudent(
     recipientMatricule: cleanRecipientMat
   };
 }
+
+/**
+ * Écoute en temps réel les changements sur le profil et les tickets de l'étudiant
+ * Permet au téléphone de l'étudiant de passer immédiatement son ticket en ROUGE "UTILISÉ"
+ * dès que la borne de la cantine scanne le QR code, sans devoir rafraîchir la page !
+ */
+export function subscribeToStudentProfile(
+  matricule: string,
+  onUpdate: (updatedUser: UserProfile) => void
+): () => void {
+  if (!matricule) return () => {};
+  const cleanMat = matricule.trim().toUpperCase();
+  const safeId = sanitizeMatriculeId(cleanMat);
+
+  try {
+    const unsub = onSnapshot(doc(db, 'students', safeId), (snapshot) => {
+      if (snapshot.exists()) {
+        const cloudData = snapshot.data() as UserProfile;
+        const currentLocal = getLocalUserProfile();
+        const localTickets = currentLocal?.savedTickets || [];
+        const cloudTickets = cloudData.savedTickets || [];
+
+        // Fusion stricte où 'used' l'emporte toujours
+        const mergedMap = new Map<string, MealTicket>();
+        const addTkt = (t: MealTicket) => {
+          if (!t) return;
+          const k = t.ticketNumber || t.id;
+          if (!k) return;
+          if (!mergedMap.has(k)) {
+            mergedMap.set(k, t);
+          } else {
+            const prev = mergedMap.get(k)!;
+            const isUsed = prev.status === 'used' || t.status === 'used';
+            mergedMap.set(k, {
+              ...prev,
+              ...t,
+              status: isUsed ? 'used' : 'valid',
+              usedTime: prev.usedTime || t.usedTime
+            });
+          }
+        };
+
+        localTickets.forEach(addTkt);
+        cloudTickets.forEach(addTkt);
+        const mergedList = Array.from(mergedMap.values());
+
+        const mergedUser: UserProfile = {
+          ...(currentLocal || {}),
+          ...cloudData,
+          matricule: cleanMat,
+          savedTickets: mergedList
+        };
+
+        saveLocalUserProfile(mergedUser);
+        onUpdate(mergedUser);
+      }
+    }, (err) => {
+      console.warn('Real-time student profile snapshot note:', err);
+    });
+
+    return unsub;
+  } catch (err) {
+    console.warn('subscribeToStudentProfile error:', err);
+    return () => {};
+  }
+}
+
 

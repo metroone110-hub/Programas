@@ -15,7 +15,9 @@ import {
   BadgeCheck,
   Eye,
   Ticket,
-  Send
+  Send,
+  AlertOctagon,
+  XCircle
 } from 'lucide-react';
 import { MealTicket } from '../types';
 import { generateTicketQRCodeDataURL } from '../utils/qrcode';
@@ -103,33 +105,44 @@ export const TicketVisual: React.FC<Props> = ({
 
       {/* Main Ticket Card Container */}
       <div className={`relative bg-white rounded-3xl shadow-2xl overflow-hidden border transition-all ${
-        isUsed ? 'border-slate-300 opacity-90' : 'border-orange-200 ring-2 ring-orange-500/15'
+        isUsed ? 'border-2 border-red-500 ring-4 ring-red-500/20' : 'border-orange-200 ring-2 ring-orange-500/15'
       }`}>
         
         {/* Top Header - Republic / CROU Badge */}
         <div className={`p-4 text-white relative ${
           isUsed 
-            ? 'bg-slate-700' 
+            ? 'bg-gradient-to-r from-red-700 via-rose-700 to-red-800' 
             : 'bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700'
         }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
-              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-inner">
-                <Ticket className="w-5 h-5 text-amber-200" />
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-inner ${
+                isUsed ? 'bg-red-950/60 border border-red-400/40' : 'bg-white/20 backdrop-blur-md'
+              }`}>
+                {isUsed ? <XCircle className="w-5 h-5 text-white" /> : <Ticket className="w-5 h-5 text-amber-200" />}
               </div>
               <div>
-                <span className="text-xs font-semibold text-orange-200 block">
+                <span className={`text-xs font-semibold block ${isUsed ? 'text-red-200' : 'text-orange-200'}`}>
                   CROU Korhogo · Restaurant U
                 </span>
-                <span className="text-sm font-bold leading-tight block">
-                  Ticket de repas · 200 FCFA
+                <span className="text-sm font-black leading-tight block text-white flex items-center space-x-1.5">
+                  {isUsed ? (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span>
+                      <span>TICKET UTILISÉ (CONSOMMÉ)</span>
+                    </>
+                  ) : (
+                    <span>Ticket de repas · 200 FCFA</span>
+                  )}
                 </span>
               </div>
             </div>
 
             <div className="text-right">
-              <span className="text-xs font-semibold bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-lg">
-                {ticket.mealType === 'dejeuner' ? 'Midi' : 'Soir'}
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                isUsed ? 'bg-red-950/80 text-white border border-red-400' : 'bg-white/20 backdrop-blur-sm'
+              }`}>
+                {isUsed ? 'UTILISÉ' : (ticket.mealType === 'dejeuner' ? 'Midi' : 'Soir')}
               </span>
             </div>
           </div>
@@ -217,12 +230,18 @@ export const TicketVisual: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Used stamp overlay */}
+              {/* Used stamp overlay EN ROUGE VIF */}
               {isUsed && (
-                <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center">
-                  <div className="bg-red-600/90 text-white px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest shadow-2xl transform -rotate-6 border-2 border-white">
-                    TICKET UTILISÉ AU SERVICE
+                <div className="absolute inset-0 bg-red-950/85 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center">
+                  <div className="bg-red-600 text-white px-5 py-2.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest shadow-2xl transform -rotate-6 border-2 border-white">
+                    ❌ TICKET DÉJÀ UTILISÉ
                   </div>
+                  <span className="text-white text-xs font-bold mt-2">
+                    Consommé à {ticket.usedTime || 'ce service'}
+                  </span>
+                  <span className="text-red-200 text-[10px] mt-0.5 font-semibold">
+                    Accès au tourniquet désormais refusé
+                  </span>
                 </div>
               )}
             </div>
@@ -243,7 +262,7 @@ export const TicketVisual: React.FC<Props> = ({
                   src={qrDataUrl} 
                   alt="QR Code Ticket" 
                   className={`w-44 h-44 mx-auto rounded-lg transition-opacity ${
-                    isUsed ? 'opacity-40 grayscale' : 'opacity-100'
+                    isUsed ? 'opacity-30 grayscale' : 'opacity-100'
                   }`}
                 />
               ) : (
@@ -252,12 +271,18 @@ export const TicketVisual: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Status stamp overlay if used */}
+              {/* Status stamp overlay if used EN ROUGE */}
               {isUsed && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="bg-slate-900/90 text-white px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transform -rotate-12 border-2 border-white">
-                    TICKET UTILISÉ
+                <div className="absolute inset-0 bg-red-950/90 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-3 text-center">
+                  <div className="bg-red-600 text-white px-3.5 py-1.5 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl border-2 border-white transform -rotate-6">
+                    ❌ TICKET DÉJÀ UTILISÉ
                   </div>
+                  <p className="text-white text-xs font-black mt-2">
+                    Scanné à {ticket.usedTime || 'ce service'}
+                  </p>
+                  <p className="text-red-200 text-[10px] font-bold mt-0.5">
+                    QR code désactivé • Refusé au tourniquet
+                  </p>
                 </div>
               )}
             </div>
@@ -327,19 +352,20 @@ export const TicketVisual: React.FC<Props> = ({
 
           {/* Status & Instructions - Validation is done ONLY by CROU turnstile/scanner */}
           <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-            {!isUsed ? (
+            {isUsed ? (
+              <div className="flex-1 py-2.5 px-3 bg-red-600 text-white text-xs font-black rounded-xl text-center flex items-center justify-center space-x-2 shadow-md">
+                <AlertOctagon className="w-4 h-4 text-white flex-shrink-0 stroke-[2.5]" />
+                <span>TICKET UTILISÉ (EN ROUGE) · Consommé à {ticket.usedTime || 'ce service'}</span>
+              </div>
+            ) : (
               <div className="flex-1 py-2.5 px-3 bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 text-center">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                 <span>Ticket valide • Scanner Restau U</span>
               </div>
-            ) : (
-              <div className="flex-1 py-2.5 px-3 bg-slate-100 text-slate-500 text-xs font-bold rounded-xl text-center">
-                Consommé à {ticket.usedTime || 'ce service'}
-              </div>
             )}
 
             <div className="flex items-center space-x-2">
-              {!isUsed && onTransferTicket && (
+              {!isUsed && onTransferTicket ? (
                 <button
                   type="button"
                   onClick={() => onTransferTicket(ticket)}
@@ -349,7 +375,11 @@ export const TicketVisual: React.FC<Props> = ({
                   <Send className="w-3.5 h-3.5" />
                   <span>Offrir</span>
                 </button>
-              )}
+              ) : isUsed ? (
+                <span className="py-2 px-3 bg-red-100 text-red-800 border border-red-300 text-xs font-bold rounded-xl flex items-center space-x-1">
+                  <span>🚫 Non transférable</span>
+                </span>
+              ) : null}
 
               <button
                 type="button"

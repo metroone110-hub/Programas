@@ -101,6 +101,11 @@ export const TicketTransferModal: React.FC<Props> = ({
       return;
     }
 
+    if (currentSelectedTicket.status !== 'valid') {
+      setErrorMessage("🚨 Ce ticket a déjà été utilisé au restaurant universitaire et ne peut plus être transféré.");
+      return;
+    }
+
     const cleanMat = recipientMatricule.trim().toUpperCase();
     if (!cleanMat || cleanMat.length < 4) {
       setErrorMessage('Veuillez renseigner un numéro de matricule étudiant valide (au moins 4 caractères).');

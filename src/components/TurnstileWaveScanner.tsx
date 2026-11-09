@@ -704,32 +704,38 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
                   </div>
                 )}
 
-                {/* iPhone Cline Bell confirmation badge */}
+                {/* Confirmation status pill */}
                 {verdict.status === 'valid' && (
-                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black">
-                    <Bell className="w-3.5 h-3.5 text-amber-600 animate-bounce" />
-                    <span>Cloche Cline iPhone Confirmée 🔔</span>
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Passage autorisé · Tourniquet déverrouillé</span>
+                  </div>
+                )}
+
+                {verdict.status === 'used' && (
+                  <div className="inline-flex items-center space-x-1.5 px-4 py-1.5 rounded-full bg-red-600 text-white border-2 border-white text-xs font-black shadow-md">
+                    <span>🚨 TICKET DÉJÀ CONSOMMÉ AU SERVICE</span>
                   </div>
                 )}
 
                 {/* Title & Message */}
                 <div className="space-y-1">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                  <span className={`inline-block px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
                     verdict.status === 'valid'
                       ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                      : 'bg-red-100 text-red-900 border border-red-300'
+                      : 'bg-red-600 text-white shadow-xs'
                   }`}>
                     {verdict.status === 'valid' ? '✅ Passage Validé' : (verdict.status === 'used' ? '🚨 Ticket Déjà Consommé' : '⚠️ Refus')}
                   </span>
 
                   <h3 className={`text-2xl font-black ${
-                    verdict.status === 'valid' ? 'text-emerald-950 font-cabinet' : 'text-red-950 font-cabinet'
+                    verdict.status === 'valid' ? 'text-emerald-950 font-cabinet' : 'text-red-600 font-cabinet'
                   }`}>
-                    {verdict.status === 'valid' ? 'TICKET VALIDE' : (verdict.status === 'used' ? 'DÉJÀ CONSOMMÉ' : 'NON RECONNU')}
+                    {verdict.status === 'valid' ? 'TICKET VALIDE' : (verdict.status === 'used' ? 'DÉJÀ CONSOMMÉ (EN ROUGE)' : 'NON RECONNU')}
                   </h3>
 
                   <p className={`text-xs font-semibold ${
-                    verdict.status === 'valid' ? 'text-emerald-800' : 'text-red-700'
+                    verdict.status === 'valid' ? 'text-emerald-800' : 'text-red-700 font-bold'
                   }`}>
                     {verdict.message}
                   </p>

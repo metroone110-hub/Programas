@@ -35,7 +35,8 @@ import {
   logoutUser,
   purchaseTicketsBatch,
   syncStudentTicketsWithFirestore,
-  syncAllLocalAccountsToFirestore
+  syncAllLocalAccountsToFirestore,
+  subscribeToStudentProfile
 } from './services/studentAuth';
 import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
@@ -128,24 +129,44 @@ export const App: React.FC = () => {
   }, []);
 
 
-  // Sync tickets with Firestore for seamless multi-device persistence
+  // Synchronisation en temps réel du profil et des tickets de l'étudiant avec Firestore
+  // Si la borne scanne le ticket, le téléphone bascule immédiatement en ROUGE "UTILISÉ"
   useEffect(() => {
-    if (user && user.matricule) {
-      syncStudentTicketsWithFirestore(user).then((synced) => {
-        if (synced && synced.savedTickets) {
-          setUser(prev => {
-            if (!prev) return synced;
-            // update if different
-            if (JSON.stringify(prev.savedTickets) !== JSON.stringify(synced.savedTickets)) {
-              return synced;
-            }
-            return prev;
-          });
-        }
-      }).catch(err => {
-        console.warn('Sync student tickets notice:', err);
+    if (!user || !user.matricule) return;
+
+    // 1. Synchronisation initiale
+    syncStudentTicketsWithFirestore(user).then((synced) => {
+      if (synced && synced.savedTickets) {
+        setUser(prev => {
+          if (!prev) return synced;
+          if (JSON.stringify(prev.savedTickets) !== JSON.stringify(synced.savedTickets)) {
+            return synced;
+          }
+          return prev;
+        });
+      }
+    }).catch(err => {
+      console.warn('Sync student tickets notice:', err);
+    });
+
+    // 2. Écoute temps réel : bascule instantanée en rouge quand la borne scanne
+    const unsubscribe = subscribeToStudentProfile(user.matricule, (updatedProfile) => {
+      setUser(prev => {
+        if (!prev) return updatedProfile;
+        return updatedProfile;
       });
-    }
+
+      // Mettre à jour le ticket affiché en grand s'il vient d'être scanné
+      setActiveTicket(currentActive => {
+        if (!currentActive) return null;
+        const fresh = (updatedProfile.savedTickets || []).find(
+          t => t.id === currentActive.id || t.ticketNumber === currentActive.ticketNumber
+        );
+        return fresh || currentActive;
+      });
+    });
+
+    return () => unsubscribe();
   }, [user?.matricule]);
 
   // Official Jeko Partner API Callback Handler (/payment/success & /payment/error)
