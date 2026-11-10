@@ -130,23 +130,41 @@ export async function fetchStudentRest(matricule: string): Promise<(UserProfile 
 export async function saveStudentRest(student: UserProfile, passwordHash?: string): Promise<boolean> {
   if (!student.matricule) return false;
   const safeId = student.matricule.trim().toUpperCase();
-  const url = `${BASE_URL}/students/${encodeURIComponent(safeId)}?key=${API_KEY}`;
+
+  const dataToSave: Record<string, any> = {
+    uid: student.uid || safeId,
+    matricule: safeId,
+    displayName: student.displayName || `Étudiant (${safeId})`,
+    email: student.email || `${safeId.toLowerCase()}@upgc.ci`,
+    role: student.role || 'student',
+    balance: typeof student.balance === 'number' ? student.balance : 0,
+    savedTickets: student.savedTickets || [],
+    university: student.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
+    campus: student.campus || 'Campus UPGC Korhogo',
+    phone: student.phone || '',
+    lastSync: new Date().toISOString()
+  };
+
+  if (passwordHash) {
+    dataToSave.passwordHash = passwordHash;
+  } else {
+    // Si passwordHash n'est pas fourni, tenter de préserver celui du registre local
+    try {
+      const reg = JSON.parse(localStorage.getItem('crou_local_students_registry') || '{}');
+      if (reg[safeId]?.passwordHash) {
+        dataToSave.passwordHash = reg[safeId].passwordHash;
+      }
+    } catch {}
+  }
+
+  // UpdateMask garantit que SEULS les champs spécifiés sont mis à jour,
+  // empêchant Firestore REST d'effacer les champs omis (comme passwordHash).
+  const fieldKeys = Object.keys(dataToSave);
+  const maskQuery = fieldKeys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const url = `${BASE_URL}/students/${encodeURIComponent(safeId)}?${maskQuery}&key=${API_KEY}`;
 
   const payload = {
-    fields: toFirestoreRestFields({
-      uid: student.uid || safeId,
-      matricule: safeId,
-      displayName: student.displayName || `Étudiant (${safeId})`,
-      email: student.email || `${safeId.toLowerCase()}@upgc.ci`,
-      role: student.role || 'student',
-      balance: typeof student.balance === 'number' ? student.balance : 0,
-      savedTickets: student.savedTickets || [],
-      university: student.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
-      campus: student.campus || 'Campus UPGC Korhogo',
-      phone: student.phone || '',
-      ...(passwordHash ? { passwordHash } : {}),
-      lastSync: new Date().toISOString()
-    })
+    fields: toFirestoreRestFields(dataToSave)
   };
 
   try {

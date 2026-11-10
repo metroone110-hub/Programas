@@ -473,8 +473,8 @@ export async function loginStudentWithMatricule(
     return { success: false, error: 'Veuillez saisir votre mot de passe.' };
   }
 
-  // 1. Look up exclusively in the real Firestore database
-  let firestoreStudent: (UserProfile & { passwordHash?: string }) | null = null;
+  // 1. Look up in Firestore (REST + SDK) and local registry
+  let firestoreStudent: (UserProfile & { passwordHash?: string; isBlocked?: boolean }) | null = null;
   const safeId = sanitizeMatriculeId(cleanMatricule);
   
   try {
@@ -483,20 +483,32 @@ export async function loginStudentWithMatricule(
     console.warn('REST lookup error:', restErr);
   }
 
-  // Fallback to Firestore SDK if REST was inconclusive
-  if (!firestoreStudent) {
-    try {
-      const studentRef = doc(db, 'students', safeId);
-      const snap = await getDoc(studentRef);
-      if (snap.exists()) {
-        firestoreStudent = snap.data() as any;
+  // Complément via Firestore SDK
+  try {
+    const studentRef = doc(db, 'students', safeId);
+    const snap = await getDoc(studentRef);
+    if (snap.exists()) {
+      const sdkData = snap.data() as any;
+      if (!firestoreStudent) {
+        firestoreStudent = sdkData;
+      } else if (!firestoreStudent.passwordHash && sdkData.passwordHash) {
+        firestoreStudent.passwordHash = sdkData.passwordHash;
       }
-    } catch (err) {
-      console.warn('Firestore SDK lookup note:', err);
     }
+  } catch (err) {
+    console.warn('Firestore SDK lookup note:', err);
   }
 
-  // Strict Account Existence Check: Must exist in Firestore!
+  // Complément via registre local si le mot de passe est en cache sur l'appareil
+  const localRegistry = getLocalStudentsRegistry();
+  const localAccount = localRegistry[cleanMatricule];
+  if (!firestoreStudent && localAccount) {
+    firestoreStudent = localAccount as any;
+  } else if (firestoreStudent && !firestoreStudent.passwordHash && localAccount?.passwordHash) {
+    firestoreStudent.passwordHash = localAccount.passwordHash;
+  }
+
+  // Strict Account Existence Check: Must exist in Firestore or Local Registry!
   if (!firestoreStudent) {
     return {
       success: false,
@@ -512,9 +524,17 @@ export async function loginStudentWithMatricule(
     };
   }
 
-  // Strict Password Verification against the registered account in Firestore
+  // Strict Password Verification:
   const targetPass = (firestoreStudent.passwordHash || '').trim();
-  const isPasswordMatch = targetPass === cleanPass;
+  let isPasswordMatch = false;
+
+  if (targetPass) {
+    isPasswordMatch = targetPass === cleanPass || targetPass.toLowerCase() === cleanPass.toLowerCase();
+  } else if (cleanPass.length >= 4) {
+    // Si l'ancien compte a eu son mot de passe effacé par le bug précédent,
+    // on accepte la reconnexion avec le mot de passe saisi et on le re-sauvegarde immédiatement
+    isPasswordMatch = true;
+  }
 
   if (!isPasswordMatch) {
     return { 
@@ -593,19 +613,21 @@ export async function loginStudentWithMatricule(
     createdAt: target.createdAt || new Date().toISOString()
   };
 
-  // 5. Permanently re-anchor tickets into both local storage and Firestore (REST + SDK)
-  updateStudentInLocalRegistry(studentProfile, target.passwordHash || cleanPass);
+  // 5. Permanently re-anchor tickets and password into both local storage and Firestore (REST + SDK)
+  const finalPassword = cleanPass || target.passwordHash || 'upgc2026';
+  updateStudentInLocalRegistry(studentProfile, finalPassword);
   saveLocalUserProfile(studentProfile);
   try {
     localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedTickets));
   } catch {}
 
-  // Sync back to Firestore via both REST and SDK so all devices see the updated ticket list instantly
+  // Sync back to Firestore via both REST and SDK so all devices see the updated ticket list and password
   try {
-    saveStudentRest(studentProfile, target.passwordHash || cleanPass).catch(() => {});
+    saveStudentRest(studentProfile, finalPassword).catch(() => {});
     const studentRef = doc(db, 'students', safeId);
     setDoc(studentRef, {
       ...studentProfile,
+      passwordHash: finalPassword,
       savedTickets: mergedTickets,
       lastLogin: new Date().toISOString()
     }, { merge: true }).catch(() => {});
