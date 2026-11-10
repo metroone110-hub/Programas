@@ -13,7 +13,8 @@ import {
   Bell,
   Ticket,
   Headphones,
-  Lock
+  Lock,
+  Mic
 } from 'lucide-react';
 import { Canteen, UserProfile } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -35,6 +36,7 @@ interface Props {
   onOpenNotifications?: () => void;
   onOpenGemini?: () => void;
   onOpenSupport?: () => void;
+  onOpenVoice?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -52,7 +54,8 @@ export const Navbar: React.FC<Props> = ({
   onSearchChange,
   onOpenNotifications,
   onOpenGemini,
-  onOpenSupport
+  onOpenSupport,
+  onOpenVoice
 }) => {
   const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
   const handleOpenSupport = onOpenSupport || onOpenGemini;
@@ -107,6 +110,23 @@ export const Navbar: React.FC<Props> = ({
 
           {/* Right: Assistance CROU, Admin, PWA & Lock Button */}
           <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
+            {/* Student Live Voice Button (Gemini Live) */}
+            {onOpenVoice && (
+              <button
+                type="button"
+                onClick={onOpenVoice}
+                className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500/15 to-orange-500/20 hover:from-amber-500/25 hover:to-orange-500/30 border border-orange-400/50 text-orange-700 dark:text-orange-300 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Parler de vive voix avec M. Kouassi (Gemini Live)"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
+                </span>
+                <Mic className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                <span className="hidden sm:inline">Vocal Live</span>
+              </button>
+            )}
+
             {/* Student Assistance Counselor Button */}
             {handleOpenSupport && (
               <button

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.31.0",
+    "@types/ws": "^8.18.2",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "firebase": "^11.4.0",
@@ -20,7 +21,8 @@
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "ws": "^8.22.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261104.1",

@@ -5,7 +5,34 @@ function geminiDevPlugin() {
   return {
     name: 'gemini-dev-api',
     configureServer(server: any) {
+      if (server.httpServer) {
+        import('./server/geminiLiveService.js').then(({ setupGeminiLiveWebSocket }) => {
+          setupGeminiLiveWebSocket(server.httpServer, '/api/live');
+        }).catch(err => {
+          console.warn('Live WebSocket setup in dev notice:', err);
+        });
+      }
+
       server.middlewares.use(async (req: any, res: any, next: any) => {
+        if (req.url === '/api/gemini/voice-conversation' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: any) => { body += chunk; });
+          req.on('end', async () => {
+            try {
+              const { handleVoiceConversationHTTP } = await import('./server/geminiLiveService.js');
+              const { audioBase64, textPrompt, context } = JSON.parse(body || '{}');
+              const result = await handleVoiceConversationHTTP({ audioBase64, textPrompt, context });
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
         if (req.url === '/api/gemini/chat' && req.method === 'POST') {
           let body = '';
           req.on('data', (chunk: any) => { body += chunk; });

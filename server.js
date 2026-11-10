@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { handleGeminiChat, handleGeminiTicketScan } from './server/geminiService.js';
+import { setupGeminiLiveWebSocket, handleVoiceConversationHTTP } from './server/geminiLiveService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -165,6 +166,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Voice Conversation (Gemini Audio + TTS Fallback Endpoint)
+  if (safeUrl === '/api/gemini/voice-conversation' && req.method === 'POST') {
+    let bodyData = '';
+    req.on('data', chunk => { bodyData += chunk; });
+    req.on('end', async () => {
+      try {
+        const { audioBase64, textPrompt, context } = JSON.parse(bodyData || '{}');
+        const result = await handleVoiceConversationHTTP({ audioBase64, textPrompt, context });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        console.error('Gemini voice conversation error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || 'Erreur conversation vocale' }));
+      }
+    });
+    return;
+  }
+
   // Dishes Cloud Sync Endpoints (/api/dishes)
   if (safeUrl === '/api/dishes' || safeUrl.startsWith('/api/dishes/')) {
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/gen-lang-client-0578572037/databases/ai-studio-croumenurestou-b39ac6a3-5006-4e33-b867-e7ef5f24a19c/documents';
@@ -320,6 +340,9 @@ const server = http.createServer(async (req, res) => {
 server.on('error', (err) => {
   console.error('Server error:', err);
 });
+
+// Attach Gemini Live API WebSocket Server on /api/live
+setupGeminiLiveWebSocket(server, '/api/live');
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Production server running on http://0.0.0.0:${PORT}`);

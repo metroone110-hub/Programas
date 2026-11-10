@@ -21,6 +21,7 @@ interface Message {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  onOpenVoice?: () => void;
   dishes: Dish[];
   studentName?: string;
 }
@@ -28,6 +29,7 @@ interface Props {
 export const GeminiAssistantModal: React.FC<Props> = ({
   isOpen,
   onClose,
+  onOpenVoice,
   dishes,
   studentName
 }) => {
@@ -158,8 +160,21 @@ export const GeminiAssistantModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Suggestion Chips */}
-        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 overflow-x-auto scrollbar-none flex gap-2">
+        {/* Suggestion & Live Voice Bar */}
+        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 overflow-x-auto scrollbar-none flex gap-2 items-center">
+          {onOpenVoice && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenVoice();
+              }}
+              className="whitespace-nowrap px-3.5 py-1.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-bold shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all active:scale-95 flex-shrink-0 cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              <span>🎙️ Parler de vive voix (Live)</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => handleSuggestionClick("Qu'y a-t-il au menu aujourd'hui au Resto U ?")}
