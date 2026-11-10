@@ -14,8 +14,7 @@ import {
   Ticket,
   CheckCircle2,
   X,
-  Headphones,
-  Mic
+  Headphones
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Canteen, Dish, MealTicket, UserProfile, MealType } from './types';
@@ -56,7 +55,6 @@ import { TicketCounterBox } from './components/TicketCounterBox';
 import { TicketIntro } from './components/TicketIntro';
 import { PinLock } from './components/PinLock';
 import { GeminiAssistantModal } from './components/GeminiAssistantModal';
-import { VoiceConversationModal } from './components/VoiceConversationModal';
 import { TicketTransferModal } from './components/TicketTransferModal';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
@@ -101,7 +99,6 @@ export const App: React.FC = () => {
   const [showTransferModal, setShowTransferModal] = useState<boolean>(false);
   const [transferModalTicket, setTransferModalTicket] = useState<MealTicket | null>(null);
   const [showGeminiModal, setShowGeminiModal] = useState<boolean>(false);
-  const [showVoiceModal, setShowVoiceModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
   const [blockedAlertMessage, setBlockedAlertMessage] = useState<string | null>(null);
@@ -578,7 +575,6 @@ export const App: React.FC = () => {
         onSearchChange={setSearchQuery}
         onOpenNotifications={() => setShowMyTicketsModal(true)}
         onOpenGemini={() => setShowGeminiModal(true)}
-        onOpenVoice={() => setShowVoiceModal(true)}
       />
 
       {/* Main Content Area */}
@@ -895,54 +891,24 @@ export const App: React.FC = () => {
         user={user}
       />
 
-      {/* Floating CROU Assistance & Live Voice Launchers */}
-      <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-2 select-none">
-        {/* Live Voice Button (Gemini Live) */}
-        <button
-          type="button"
-          onClick={() => setShowVoiceModal(true)}
-          className="bg-gradient-to-r from-orange-600 via-amber-500 to-orange-500 hover:from-orange-700 hover:to-amber-600 text-white px-3.5 py-2.5 rounded-full shadow-lg shadow-orange-500/30 border border-orange-400/50 flex items-center space-x-2 text-xs font-black transition-all active:scale-95 cursor-pointer hover:shadow-xl"
-          title="Parler de vive voix avec M. Kouassi (Gemini Live API)"
-        >
-          <div className="relative flex items-center justify-center">
-            <Mic className="w-4 h-4 text-white animate-pulse" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-white animate-ping" />
-          </div>
-          <span className="tracking-wide">Parler (Live)</span>
-        </button>
-
-        {/* Text Assistance Button */}
-        <button
-          type="button"
-          onClick={() => setShowGeminiModal(true)}
-          className="bg-slate-900/90 hover:bg-black text-white px-3 py-2.5 rounded-full shadow-lg shadow-black/40 border border-slate-700 flex items-center space-x-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer hover:shadow-xl"
-          title="Ouvrir le clavardage d'assistance"
-        >
+      {/* Floating CROU Student Support Desk Launcher */}
+      <button
+        type="button"
+        onClick={() => setShowGeminiModal(true)}
+        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 hover:from-black hover:to-slate-800 text-white px-3.5 py-2.5 rounded-full shadow-lg shadow-black/40 border border-orange-500/40 flex items-center space-x-2 text-xs font-bold transition-all active:scale-95 cursor-pointer hover:shadow-xl select-none"
+        title="Discuter avec le Conseiller CROU Korhogo"
+      >
+        <div className="relative flex items-center justify-center">
           <Headphones className="w-4 h-4 text-orange-400" />
-          <span className="hidden xs:inline">Assistance</span>
-        </button>
-      </div>
+          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+        </div>
+        <span className="tracking-wide">Assistance CROU</span>
+      </button>
 
-      {/* Gemini Live Voice Conversation Modal (Full Duplex Real-Time) */}
-      <VoiceConversationModal
-        isOpen={showVoiceModal}
-        onClose={() => setShowVoiceModal(false)}
-        onSwitchToTextChat={() => {
-          setShowVoiceModal(false);
-          setShowGeminiModal(true);
-        }}
-        dishes={dishes}
-        studentName={user?.displayName}
-      />
-
-      {/* Gemini AI Assistant Modal (Text Mode) */}
+      {/* Gemini AI Assistant Modal */}
       <GeminiAssistantModal
         isOpen={showGeminiModal}
         onClose={() => setShowGeminiModal(false)}
-        onOpenVoice={() => {
-          setShowGeminiModal(false);
-          setShowVoiceModal(true);
-        }}
         dishes={dishes}
         studentName={user?.displayName}
       />

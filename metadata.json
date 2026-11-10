@@ -1,6 +1,6 @@
 {
   "name": "CROU Menu - Resto U",
   "description": "Application officielle du restaurant universitaire du CROU Korhogo (UPGC). Menus du jour, tickets repas subventionnés à 200 FCFA, passage aux tourniquets et assistance étudiante.",
-  "requestFramePermissions": ["microphone"],
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
