@@ -1,10 +1,12 @@
 /**
  * Client-Side Gemini Live API & Voice Conversation Manager
- * Supports:
+ * Features:
  * - Real-time full-duplex voice streaming via WebSocket (`gemini-3.8-live`)
- * - 16kHz PCM audio mic capture
- * - 24kHz gapless PCM audio playback
- * - Sound wave level analysis for interactive audio visualizer
+ * - Universal AudioContext support for iOS Safari (WebKit) and Android Chrome
+ * - High-precision mic downsampling (48kHz/44.1kHz -> 16kHz PCM Little-Endian)
+ * - Safe 24kHz PCM chunk resampling to native output sample rate
+ * - iOS WebAudio unlock and speaker routing resilience
+ * - Interactive Sound Wave volume metering for visuals
  * - Intelligent HTTP Voice fallback with TTS (`gemini-3.8-flash-lite-tts`)
  */
 
@@ -15,6 +17,38 @@ export interface LiveVoiceCallbacks {
   onUserVolume?: (volume: number) => void; // 0 to 1
   onModelVolume?: (volume: number) => void; // 0 to 1
   onError?: (errorMessage: string) => void;
+}
+
+// Resample audio from any input sample rate to 16000 Hz using linear interpolation
+function downsampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === 16000) return input;
+  const ratio = inputSampleRate / 16000;
+  const newLength = Math.round(input.length / ratio);
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < newLength; i++) {
+    const origIndex = i * ratio;
+    const index1 = Math.floor(origIndex);
+    const index2 = Math.min(index1 + 1, input.length - 1);
+    const fraction = origIndex - index1;
+    result[i] = input[index1] * (1 - fraction) + input[index2] * fraction;
+  }
+  return result;
+}
+
+// Resample 24000 Hz audio to native target sample rate (e.g. 44100 or 48000 Hz)
+function resample24kToTarget(input: Float32Array, targetSampleRate: number): Float32Array {
+  if (targetSampleRate === 24000) return input;
+  const ratio = 24000 / targetSampleRate;
+  const newLength = Math.round(input.length / ratio);
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < newLength; i++) {
+    const origIndex = i * ratio;
+    const index1 = Math.floor(origIndex);
+    const index2 = Math.min(index1 + 1, input.length - 1);
+    const fraction = origIndex - index1;
+    result[i] = input[index1] * (1 - fraction) + input[index2] * fraction;
+  }
+  return result;
 }
 
 export class GeminiLiveVoiceSession {
@@ -41,29 +75,61 @@ export class GeminiLiveVoiceSession {
   }
 
   /**
+   * Unlock and resume AudioContexts (must be called upon user touch/click for iOS)
+   */
+  public async resumeAudioContext() {
+    try {
+      if (this.outputAudioCtx && this.outputAudioCtx.state === 'suspended') {
+        await this.outputAudioCtx.resume();
+      }
+      if (this.inputAudioCtx && this.inputAudioCtx.state === 'suspended') {
+        await this.inputAudioCtx.resume();
+      }
+      // Play 1-sample silent sound to permanently unfreeze iOS WebAudio
+      if (this.outputAudioCtx && this.outputAudioCtx.state === 'running') {
+        const buffer = this.outputAudioCtx.createBuffer(1, 1, this.outputAudioCtx.sampleRate);
+        const source = this.outputAudioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.outputAudioCtx.destination);
+        source.start(0);
+      }
+    } catch (e) {
+      console.warn('AudioContext resume notice:', e);
+    }
+  }
+
+  /**
    * Start live voice conversation
    */
   public async start(): Promise<boolean> {
     this.isDestroyed = false;
     this.updateStatus('connecting');
 
-    // 1. Initialize Audio Contexts
+    // 1. Initialize Audio Contexts with browser compatibility
     try {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.inputAudioCtx = new AudioCtxClass({ sampleRate: 16000 });
-      this.outputAudioCtx = new AudioCtxClass({ sampleRate: 24000 });
+      
+      // Native contexts without forced sample rates to prevent iOS NotSupportedError
+      try {
+        this.outputAudioCtx = new AudioCtxClass();
+      } catch {
+        this.outputAudioCtx = new (window as any).webkitAudioContext();
+      }
 
-      if (this.inputAudioCtx.state === 'suspended') {
-        await this.inputAudioCtx.resume();
+      try {
+        this.inputAudioCtx = new AudioCtxClass();
+      } catch {
+        this.inputAudioCtx = new (window as any).webkitAudioContext();
       }
-      if (this.outputAudioCtx.state === 'suspended') {
-        await this.outputAudioCtx.resume();
-      }
+
+      await this.resumeAudioContext();
 
       // Output analyser for Gemini voice visualizer
-      this.outputAnalyser = this.outputAudioCtx.createAnalyser();
-      this.outputAnalyser.fftSize = 64;
-      this.outputAnalyser.connect(this.outputAudioCtx.destination);
+      if (this.outputAudioCtx) {
+        this.outputAnalyser = this.outputAudioCtx.createAnalyser();
+        this.outputAnalyser.fftSize = 64;
+        this.outputAnalyser.connect(this.outputAudioCtx.destination);
+      }
     } catch (err: any) {
       console.warn('AudioContext init notice:', err);
     }
@@ -73,7 +139,6 @@ export class GeminiLiveVoiceSession {
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 16000,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
@@ -83,7 +148,7 @@ export class GeminiLiveVoiceSession {
       console.error('Microphone access denied:', err);
       this.updateStatus('error');
       if (this.callbacks.onError) {
-        this.callbacks.onError('Accès au microphone requis pour la conversation vocale.');
+        this.callbacks.onError('Accès au microphone requis. Veuillez autoriser le micro.');
       }
       return false;
     }
@@ -117,7 +182,6 @@ export class GeminiLiveVoiceSession {
       this.micAnalyser = this.inputAudioCtx.createAnalyser();
       this.micAnalyser.fftSize = 64;
 
-      // 4096 samples at 16kHz is ~256ms of audio
       const bufferSize = 4096;
       this.micProcessor = this.inputAudioCtx.createScriptProcessor(bufferSize, 1, 1);
 
@@ -125,13 +189,17 @@ export class GeminiLiveVoiceSession {
       this.micAnalyser.connect(this.micProcessor);
       this.micProcessor.connect(this.inputAudioCtx.destination);
 
+      const inputRate = this.inputAudioCtx.sampleRate || 44100;
+
       this.micProcessor.onaudioprocess = (e) => {
         if (this.isMuted || this.isDestroyed) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
         // Only stream over WebSocket if actively connected
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          const pcmBase64 = this.float32ToPCM16Base64(inputData);
+          // Downsample from hardware rate (e.g. 48000 or 44100) to 16000 Hz
+          const downsampled16k = downsampleTo16k(inputData, inputRate);
+          const pcmBase64 = this.float32ToPCM16Base64(downsampled16k);
           if (pcmBase64) {
             this.ws.send(JSON.stringify({
               type: 'audio',
@@ -162,11 +230,11 @@ export class GeminiLiveVoiceSession {
             try { this.ws.close(); } catch {}
             resolve(false);
           }
-        }, 3500);
+        }, 4000);
 
         this.ws.onopen = () => {
           clearTimeout(timeout);
-          console.log('[Gemini Live Client] Connected');
+          console.log('[Gemini Live Client] Connected via WebSocket');
           this.updateStatus('listening');
           resolve(true);
         };
@@ -229,12 +297,17 @@ export class GeminiLiveVoiceSession {
   }
 
   /**
-   * Schedule gapless 24kHz PCM audio chunk playback
+   * Schedule gapless 24kHz PCM audio chunk playback resampled to hardware output rate
    */
   private playPCMChunk24k(base64PCM: string) {
     if (!this.outputAudioCtx || !this.outputAnalyser || this.isDestroyed) return;
 
     try {
+      // Ensure context is running (unlocked on iOS)
+      if (this.outputAudioCtx.state === 'suspended') {
+        this.outputAudioCtx.resume().catch(() => {});
+      }
+
       const binaryStr = atob(base64PCM);
       const len = binaryStr.length;
       const bytes = new Uint8Array(len);
@@ -242,15 +315,23 @@ export class GeminiLiveVoiceSession {
         bytes[i] = binaryStr.charCodeAt(i);
       }
 
-      // Convert 16-bit signed PCM little-endian to Float32
-      const int16Array = new Int16Array(bytes.buffer);
-      const float32Array = new Float32Array(int16Array.length);
-      for (let i = 0; i < int16Array.length; i++) {
-        float32Array[i] = int16Array[i] / 32768;
+      // Safe DataView decoding to handle any buffer alignment or odd lengths
+      const numSamples = Math.floor(len / 2);
+      if (numSamples === 0) return;
+
+      const float32Array = new Float32Array(numSamples);
+      const dataView = new DataView(bytes.buffer, bytes.byteOffset, numSamples * 2);
+      for (let i = 0; i < numSamples; i++) {
+        const int16 = dataView.getInt16(i * 2, true); // little-endian
+        float32Array[i] = int16 / 32768.0;
       }
 
-      const audioBuffer = this.outputAudioCtx.createBuffer(1, float32Array.length, 24000);
-      audioBuffer.copyToChannel(float32Array, 0);
+      // Resample 24000 Hz to hardware output rate (e.g. 44100 or 48000 Hz)
+      const targetRate = this.outputAudioCtx.sampleRate || 44100;
+      const resampledData = resample24kToTarget(float32Array, targetRate);
+
+      const audioBuffer = this.outputAudioCtx.createBuffer(1, resampledData.length, targetRate);
+      audioBuffer.copyToChannel(resampledData, 0);
 
       const source = this.outputAudioCtx.createBufferSource();
       source.buffer = audioBuffer;

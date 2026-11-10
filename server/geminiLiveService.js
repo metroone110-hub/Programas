@@ -134,6 +134,15 @@ export function setupGeminiLiveWebSocket(httpServer, path = '/api/live') {
         }));
       }
 
+      // Immediately trigger spoken audio greeting from Gemini Live
+      try {
+        session.sendRealtimeInput({
+          text: "Dis d'une voix très chaleureuse, claire et concise : 'Bonjour ! Je suis M. Kouassi du CROU Korhogo. Je suis à votre écoute, comment puis-je vous aider aujourd'hui ?'"
+        });
+      } catch (e) {
+        console.warn('[Gemini Live] Greeting trigger error:', e);
+      }
+
       clientWs.on('message', (rawData) => {
         if (!session) return;
         try {

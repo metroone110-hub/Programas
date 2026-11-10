@@ -60,7 +60,7 @@ export const VoiceConversationModal: React.FC<Props> = ({
     // Start voice session
     setErrorMessage(null);
     setUserTranscript('');
-    setModelTranscript('Bonjour ! Je suis M. Kouassi du CROU Korhogo. Je vous écoute.');
+    setModelTranscript('');
     setDurationSec(0);
 
     const session = new GeminiLiveVoiceSession({
@@ -88,7 +88,9 @@ export const VoiceConversationModal: React.FC<Props> = ({
     });
 
     sessionRef.current = session;
-    session.start();
+    session.start().then(() => {
+      session.resumeAudioContext();
+    });
 
     timerRef.current = setInterval(() => {
       setDurationSec(prev => prev + 1);
@@ -262,9 +264,13 @@ export const VoiceConversationModal: React.FC<Props> = ({
               style={{ transform: `scale(${ringScale1})` }}
             />
 
-            {/* Core Orb */}
-            <div 
-              className={`relative z-10 w-28 h-28 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${
+            {/* Core Orb - Tap to unlock / resume audio or prompt */}
+            <button
+              type="button"
+              onClick={() => {
+                sessionRef.current?.resumeAudioContext();
+              }}
+              className={`relative z-10 w-28 h-28 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 cursor-pointer active:scale-95 ${
                 status === 'speaking'
                   ? 'bg-gradient-to-tr from-amber-600 via-orange-500 to-rose-500 shadow-orange-500/50 scale-105'
                   : status === 'listening'
@@ -285,13 +291,47 @@ export const VoiceConversationModal: React.FC<Props> = ({
                 <Mic className="w-9 h-9 text-white animate-pulse" />
               )}
               <span className="text-[10px] font-bold text-white/90 mt-1 uppercase tracking-wider">
-                {status === 'speaking' ? 'Voix Live' : isMuted ? 'Muet' : 'Micro Actif'}
+                {status === 'speaking' ? 'M. Kouassi parle' : isMuted ? 'Muet' : 'Micro Actif'}
               </span>
-            </div>
+            </button>
+          </div>
+
+          {/* Quick Voice Topics Chips */}
+          <div className="flex items-center justify-center gap-1.5 my-2 flex-wrap max-w-xs">
+            <button
+              type="button"
+              onClick={() => {
+                sessionRef.current?.resumeAudioContext();
+                sessionRef.current?.sendText("Qu'y a-t-il au menu aujourd'hui au Resto U ?");
+              }}
+              className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-[11px] font-semibold text-slate-200 transition-all active:scale-95"
+            >
+              🍲 Menu du jour
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionRef.current?.resumeAudioContext();
+                sessionRef.current?.sendText("Comment acheter mon ticket repas subventionné à 200 FCFA ?");
+              }}
+              className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-[11px] font-semibold text-slate-200 transition-all active:scale-95"
+            >
+              🎫 Tickets à 200 F
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionRef.current?.resumeAudioContext();
+                sessionRef.current?.sendText("Quels sont les horaires de service du déjeuner et du dîner ?");
+              }}
+              className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-[11px] font-semibold text-slate-200 transition-all active:scale-95"
+            >
+              ⏰ Horaires
+            </button>
           </div>
 
           {/* Real-time Dynamic Transcription Box */}
-          <div className="w-full max-w-sm mt-4 bg-slate-800/60 backdrop-blur-md rounded-2xl p-3.5 border border-slate-700/60 shadow-inner flex flex-col gap-2 min-h-[92px] max-h-[120px] overflow-y-auto scrollbar-none text-left">
+          <div className="w-full max-w-sm mt-2 bg-slate-800/60 backdrop-blur-md rounded-2xl p-3.5 border border-slate-700/60 shadow-inner flex flex-col gap-2 min-h-[85px] max-h-[110px] overflow-y-auto scrollbar-none text-left">
             {userTranscript ? (
               <div className="flex items-start space-x-2 text-xs">
                 <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex-shrink-0">
@@ -313,8 +353,8 @@ export const VoiceConversationModal: React.FC<Props> = ({
                 </p>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-xs italic">
-                Posez votre question à voix haute : tickets, repas, Wave, horaires...
+              <div className="flex items-center justify-center h-full text-slate-400 text-xs text-center italic">
+                Parlez à voix haute ou touchez un sujet ci-dessus pour écouter la réponse.
               </div>
             )}
           </div>
