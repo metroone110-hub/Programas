@@ -13,7 +13,8 @@ import {
   Bell,
   Ticket,
   Headphones,
-  Lock
+  Lock,
+  Smartphone
 } from 'lucide-react';
 import { Canteen, UserProfile } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -35,6 +36,7 @@ interface Props {
   onOpenNotifications?: () => void;
   onOpenGemini?: () => void;
   onOpenSupport?: () => void;
+  onOpenApkModal?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -52,7 +54,8 @@ export const Navbar: React.FC<Props> = ({
   onSearchChange,
   onOpenNotifications,
   onOpenGemini,
-  onOpenSupport
+  onOpenSupport,
+  onOpenApkModal
 }) => {
   const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
   const handleOpenSupport = onOpenSupport || onOpenGemini;
@@ -118,6 +121,19 @@ export const Navbar: React.FC<Props> = ({
               >
                 <Headphones className="w-3.5 h-3.5 text-orange-500" />
                 <span className="hidden xs:inline">Assistance</span>
+              </button>
+            )}
+
+            {/* Android APK Direct Download Modal Launcher */}
+            {onOpenApkModal && (
+              <button
+                type="button"
+                onClick={onOpenApkModal}
+                className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-400/50 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Télécharger l'APK Android (Programas)"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden xs:inline">APK Android</span>
               </button>
             )}
 

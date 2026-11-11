@@ -27,6 +27,7 @@ const MIME_TYPES = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
+  '.apk': 'application/vnd.android.package-archive',
 };
 
 const server = http.createServer(async (req, res) => {
@@ -42,6 +43,25 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204);
     res.end();
     return;
+  }
+
+  // Direct Android APK Download Route
+  if (safeUrl === '/downloads/Programas-CROU-Korhogo.apk' || safeUrl === '/programas.apk' || safeUrl === '/download/apk') {
+    const apkPublicPath = path.join(__dirname, 'public', 'downloads', 'Programas-CROU-Korhogo.apk');
+    const apkDistPath = path.join(DIST_DIR, 'downloads', 'Programas-CROU-Korhogo.apk');
+    const finalApkPath = fs.existsSync(apkPublicPath) ? apkPublicPath : apkDistPath;
+
+    if (fs.existsSync(finalApkPath)) {
+      const stat = fs.statSync(finalApkPath);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.android.package-archive',
+        'Content-Length': stat.size,
+        'Content-Disposition': 'attachment; filename="Programas-CROU-Korhogo.apk"',
+        'Cache-Control': 'public, max-age=3600'
+      });
+      fs.createReadStream(finalApkPath).pipe(res);
+      return;
+    }
   }
 
   // Jeko Partner API Payment Requests Proxy

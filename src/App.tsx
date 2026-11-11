@@ -14,7 +14,9 @@ import {
   Ticket,
   CheckCircle2,
   X,
-  Headphones
+  Headphones,
+  Smartphone,
+  Download
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Canteen, Dish, MealTicket, UserProfile, MealType } from './types';
@@ -56,6 +58,7 @@ import { TicketIntro } from './components/TicketIntro';
 import { PinLock } from './components/PinLock';
 import { GeminiAssistantModal } from './components/GeminiAssistantModal';
 import { TicketTransferModal } from './components/TicketTransferModal';
+import { AndroidApkModal } from './components/AndroidApkModal';
 import { checkPaymentStatus, getPendingPayment, clearPendingPayment } from './services/jekoPayment';
 
 export const App: React.FC = () => {
@@ -99,6 +102,7 @@ export const App: React.FC = () => {
   const [showTransferModal, setShowTransferModal] = useState<boolean>(false);
   const [transferModalTicket, setTransferModalTicket] = useState<MealTicket | null>(null);
   const [showGeminiModal, setShowGeminiModal] = useState<boolean>(false);
+  const [showApkModal, setShowApkModal] = useState<boolean>(false);
   const [activeTicket, setActiveTicket] = useState<MealTicket | null>(null);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
   const [blockedAlertMessage, setBlockedAlertMessage] = useState<string | null>(null);
@@ -575,6 +579,7 @@ export const App: React.FC = () => {
         onSearchChange={setSearchQuery}
         onOpenNotifications={() => setShowMyTicketsModal(true)}
         onOpenGemini={() => setShowGeminiModal(true)}
+        onOpenApkModal={() => setShowApkModal(true)}
       />
 
       {/* Main Content Area */}
@@ -596,6 +601,34 @@ export const App: React.FC = () => {
             setShowTransferModal(true);
           }}
         />
+
+        {/* NATIVE ANDROID APP & APK BANNER */}
+        <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-3.5 sm:p-4 border border-emerald-500/30 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
+              <Smartphone className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-extrabold text-sm text-white">Application Android Officielle</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  APK v2.4
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Plein écran sans barre de navigateur web • Accès direct rapide sur l'écran d'accueil
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowApkModal(true)}
+            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-extrabold transition-all active:scale-95 shadow-md flex items-center justify-center space-x-2 flex-shrink-0 cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Installer l'App (APK)</span>
+          </button>
+        </div>
 
         {/* MENU DU JOUR */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
@@ -911,6 +944,12 @@ export const App: React.FC = () => {
         onClose={() => setShowGeminiModal(false)}
         dishes={dishes}
         studentName={user?.displayName}
+      />
+
+      {/* Android Native APK & PWA Installer Modal */}
+      <AndroidApkModal
+        isOpen={showApkModal}
+        onClose={() => setShowApkModal(false)}
       />
 
       {/* MODAL: ALERTE COMPTE BLOQUÉ SUITE À 5 ERREURS PIN */}

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { AsyncButton } from './AsyncButton';
+import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
   user: UserProfile | null;
@@ -44,6 +45,7 @@ export const TicketCounterBox: React.FC<Props> = ({
   ];
 
   const handleBuy = () => {
+    triggerHaptic('medium');
     if (!user) {
       onOpenAuth();
       return;
@@ -83,7 +85,10 @@ export const TicketCounterBox: React.FC<Props> = ({
                 <button
                   key={pack.qty}
                   type="button"
-                  onClick={() => setQuantity(pack.qty)}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setQuantity(pack.qty);
+                  }}
                   className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                     quantity === pack.qty
                       ? 'border-orange-500 bg-orange-500/15 text-white ring-1 ring-orange-500'
@@ -122,7 +127,10 @@ export const TicketCounterBox: React.FC<Props> = ({
             <div className="flex items-center space-x-2 bg-slate-900 p-1 rounded-xl border border-slate-700">
               <button
                 type="button"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setQuantity(Math.max(1, quantity - 1));
+                }}
                 className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold transition-all active:scale-95 cursor-pointer"
                 title="Diminuer"
               >
@@ -133,7 +141,10 @@ export const TicketCounterBox: React.FC<Props> = ({
               </span>
               <button
                 type="button"
-                onClick={() => setQuantity(quantity + 1)}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setQuantity(quantity + 1);
+                }}
                 className="w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-500 text-white flex items-center justify-center font-bold transition-all active:scale-95 cursor-pointer"
                 title="Augmenter"
               >
