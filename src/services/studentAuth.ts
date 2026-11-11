@@ -1040,80 +1040,80 @@ export async function verifyTurnstileTicket(
   let foundTicket: MealTicket | null = null;
   let ownerStudent: UserProfile | null = null;
 
-  // A. Recherche directe O(1) dans Firestore collection 'tickets' par numéro de série
+  const searchMat = cleanMat || (parsedPayload?.mat ? String(parsedPayload.mat).toUpperCase() : '');
+
+  // 1. VÉRIFICATION ULTRA-RAPIDE EN MÉMOIRE LOCALE (0 à 2 ms)
   try {
-    const tSnap = await getDoc(doc(db, 'tickets', cleanTicketNo));
-    if (tSnap.exists()) {
-      foundTicket = tSnap.data() as MealTicket;
-    }
-  } catch (err) {
-    console.warn('Firestore ticket direct lookup note:', err);
-  }
-
-  // B. Recherche par query Firestore 'ticketNumber'
-  if (!foundTicket) {
-    try {
-      const q = query(collection(db, 'tickets'), where('ticketNumber', '==', cleanTicketNo), limit(1));
-      const qSnap = await getDocs(q);
-      if (!qSnap.empty) {
-        foundTicket = qSnap.docs[0].data() as MealTicket;
-      }
-    } catch (err) {
-      console.warn('Firestore ticket query note:', err);
-    }
-  }
-
-  // C. Recherche par query Firestore 'id'
-  if (!foundTicket) {
-    try {
-      const q2 = query(collection(db, 'tickets'), where('id', '==', cleanTicketNo), limit(1));
-      const q2Snap = await getDocs(q2);
-      if (!q2Snap.empty) {
-        foundTicket = q2Snap.docs[0].data() as MealTicket;
-      }
-    } catch (err) {}
-  }
-
-  // D. Recherche dans les comptes étudiants (Firestore + Registry Local)
-  if (!foundTicket) {
-    const allStudents = await getAllRegisteredStudents();
-    for (const s of allStudents) {
+    const localRegistry = getLocalStudentsRegistry();
+    if (searchMat && localRegistry[searchMat]) {
+      const s = localRegistry[searchMat];
       const match = (s.savedTickets || []).find(t => 
         t.ticketNumber === cleanTicketNo || 
         t.id === cleanTicketNo ||
-        t.ticketNumber.endsWith(cleanTicketNo.replace('CROUK-2026-', ''))
+        (t.ticketNumber && t.ticketNumber.endsWith(cleanTicketNo.replace('CROUK-2026-', '')))
       );
       if (match) {
         foundTicket = match;
         ownerStudent = s;
-        break;
       }
+    }
+
+    if (!foundTicket) {
+      for (const s of Object.values(localRegistry)) {
+        const match = (s.savedTickets || []).find(t => 
+          t.ticketNumber === cleanTicketNo || 
+          t.id === cleanTicketNo ||
+          (t.ticketNumber && t.ticketNumber.endsWith(cleanTicketNo.replace('CROUK-2026-', '')))
+        );
+        if (match) {
+          foundTicket = match;
+          ownerStudent = s;
+          break;
+        }
+      }
+    }
+  } catch {}
+
+  // 2. RECHERCHE DIRECTE PARALLÈLE FIRESTORE (si non trouvé dans le cache local)
+  if (!foundTicket) {
+    try {
+      const parallelTasks: Promise<any>[] = [
+        getDoc(doc(db, 'tickets', cleanTicketNo)).catch(() => null)
+      ];
+      if (searchMat) {
+        parallelTasks.push(getDoc(doc(db, 'students', sanitizeMatriculeId(searchMat))).catch(() => null));
+      }
+
+      // Timeout de 1.2s max pour garantir une réponse instantanée même en connexion lente
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve([]), 1200));
+      const [tSnap, sSnap] = await Promise.race([
+        Promise.all(parallelTasks),
+        timeoutPromise.then(() => [null, null])
+      ]) as any[];
+
+      if (tSnap && tSnap.exists()) {
+        foundTicket = tSnap.data() as MealTicket;
+      }
+      if (sSnap && sSnap.exists()) {
+        ownerStudent = sSnap.data() as UserProfile;
+        if (!foundTicket && ownerStudent?.savedTickets) {
+          const match = ownerStudent.savedTickets.find(t => 
+            t.ticketNumber === cleanTicketNo || 
+            t.id === cleanTicketNo ||
+            (t.ticketNumber && t.ticketNumber.endsWith(cleanTicketNo.replace('CROUK-2026-', '')))
+          );
+          if (match) foundTicket = match;
+        }
+      }
+    } catch (err) {
+      console.warn('Firestore parallel lookup note:', err);
     }
   }
 
-  // E. Récupérer le propriétaire du ticket si non encore trouvé
-  if (foundTicket && !ownerStudent && foundTicket.studentMatricule) {
-    try {
-      const sSafeId = sanitizeMatriculeId(foundTicket.studentMatricule);
-      const sSnap = await getDoc(doc(db, 'students', sSafeId));
-      if (sSnap.exists()) {
-        ownerStudent = sSnap.data() as UserProfile;
-      }
-    } catch {}
-  }
-
-  // F. Auto-réconciliation : Si le QR provient de l'application CROU-K mais n'est pas encore synchronisé
+  // 3. AUTO-RÉCONCILIATION IMMÉDIATE : Si le QR provient de l'application CROU-K
   if (!foundTicket && (parsedPayload?.app === 'CROUK_RESTO_U' || serialMatch)) {
     const recoveredTkt = serialMatch ? serialMatch[0].toUpperCase() : cleanTicketNo;
     const recoveredMat = cleanMat || parsedPayload?.mat || '75490218';
-
-    try {
-      const sSafeId = sanitizeMatriculeId(recoveredMat);
-      const sSnap = await getDoc(doc(db, 'students', sSafeId));
-      if (sSnap.exists()) {
-        ownerStudent = sSnap.data() as UserProfile;
-      }
-    } catch {}
 
     foundTicket = {
       id: recoveredTkt,
@@ -1183,30 +1183,9 @@ export async function verifyTurnstileTicket(
     };
   }
 
-  // Validation du ticket : passer le statut à 'used'
+  // Validation du ticket : passer immédiatement le statut à 'used' en mémoire locale
   foundTicket.status = 'used';
   foundTicket.usedTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-
-  // Mise à jour synchrone dans Firestore
-  try {
-    await setDoc(doc(db, 'tickets', foundTicket.id), foundTicket, { merge: true });
-    await setDoc(doc(db, 'tickets', foundTicket.ticketNumber), foundTicket, { merge: true });
-
-    if (foundTicket.studentMatricule) {
-      const sSafeId = sanitizeMatriculeId(foundTicket.studentMatricule);
-      const sRef = doc(db, 'students', sSafeId);
-      const sSnap = await getDoc(sRef);
-      if (sSnap.exists()) {
-        const studentData = sSnap.data() as UserProfile;
-        const updatedList = (studentData.savedTickets || []).map(t => 
-          (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
-        );
-        await updateDoc(sRef, { savedTickets: updatedList });
-      }
-    }
-  } catch (err) {
-    console.warn('Firestore ticket usage update note:', err);
-  }
 
   if (ownerStudent) {
     ownerStudent.savedTickets = (ownerStudent.savedTickets || []).map(t => 
@@ -1214,6 +1193,32 @@ export async function verifyTurnstileTicket(
     );
     saveLocalUserProfile(ownerStudent);
   }
+
+  // Synchronisation Firestore en tâche de fond (non bloquante pour répondre instantanément)
+  (async () => {
+    try {
+      await Promise.all([
+        setDoc(doc(db, 'tickets', foundTicket!.id), foundTicket, { merge: true }),
+        setDoc(doc(db, 'tickets', foundTicket!.ticketNumber), foundTicket, { merge: true }),
+        (async () => {
+          if (foundTicket?.studentMatricule) {
+            const sSafeId = sanitizeMatriculeId(foundTicket.studentMatricule);
+            const sRef = doc(db, 'students', sSafeId);
+            const sSnap = await getDoc(sRef);
+            if (sSnap.exists()) {
+              const studentData = sSnap.data() as UserProfile;
+              const updatedList = (studentData.savedTickets || []).map(t => 
+                (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+              );
+              await updateDoc(sRef, { savedTickets: updatedList });
+            }
+          }
+        })()
+      ]);
+    } catch (err) {
+      console.warn('Firestore async sync note:', err);
+    }
+  })();
 
   return {
     status: 'valid',

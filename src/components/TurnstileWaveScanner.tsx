@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Camera, 
   CameraOff, 
@@ -239,14 +240,37 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
   const handleCloseWaveScanner = () => {
     stopCamera();
     setIsWaveModalOpen(false);
+    setVerdict({ status: 'idle', message: '' });
   };
+
+  // Lock body scroll when modal is open to ensure seamless edge-to-edge coverage
+  useEffect(() => {
+    if (isWaveModalOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isWaveModalOpen]);
 
   // Process and verify a decoded ticket text
   const processDecodedTicket = useCallback(async (rawText: string) => {
     if (!rawText) return;
 
-    // 1. ARRÊTER LA CAMÉRA IMMÉDIATEMENT dès détection pour éviter tout re-scan involontaire
-    stopCamera();
+    // 1. FREEZE CURRENT FRAME - Ne PAS détruire la caméra pour éviter tout écran noir
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+      } catch {}
+    }
+
+    // Retour haptique immédiat
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([40, 25, 40]);
+      } catch {}
+    }
 
     // 2. Extraire les données du ticket
     let ticketNum = rawText.trim();
@@ -278,7 +302,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
 
     setLastScannedText(ticketNum);
 
-    // Call validation against database & fraud check
+    // 3. Validation instantanée
     const res = await verifyTurnstileTicket(rawText, mat);
 
     const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -288,7 +312,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         soundSynthesizer.playSuccessBeep();
       }
 
-      await recordMealValidatedInLedger(res.ticket);
+      recordMealValidatedInLedger(res.ticket).catch(() => {});
       if (onTicketValidated) onTicketValidated(res.ticket);
       if (onRefreshStats) onRefreshStats();
 
@@ -315,11 +339,11 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         time: nowStr
       });
     }
-  }, [soundEnabled, onTicketValidated, onRefreshStats, stopCamera]);
+  }, [soundEnabled, onTicketValidated, onRefreshStats]);
 
   // Continuous Video Scan Loop with jsQR
   useEffect(() => {
-    if (!isCameraActive || !isWaveModalOpen || waveTab !== 'scan') return;
+    if (!isCameraActive || !isWaveModalOpen || waveTab !== 'scan' || verdict.status !== 'idle') return;
 
     let isScanning = true;
 
@@ -356,7 +380,12 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
 
           if (qrCode && qrCode.data) {
             isScanning = false;
-            stopCamera();
+            // Freeze frame without turning black
+            if (videoRef.current) {
+              try {
+                videoRef.current.pause();
+              } catch {}
+            }
             processDecodedTicket(qrCode.data);
             return;
           }
@@ -374,7 +403,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [isCameraActive, isWaveModalOpen, waveTab, processDecodedTicket, stopCamera]);
+  }, [isCameraActive, isWaveModalOpen, waveTab, verdict.status, processDecodedTicket]);
 
   useEffect(() => {
     return () => {
@@ -581,15 +610,27 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
       {/* ======================================================== */}
       {/* IMMERSIVE WAVE FULLSCREEN SCANNER (EXACT WAVE DESIGN)     */}
       {/* ======================================================== */}
-      {isWaveModalOpen && (
+      {isWaveModalOpen && typeof document !== 'undefined' && createPortal(
         <div 
           onClick={() => {
             const v = videoRef.current;
-            if (v && v.paused) {
+            if (v && v.paused && verdict.status === 'idle') {
               v.play().then(() => setIsVideoPlaying(true)).catch(() => {});
             }
           }}
-          className="fixed inset-0 z-[100] bg-black flex flex-col justify-between overflow-hidden select-none animate-fadeIn font-sans"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 999999,
+            margin: 0,
+            padding: 0
+          }}
+          className="fixed inset-0 z-[999999] bg-black flex flex-col justify-between overflow-hidden select-none animate-fadeIn font-sans"
         >
           
           {/* Background Live Camera Video */}
@@ -629,7 +670,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
           )}
 
           {/* TOP BAR: Close 'X' button, iPhone Cline Bell Test & Torch */}
-          <div className="relative z-30 pt-10 sm:pt-8 px-6 flex items-center justify-between">
+          <div className="relative z-30 pt-[max(env(safe-area-inset-top),2.5rem)] sm:pt-8 px-6 flex items-center justify-between">
             {/* Top-Left Close Button (exact Wave style) */}
             <button
               type="button"
@@ -776,7 +817,13 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
                   type="button"
                   onClick={() => {
                     setVerdict({ status: 'idle', message: '' });
-                    startCamera();
+                    if (videoRef.current && streamRef.current) {
+                      videoRef.current.play().then(() => setIsVideoPlaying(true)).catch(() => {
+                        startCamera();
+                      });
+                    } else {
+                      startCamera();
+                    }
                   }}
                   className={`w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-xl transition-all active:scale-95 flex items-center justify-center space-x-2 cursor-pointer ${
                     verdict.status === 'valid'
@@ -795,7 +842,7 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
             ) : waveTab === 'scan' ? (
               /* B. Live Viewfinder with Rounded Square Window (Exact Wave UI) */
               <div className="flex flex-col items-center">
-                {/* Central Rounded Square Cutout with corner brackets and laser */}
+                {/* Central Rounded Square Cutout with corner brackets - Laser line REMOVED */}
                 <div 
                   onClick={(e) => {
                     e.stopPropagation();
@@ -806,17 +853,13 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
                       startCamera();
                     }
                   }}
-                  className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-[44px] border border-white/25 overflow-hidden flex items-center justify-center cursor-pointer pointer-events-auto"
+                  className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-[44px] border border-white/30 overflow-hidden flex items-center justify-center cursor-pointer pointer-events-auto"
                 >
-                  
-                  {/* Sweeping Green Laser Line matching Wave scanner */}
-                  <div className="absolute inset-x-3 h-1 bg-gradient-to-r from-emerald-400 via-green-300 to-emerald-400 rounded-full shadow-[0_0_14px_#10b981] animate-scanLaser pointer-events-none"></div>
-
-                  {/* Corner indicator accents */}
-                  <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-white/80 rounded-tl-xl pointer-events-none"></div>
-                  <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-white/80 rounded-tr-xl pointer-events-none"></div>
-                  <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-white/80 rounded-bl-xl pointer-events-none"></div>
-                  <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-white/80 rounded-br-xl pointer-events-none"></div>
+                  {/* Corner indicator accents (Wave style) */}
+                  <div className="absolute top-4 left-4 w-6 h-6 border-t-[3px] border-l-[3px] border-white/90 rounded-tl-2xl pointer-events-none"></div>
+                  <div className="absolute top-4 right-4 w-6 h-6 border-t-[3px] border-r-[3px] border-white/90 rounded-tr-2xl pointer-events-none"></div>
+                  <div className="absolute bottom-4 left-4 w-6 h-6 border-b-[3px] border-l-[3px] border-white/90 rounded-bl-2xl pointer-events-none"></div>
+                  <div className="absolute bottom-4 right-4 w-6 h-6 border-b-[3px] border-r-[3px] border-white/90 rounded-br-2xl pointer-events-none"></div>
                 </div>
 
                 {/* Subtitle text matching Wave screenshot */}
@@ -912,7 +955,8 @@ export const TurnstileWaveScanner: React.FC<Props> = ({
             </div>
           </div>
 
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
