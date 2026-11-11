@@ -6,6 +6,10 @@ function geminiDevPlugin() {
     name: 'gemini-dev-api',
     configureServer(server: any) {
       server.middlewares.use(async (req: any, res: any, next: any) => {
+        if (req.url && (req.url.startsWith('/downloads/Programas-CROU-Korhogo.apk') || req.url === '/programas.apk')) {
+          res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+          res.setHeader('Content-Disposition', 'attachment; filename="Programas-CROU-Korhogo.apk"');
+        }
 
         if (req.url === '/api/gemini/chat' && req.method === 'POST') {
           let body = '';
