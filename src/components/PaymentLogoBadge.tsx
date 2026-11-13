@@ -18,7 +18,7 @@ const SIZE_CLASSES: Record<NonNullable<Props['size']>, string> = {
 
 export const PAYMENT_LOGOS: Record<Exclude<PaymentBrand, 'carte'>, { src: string; label: string; bg: string }> = {
   wave: {
-    src: '/assets/aistudio/IMG_1717_3a1d1b2c.jpeg',
+    src: '/assets/aistudio/IMG_1716_f2afec1f.jpeg',
     label: 'Wave',
     bg: 'bg-[#19b5fe]',
   },
@@ -38,7 +38,7 @@ export const PAYMENT_LOGOS: Record<Exclude<PaymentBrand, 'carte'>, { src: string
     bg: 'bg-white',
   },
   djamo: {
-    src: '/assets/aistudio/IMG_1716_f2afec1f.jpeg',
+    src: '/assets/aistudio/IMG_1717_3a1d1b2c.jpeg',
     label: 'Djamo',
     bg: 'bg-[#252631]',
   },
