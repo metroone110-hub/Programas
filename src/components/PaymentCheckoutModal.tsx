@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
+import {
   ArrowLeft,
-  X, 
-  Check,
+  X,
   ChevronDown,
   Loader2,
   AlertCircle,
@@ -12,24 +11,28 @@ import {
   RefreshCw,
   Ticket
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { UserProfile, MealTicket } from '../types';
 import { updateUserBalance, purchaseTicketsBatch, getLocalUserProfile } from '../services/studentAuth';
 import { recordTicketsSaleInLedger } from '../services/dailyLedger';
 import { recordRecharge } from '../utils/analytics';
-import { 
-  initiateJekoPayment, 
-  pollPaymentStatus, 
-  checkPaymentStatus, 
-  savePendingPayment, 
-  clearPendingPayment 
+import {
+  initiateJekoPayment,
+  pollPaymentStatus,
+  checkPaymentStatus,
+  savePendingPayment,
+  clearPendingPayment
 } from '../services/jekoPayment';
+import { PaymentLogoBadge } from './PaymentLogoBadge';
+import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   user: UserProfile;
   totalAmount?: number;
+  initialPaymentMethod?: 'wave' | 'orange' | 'mtn' | 'moov' | 'djamo';
   items?: Array<{
     dishId: string;
     dishName: string;
@@ -49,33 +52,32 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   onClose,
   user,
   totalAmount,
+  initialPaymentMethod,
   items,
   onSuccess
 }) => {
   const isDirectTicketPurchase = Boolean(items && items.length > 0);
-  const totalTicketCount = items && items.length > 0
-    ? items.reduce((sum, item) => sum + item.quantity, 0)
-    : Math.max(1, Math.round((totalAmount || 200) / 200));
+  const totalTicketCount =
+    items && items.length > 0
+      ? items.reduce((sum, item) => sum + item.quantity, 0)
+      : Math.max(1, Math.round((totalAmount || 200) / 200));
   const ticketBasePrice = totalTicketCount * 200;
-  // Frais de transaction officiels : 1,5% + 7 F (soit 10 FCFA de frais par ticket -> total 210 FCFA par repas)
+  // Frais de transaction officiels : 1,5 % + 7 F (10 FCFA par ticket -> 210 FCFA / repas)
   const transactionFee = totalTicketCount * 10;
   const currentFinalAmount = ticketBasePrice + transactionFee;
 
-  // Selected payment method matching IMG_1194_0c2de57a.png
   const [selectedMethod, setSelectedMethod] = useState<MainPaymentMethod>('wave');
   const [selectedOperator, setSelectedOperator] = useState<MobileOperator>('orange');
-  const [selectedCountry] = useState<string>("Cote d'Ivoire");
+  const [selectedCountry] = useState<string>("Côte d'Ivoire");
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
 
-  // Flow State: 'form' -> 'processing' -> 'awaiting_payment' -> 'success'
   const [flowState, setFlowState] = useState<'form' | 'processing' | 'awaiting_payment' | 'success'>('form');
   const [processingStep, setProcessingStep] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Active Jeko Transaction Data
   const [activePaymentRequest, setActivePaymentRequest] = useState<{
     id: string;
     reference: string;
@@ -86,7 +88,19 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   const [confirmedTickets, setConfirmedTickets] = useState<MealTicket[]>([]);
   const stopPollingRef = useRef<(() => void) | null>(null);
 
-  // Clean up polling on unmount
+  // Synchronize initial payment method chosen on Home screen
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialPaymentMethod === 'wave') {
+      setSelectedMethod('wave');
+    } else if (initialPaymentMethod === 'djamo') {
+      setSelectedMethod('djamo');
+    } else if (initialPaymentMethod === 'orange' || initialPaymentMethod === 'mtn' || initialPaymentMethod === 'moov') {
+      setSelectedMethod('mobile_money');
+      setSelectedOperator(initialPaymentMethod);
+    }
+  }, [isOpen, initialPaymentMethod]);
+
   useEffect(() => {
     return () => {
       if (stopPollingRef.current) {
@@ -96,30 +110,37 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
     };
   }, []);
 
-  if (!isOpen) return null;
-
   const getMethodDisplayName = () => {
     switch (selectedMethod) {
-      case 'wave': return 'Wave';
-      case 'mobile_money': return selectedOperator === 'orange' ? 'Orange Money' : selectedOperator === 'mtn' ? 'MTN MoMo' : 'Moov Money';
-      case 'djamo': return 'Djamo';
-      case 'carte': return 'Carte bancaire';
-      default: return 'Wave';
+      case 'wave':
+        return 'Wave';
+      case 'mobile_money':
+        return selectedOperator === 'orange' ? 'Orange Money' : selectedOperator === 'mtn' ? 'MTN MoMo' : 'Moov Money';
+      case 'djamo':
+        return 'Djamo';
+      case 'carte':
+        return 'Carte bancaire';
+      default:
+        return 'Wave';
     }
   };
 
   const getJekoApiMethod = (): string => {
     switch (selectedMethod) {
-      case 'wave': return 'wave';
-      case 'mobile_money': return selectedOperator; // 'orange' | 'mtn' | 'moov'
-      case 'djamo': return 'djamo';
-      case 'carte': return 'djamo'; // In CI, Djamo / Visa/Mastercard debit gateway
-      default: return 'wave';
+      case 'wave':
+        return 'wave';
+      case 'mobile_money':
+        return selectedOperator;
+      case 'djamo':
+        return 'djamo';
+      case 'carte':
+        return 'djamo';
+      default:
+        return 'wave';
     }
   };
 
-  // Called when Jeko payment is confirmed SUCCESS
-  const handlePaymentConfirmed = async (reference: string) => {
+  const handlePaymentConfirmed = async () => {
     if (stopPollingRef.current) {
       stopPollingRef.current();
       stopPollingRef.current = null;
@@ -129,7 +150,6 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       const currentUser = getLocalUserProfile() || user;
 
       if (isDirectTicketPurchase && items && items.length > 0) {
-        // Direct ticket purchase
         const res = await purchaseTicketsBatch(currentUser, items);
         await recordTicketsSaleInLedger(res.generatedTickets.length, 200);
         clearPendingPayment();
@@ -137,7 +157,6 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
         setFlowState('success');
         onSuccess(res.updatedUser, res.generatedTickets);
       } else {
-        // Wallet recharge
         const newBalance = currentUser.balance + currentFinalAmount;
         const updated = await updateUserBalance(currentUser, newBalance);
         recordRecharge(currentFinalAmount);
@@ -146,45 +165,45 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
         onSuccess(updated);
       }
 
+      triggerHaptic('success');
       try {
-        if (typeof (window as any).haptic === 'function') {
-          (window as any).haptic(25);
-        }
         confetti({
-          particleCount: 90,
+          particleCount: 85,
           spread: 70,
-          origin: { y: 0.6 }
+          origin: { y: 0.65 }
         });
       } catch {
-        // Ignore
+        // Ignore confetti failures
       }
     } catch (err: any) {
       console.error('Error completing purchase after payment:', err);
-      setErrorMessage("Le paiement a été reçu mais une erreur est survenue lors de l'enregistrement de vos tickets. Contactez le CROU avec votre référence.");
+      setErrorMessage(
+        "Le paiement a été reçu mais une erreur est survenue lors de l'enregistrement de vos tickets. Contactez le CROU avec votre référence."
+      );
     }
   };
 
-  // User submits payment form
   const handleInitiatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
     if (!termsAccepted) {
-      setErrorMessage("Veuillez accepter les conditions générales de vente pour continuer.");
+      setErrorMessage('Veuillez accepter les conditions générales de vente pour continuer.');
       return;
     }
 
     if (currentFinalAmount < 200) {
-      setErrorMessage("Le montant minimum est de 200 FCFA.");
+      setErrorMessage('Le montant minimum est de 200 FCFA.');
       return;
     }
 
     const cleanPhone = phoneNumber.replace(/\s+/g, '');
     if ((selectedMethod === 'mobile_money' || selectedMethod === 'wave') && cleanPhone && cleanPhone.length !== 10) {
-      setErrorMessage("Le numéro de téléphone ivoirien doit comporter exactement 10 chiffres (ex: 0700000000).");
+      setErrorMessage('Le numéro de téléphone ivoirien doit comporter exactement 10 chiffres (ex : 0700000000).');
       return;
     }
 
+    triggerHaptic('medium');
     setIsLoading(true);
     setFlowState('processing');
     setProcessingStep(1);
@@ -193,11 +212,9 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       const jekoMethod = getJekoApiMethod();
       const customReference = `${Date.now()}`;
 
-      // Progressive step timers for extraordinary smooth transition (matching IMG_1214)
       const t1 = setTimeout(() => setProcessingStep(2), 650);
       const t2 = setTimeout(() => setProcessingStep(3), 1300);
 
-      // Initiate payment with real Jeko Partner API with natural smooth duration
       const [result] = await Promise.all([
         initiateJekoPayment({
           amount: currentFinalAmount,
@@ -217,7 +234,6 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
         throw new Error(result.message || "Erreur lors de l'initialisation du paiement Jeko.");
       }
 
-      // Persist order in local storage in case the browser redirects
       savePendingPayment({
         reference: result.reference,
         orderId: customReference,
@@ -237,48 +253,51 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       setActivePaymentRequest(activeReq);
       setFlowState('awaiting_payment');
 
-      // Start polling Jeko payment status
       if (result.transactionId) {
-        stopPollingRef.current = pollPaymentStatus(result.transactionId, (status) => {
-          if (status === 'success') {
-            handlePaymentConfirmed(result.reference);
-          } else if (status === 'failed') {
-            setErrorMessage("La transaction a été refusée ou a échoué sur Jeko. Vous pouvez réessayer.");
-          }
-        }, 5000, 300000);
+        stopPollingRef.current = pollPaymentStatus(
+          result.transactionId,
+          (status) => {
+            if (status === 'success') {
+              handlePaymentConfirmed();
+            } else if (status === 'failed') {
+              setErrorMessage('La transaction a été refusée ou a échoué sur Jeko. Vous pouvez réessayer.');
+            }
+          },
+          5000,
+          300000
+        );
       }
 
-      // Automatically open Jeko checkout page
       if (result.redirectUrl) {
-        const popup = window.open(result.redirectUrl, '_blank');
-        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-          // Popup blocked, user can click the big button in the modal
-        }
+        window.open(result.redirectUrl, '_blank');
       }
     } catch (err: any) {
       console.error('Payment initiation error:', err);
-      setErrorMessage(err.message || "Échec de connexion au service Jeko. Veuillez vérifier votre connexion.");
+      setFlowState('form');
+      setErrorMessage(err.message || 'Échec de connexion au service Jeko. Veuillez vérifier votre connexion.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Manual status check button
   const handleManualCheck = async () => {
     if (!activePaymentRequest?.id) return;
+    triggerHaptic('light');
     setIsCheckingStatus(true);
     setErrorMessage(null);
     try {
       const status = await checkPaymentStatus(activePaymentRequest.id);
       if (status === 'success') {
-        await handlePaymentConfirmed(activePaymentRequest.reference);
+        await handlePaymentConfirmed();
       } else if (status === 'failed') {
         setErrorMessage("Le paiement n'a pas été validé ou a été annulé.");
       } else {
-        setErrorMessage("Le paiement est toujours en attente sur Jeko. Si vous venez de valider, patientez quelques secondes et revérifiez.");
+        setErrorMessage(
+          'Le paiement est toujours en attente sur Jeko. Si vous venez de valider, patientez quelques secondes et revérifiez.'
+        );
       }
-    } catch (err: any) {
-      setErrorMessage("Impossible de vérifier le statut pour le moment. Veuillez réessayer.");
+    } catch {
+      setErrorMessage('Impossible de vérifier le statut pour le moment. Veuillez réessayer.');
     } finally {
       setIsCheckingStatus(false);
     }
@@ -295,604 +314,411 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
     onClose();
   };
 
+  const processingBadgeBrand =
+    selectedMethod === 'mobile_money'
+      ? selectedOperator
+      : selectedMethod;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-hidden font-sans">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] my-auto pop-in">
-        
-        {/* STICKY TOP BAR - Toujours visible en haut, ne disparaît jamais au scroll */}
-        <div className="sticky top-0 z-30 px-5 py-4 bg-white/95 backdrop-blur-md flex items-center justify-between border-b border-slate-100 shadow-xs flex-shrink-0">
-          <button
-            type="button"
-            onClick={flowState === 'awaiting_payment' ? () => setFlowState('form') : handleResetAndClose}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer transition-all active:scale-95"
-            title="Revenir en arrière"
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-800" />
-            <span>Retour</span>
-          </button>
-
-          {/* Centered Amount in Red Bold */}
-          <div className="text-center">
-            <span className="text-base sm:text-lg font-black text-[#e11d48] tracking-tight">
-              {currentFinalAmount.toLocaleString('fr-FR')} F CFA
-            </span>
-          </div>
-
-          <button
-            type="button"
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 overflow-hidden select-none">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onClick={handleResetAndClose}
-            className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 flex items-center justify-center transition-all cursor-pointer shadow-xs border border-slate-200"
-            aria-label="Fermer la fenêtre de paiement"
-            title="Fermer la fenêtre"
+            className="fixed inset-0 bg-black/60 backdrop-blur-md"
+          />
+
+          {/* Bottom Sheet Panel */}
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 32, stiffness: 360, mass: 0.9 }}
+            className="relative z-10 w-full sm:max-w-md bg-[var(--ios-surface)] text-[var(--ios-fg)] rounded-t-[30px] sm:rounded-[30px] shadow-2xl border-t sm:border border-[var(--ios-border)] flex flex-col max-h-[92dvh]"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)' }}
           >
-            <X className="w-5 h-5 text-slate-900 stroke-[2.5]" />
-          </button>
-        </div>
-
-        {/* BODY (Déroulable) */}
-        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
-          {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start space-x-2 text-xs text-red-700">
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <span>{errorMessage}</span>
+            {/* iOS Grab Handle (mobile) */}
+            <div className="sm:hidden pt-2.5 pb-1 flex justify-center flex-shrink-0">
+              <div className="w-10 h-1.5 rounded-full bg-[var(--ios-fg-tertiary)] opacity-45" />
             </div>
-          )}
 
-          {/* STATE 1: SELECTION & FORM (Matching IMG_1194) */}
-          {flowState === 'form' && (
-            <form onSubmit={handleInitiatePayment} className="space-y-5">
-              
-              {/* Country Selection */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Pays
-                </label>
-                <div className="relative">
-                  <div className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium text-slate-800 flex items-center justify-between shadow-xs">
-                    <span>{selectedCountry}</span>
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Methods Grid matching IMG_1194 */}
-              <div>
-                <div className="grid grid-cols-3 gap-3">
-                  
-                  {/* 1. Wave Card */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('wave')}
-                    className={`p-3 rounded-2xl border text-center flex flex-col items-center justify-center transition-all cursor-pointer ${
-                      selectedMethod === 'wave'
-                        ? 'border-2 border-[#e11d48] bg-white ring-1 ring-[#e11d48]/20 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    {/* Official Wave Cyan Square Icon with Penguin from IMG_1213 */}
-                    <div className="w-14 h-14 rounded-2xl bg-[#00c2ff] flex items-center justify-center shadow-xs mb-2 overflow-hidden border border-sky-300/40">
-                      <img 
-                        src="/assets/aistudio/IMG_1213_589dc8ca.png" 
-                        alt="Wave" 
-                        className="w-full h-full object-cover" 
-                      />
-                    </div>
-                    <span className="text-xs font-bold text-slate-900">
-                      Wave
-                    </span>
-                  </button>
-
-                  {/* 2. Mobile Money Card */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('mobile_money')}
-                    className={`p-3 rounded-2xl border text-center flex flex-col items-center justify-center transition-all cursor-pointer ${
-                      selectedMethod === 'mobile_money'
-                        ? 'border-2 border-[#e11d48] bg-white ring-1 ring-[#e11d48]/20 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    {/* Dark icon with Orange / MTN / Moov badges */}
-                    <div className="w-14 h-14 rounded-2xl bg-[#0e1726] flex flex-col items-center justify-center p-1.5 shadow-xs mb-2">
-                      <div className="w-full flex items-center justify-center space-x-1 mb-1">
-                        <span className="px-1 py-0.5 bg-[#ff7900] text-black font-black text-[7px] rounded-xs uppercase leading-none">
-                          Orange
-                        </span>
-                      </div>
-                      <div className="w-full flex items-center justify-center space-x-1">
-                        <span className="px-1 py-0.5 bg-[#ffcc00] text-black font-black text-[7px] rounded-xs uppercase leading-none">
-                          MTN
-                        </span>
-                        <span className="px-1 py-0.5 bg-[#0077c8] text-white font-black text-[7px] rounded-xs uppercase leading-none">
-                          Moov
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 leading-tight">
-                      Mobile<br />Money
-                    </span>
-                  </button>
-
-                  {/* 3. Djamo Card */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('djamo')}
-                    className={`p-3 rounded-2xl border text-center flex flex-col items-center justify-center transition-all cursor-pointer ${
-                      selectedMethod === 'djamo'
-                        ? 'border-2 border-[#e11d48] bg-white ring-1 ring-[#e11d48]/20 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    {/* Black rounded square with white script djamo */}
-                    <div className="w-14 h-14 rounded-2xl bg-black flex items-center justify-center shadow-xs mb-2">
-                      <span className="text-white font-black text-sm italic tracking-tight font-serif">
-                        djamo
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900">
-                      Djamo
-                    </span>
-                  </button>
-
-                </div>
-
-                {/* Second row: Carte bancaire */}
-                <div className="grid grid-cols-3 gap-3 mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('carte')}
-                    className={`p-3 rounded-2xl border text-center flex flex-col items-center justify-center transition-all cursor-pointer ${
-                      selectedMethod === 'carte'
-                        ? 'border-2 border-[#e11d48] bg-white ring-1 ring-[#e11d48]/20 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    {/* Carte bancaire badge with CB, Mastercard, VISA */}
-                    <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col items-center justify-center p-1 shadow-xs mb-2">
-                      <div className="flex items-center space-x-1 mb-1">
-                        <span className="px-1 bg-emerald-600 text-white font-black text-[8px] rounded-xs">
-                          CB
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        {/* Mastercard circles */}
-                        <div className="flex -space-x-1">
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#eb001b]"></span>
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#f79e1b] opacity-80"></span>
-                        </div>
-                        <span className="text-[8px] font-black text-[#1a1f71] italic tracking-tight">
-                          VISA
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 leading-tight">
-                      Carte<br />bancaire
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* If Mobile Money is selected: choose operator + enter phone */}
-              {selectedMethod === 'mobile_money' && (
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <span className="text-xs font-bold text-slate-700 block">
-                    Opérateur Mobile Money :
-                  </span>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOperator('orange')}
-                      className={`py-2 px-3 rounded-xl border text-xs font-extrabold transition-all cursor-pointer ${
-                        selectedOperator === 'orange'
-                          ? 'border-[#ff7900] bg-orange-50 text-[#ff7900] ring-1 ring-[#ff7900]'
-                          : 'border-slate-200 bg-white text-slate-600'
-                      }`}
-                    >
-                      Orange
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOperator('mtn')}
-                      className={`py-2 px-3 rounded-xl border text-xs font-extrabold transition-all cursor-pointer ${
-                        selectedOperator === 'mtn'
-                          ? 'border-[#ffcc00] bg-yellow-50 text-yellow-950 ring-1 ring-[#ffcc00]'
-                          : 'border-slate-200 bg-white text-slate-600'
-                      }`}
-                    >
-                      MTN
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOperator('moov')}
-                      className={`py-2 px-3 rounded-xl border text-xs font-extrabold transition-all cursor-pointer ${
-                        selectedOperator === 'moov'
-                          ? 'border-[#0077c8] bg-blue-50 text-[#0077c8] ring-1 ring-[#0077c8]'
-                          : 'border-slate-200 bg-white text-slate-600'
-                      }`}
-                    >
-                      Moov
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Numéro de téléphone {selectedOperator.toUpperCase()} (10 chiffres)
-                    </label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                      <input
-                        type="tel"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value.replace(/[^\d\s]/g, ''))}
-                        placeholder="Ex: 07 00 00 00 00"
-                        className="w-full pl-10 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#e11d48]"
-                      />
-                    </div>
-                    {selectedOperator === 'orange' && (
-                      <p className="text-[10px] text-orange-700 bg-orange-50 border border-orange-200/70 rounded-lg p-2 mt-2 leading-relaxed">
-                        💡 <strong>Orange Money CI :</strong> Vous devrez entrer le code d'autorisation <strong>#144*82#</strong> sur la page Jeko.
-                      </p>
-                    )}
-                    {selectedOperator === 'mtn' && (
-                      <p className="text-[10px] text-yellow-800 bg-yellow-50 border border-yellow-200/70 rounded-lg p-2 mt-2 leading-relaxed">
-                        💡 <strong>MTN MoMo CI :</strong> Validez la notification sur votre mobile ou composez <strong>*133#</strong> (Approbations).
-                      </p>
-                    )}
-                    {selectedOperator === 'moov' && (
-                      <p className="text-[10px] text-blue-800 bg-blue-50 border border-blue-200/70 rounded-lg p-2 mt-2 leading-relaxed">
-                        💡 <strong>Moov Money CI :</strong> Validez la notification sur votre écran ou composez <strong>*155#</strong>.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Order breakdown */}
-              {isDirectTicketPurchase && items && (
-                <div className="text-[11px] text-slate-500 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <span className="font-bold text-slate-700 block">Détail des repas :</span>
-                  {items.map((it, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>• {it.quantity}x {it.dishName}</span>
-                      <span className="font-mono">{it.quantity * 200} F CFA</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Summary Box: Prix des tickets, puis frais 1,5% + 7 F en bas, puis total (210 F CFA / ticket) */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs sm:text-sm bg-white shadow-xs">
-                <div className="px-4 py-3 flex items-center justify-between text-slate-700">
-                  <span className="font-semibold text-slate-800">Prix des tickets ({totalTicketCount} repas à 200 F)</span>
-                  <span className="font-bold text-slate-900 font-mono">
-                    {ticketBasePrice.toLocaleString('fr-FR')} F CFA
-                  </span>
-                </div>
-                <div className="px-4 py-2.5 flex items-center justify-between text-slate-500 bg-slate-50/70">
-                  <span className="text-xs">Frais de transaction (1,5% + 7 F)</span>
-                  <span className="font-semibold text-slate-700 font-mono text-xs">
-                    +{transactionFee.toLocaleString('fr-FR')} F CFA
-                  </span>
-                </div>
-                <div className="px-4 py-3.5 flex items-center justify-between font-black text-slate-900 bg-slate-50">
-                  <div>
-                    <span className="text-sm font-black block">Total à payer</span>
-                    <span className="text-[10px] font-medium text-slate-500">Soit 210 F CFA par repas</span>
-                  </div>
-                  <span className="font-black text-slate-950 text-base sm:text-lg font-mono">
-                    {currentFinalAmount.toLocaleString('fr-FR')} F CFA
-                  </span>
-                </div>
-              </div>
-
-              {/* Checkbox Terms matching IMG_1194 */}
-              <div className="flex items-start space-x-2.5 pt-1">
-                <input
-                  type="checkbox"
-                  id="crou-terms"
-                  checked={termsAccepted}
-                  onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded-md border-slate-300 text-[#e11d48] focus:ring-[#e11d48] cursor-pointer"
-                />
-                <label htmlFor="crou-terms" className="text-xs text-slate-600 leading-snug cursor-pointer">
-                  J'accepte les <span className="underline font-medium text-slate-800">conditions générales de vente</span> et la <span className="underline font-medium text-slate-800">politique de confidentialité</span>.
-                </label>
-              </div>
-
-              {/* Big Red Pill CTA Button matching IMG_1194 */}
+            {/* Sticky Top Bar */}
+            <div className="px-5 py-3.5 flex items-center justify-between border-b border-[var(--ios-border)] flex-shrink-0">
               <button
-                type="submit"
-                disabled={isLoading || !termsAccepted}
-                data-loading={isLoading ? "true" : undefined}
-                className="w-full py-4 px-6 bg-[#e11d48] hover:bg-[#be123c] text-white font-bold text-sm sm:text-base rounded-full shadow-lg shadow-rose-600/25 flex items-center justify-center space-x-2 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
+                type="button"
+                onClick={flowState === 'awaiting_payment' ? () => setFlowState('form') : handleResetAndClose}
+                className="ios-btn-spring inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-[14px] bg-[var(--ios-bg)] text-[var(--ios-fg)] font-semibold text-[14px]"
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Connexion à Jeko en cours...</span>
-                  </>
-                ) : (
-                  <span>Payer avec {getMethodDisplayName()} &gt;&gt;</span>
-                )}
+                <ArrowLeft className="w-4 h-4" />
+                <span>Retour</span>
               </button>
 
-              <div className="flex items-center justify-center space-x-1.5 text-[11px] text-slate-400">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Paiement crypté sécurisé • CROU Korhogo</span>
-              </div>
-            </form>
-          )}
-
-          {/* STATE 2: EXTRAORDINARY FLUID ANIMATED LOADING TRANSITION (Matching IMG_1214) */}
-          {flowState === 'processing' && (
-            <div className="py-10 px-4 flex flex-col items-center justify-center text-center space-y-6 animate-fadeIn select-none">
-              
-              {/* High-tech Concentric Circular Spinner matching the user's circle in IMG_1214 */}
-              <div className="relative w-36 h-36 flex items-center justify-center">
-                {/* Outer pulsing color aura */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-rose-500/25 via-sky-500/20 to-amber-500/25 blur-2xl animate-pulse"></div>
-
-                {/* Primary SVG Rotating Gradient Ring */}
-                <svg className="w-full h-full animate-spin text-[#e11d48]" viewBox="0 0 100 100" style={{ animationDuration: '1.8s' }}>
-                  <defs>
-                    <linearGradient id="crou-spinner-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#e11d48" />
-                      <stop offset="60%" stopColor="#00b2fe" />
-                      <stop offset="100%" stopColor="#f59e0b" />
-                    </linearGradient>
-                  </defs>
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="43"
-                    stroke="url(#crou-spinner-grad)"
-                    strokeWidth="5.5"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray="175 80"
-                  />
-                </svg>
-
-                {/* Secondary reverse dashed decorative ring */}
-                <svg 
-                  className="absolute inset-2 w-32 h-32 animate-spin text-slate-300/80" 
-                  style={{ animationDirection: 'reverse', animationDuration: '5s' }} 
-                  viewBox="0 0 100 100"
-                >
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="45"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeDasharray="5 7"
-                    fill="none"
-                  />
-                </svg>
-
-                {/* Center Method Badge with Soft Floating Pulse */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  {selectedMethod === 'wave' ? (
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-xl border-2 border-white animate-pulse">
-                      <img 
-                        src="/assets/aistudio/IMG_1213_589dc8ca.png" 
-                        alt="Wave" 
-                        className="w-full h-full object-cover" 
-                      />
-                    </div>
-                  ) : selectedMethod === 'mobile_money' ? (
-                    <div className="w-16 h-16 rounded-2xl bg-[#0e1726] flex flex-col items-center justify-center p-1 shadow-xl border-2 border-white animate-pulse">
-                      <span className="uppercase text-[9px] font-black text-white">{selectedOperator}</span>
-                      <span className="text-[7px] text-amber-400 font-bold">MONEY</span>
-                    </div>
-                  ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-black flex items-center justify-center text-white italic font-serif font-black shadow-xl border-2 border-white animate-pulse">
-                      djamo
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Dynamic Status Text with Sequential Steps */}
-              <div className="space-y-2 max-w-xs">
-                <div className="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-rose-50 border border-rose-200/80 text-[#e11d48] text-xs font-bold shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-[#e11d48] animate-ping"></span>
-                  <span>
-                    {processingStep === 1 && "Étape 1/3 • Sécurisation du protocole"}
-                    {processingStep === 2 && `Étape 2/3 • Préparation flux ${getMethodDisplayName()}`}
-                    {processingStep === 3 && "Étape 3/3 • Génération de la passerelle..."}
-                  </span>
-                </div>
-
-                <h4 className="text-base sm:text-lg font-black text-slate-900 tracking-tight font-cabinet">
-                  {processingStep === 1 && "Initialisation sécurisée Jeko..."}
-                  {processingStep === 2 && `Connexion à l'opérateur ${getMethodDisplayName()}...`}
-                  {processingStep === 3 && "Ouverture de votre session de paiement..."}
-                </h4>
-
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {currentFinalAmount.toLocaleString('fr-FR')} F CFA • Tickets Repas CROU Korhogo
-                </p>
-              </div>
-
-              {/* Fluid Progress Bar */}
-              <div className="w-52 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200/60">
-                <div 
-                  className="h-full bg-gradient-to-r from-rose-500 via-sky-500 to-amber-500 transition-all duration-700 ease-out rounded-full"
-                  style={{
-                    width: processingStep === 1 ? '38%' : processingStep === 2 ? '74%' : '98%'
-                  }}
-                ></div>
-              </div>
-
-              <div className="flex items-center space-x-1.5 text-[11px] text-slate-400 pt-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Chiffrement 256-bit certifié Jeko Partner API</span>
-              </div>
-            </div>
-          )}
-
-          {/* STATE 3: AWAITING PAYMENT ON JEKO (NO PREMATURE TICKETS) */}
-          {flowState === 'awaiting_payment' && activePaymentRequest && (
-            <div className="text-center py-4 space-y-5">
-              <div className="w-16 h-16 bg-rose-50 border border-rose-100 rounded-full flex items-center justify-center mx-auto text-[#e11d48]">
-                <Loader2 className="w-8 h-8 animate-spin" />
-              </div>
-
-              <div>
-                <h4 className="text-base font-extrabold text-slate-900">
-                  Validation du paiement en cours
-                </h4>
-                <p className="text-xs text-slate-600 max-w-xs mx-auto mt-1 leading-relaxed">
-                  Veuillez finaliser votre règlement de <strong>{currentFinalAmount.toLocaleString('fr-FR')} F CFA</strong> sur la passerelle sécurisée Jeko.
-                </p>
-              </div>
-
-              {/* Specific Operator Instructions for Côte d'Ivoire */}
-              {selectedMethod === 'mobile_money' && selectedOperator === 'orange' && (
-                <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-2xl text-left space-y-1.5 text-xs text-orange-950">
-                  <div className="flex items-center space-x-1.5 font-bold">
-                    <span>📱</span>
-                    <span>Instruction Orange Money Côte d'Ivoire :</span>
-                  </div>
-                  <ol className="list-decimal list-inside text-[11px] text-orange-900 space-y-1 leading-relaxed">
-                    <li>Composez <strong>#144*82#</strong> sur votre mobile Orange pour générer votre <strong>code de paiement</strong> (valable 15 min).</li>
-                    <li>Cliquez ci-dessous sur <strong>« Ouvrir la page Jeko »</strong> et entrez ce code d'autorisation.</li>
-                    <li>Votre ticket repas CROU sera instantanément validé !</li>
-                  </ol>
-                </div>
-              )}
-
-              {selectedMethod === 'mobile_money' && selectedOperator === 'mtn' && (
-                <div className="p-3.5 bg-yellow-50 border border-yellow-200 rounded-2xl text-left space-y-1.5 text-xs text-yellow-950">
-                  <div className="flex items-center space-x-1.5 font-bold">
-                    <span>📱</span>
-                    <span>Instruction MTN Mobile Money :</span>
-                  </div>
-                  <p className="text-[11px] text-yellow-900 leading-relaxed">
-                    Acceptez la notification push sur votre téléphone. Si elle n'apparaît pas, composez <strong>*133#</strong> puis entrez votre code PIN dans le menu « Approbations ».
-                  </p>
-                </div>
-              )}
-
-              {selectedMethod === 'mobile_money' && selectedOperator === 'moov' && (
-                <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-left space-y-1.5 text-xs text-blue-950">
-                  <div className="flex items-center space-x-1.5 font-bold">
-                    <span>📱</span>
-                    <span>Instruction Moov Money :</span>
-                  </div>
-                  <p className="text-[11px] text-blue-900 leading-relaxed">
-                    Validez la notification USSD sur votre écran ou composez <strong>*155#</strong> pour confirmer le débit.
-                  </p>
-                </div>
-              )}
-
-              {/* Jeko Direct Link Button */}
-              {activePaymentRequest.redirectUrl && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-left">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-medium">Référence commande :</span>
-                    <span className="font-mono font-bold text-slate-800">{activePaymentRequest.reference}</span>
-                  </div>
-
-                  <a
-                    href={activePaymentRequest.redirectUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3.5 bg-[#e11d48] hover:bg-[#be123c] text-white font-bold text-xs uppercase tracking-wide rounded-full flex items-center justify-center space-x-2 transition-all shadow-md active:scale-98"
-                  >
-                    <span>Ouvrir la page de paiement Jeko ({activePaymentRequest.method})</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-
-                  <p className="text-[11px] text-slate-500 text-center">
-                    La validation est automatique dès que vous validez sur votre téléphone.
-                  </p>
-                </div>
-              )}
-
-              {/* Status Verification Buttons */}
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handleManualCheck}
-                  disabled={isCheckingStatus}
-                  className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-full flex items-center justify-center space-x-2 transition-all cursor-pointer"
-                >
-                  {isCheckingStatus ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
-                      <span>Vérification auprès de Jeko...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 text-slate-600" />
-                      <span>J'ai déjà validé sur mon téléphone (Vérifier)</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFlowState('form')}
-                  className="text-xs text-slate-500 hover:text-slate-800 hover:underline cursor-pointer"
-                >
-                  ← Choisir un autre moyen de paiement
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STATE 3: PAYMENT CONFIRMED SUCCESS (TICKETS CREATED NOW) */}
-          {flowState === 'success' && (
-            <div className="text-center py-4 space-y-4">
-              <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
-                <Check className="w-10 h-10" />
-              </div>
-
-              <div>
-                <h4 className="text-lg font-black text-slate-900">
-                  {confirmedTickets.length > 0 
-                    ? `${confirmedTickets.length} Ticket(s) Validé(s) !` 
-                    : 'Recharge Réussie !'}
-                </h4>
-                <p className="text-xs text-slate-600 mt-1">
-                  {confirmedTickets.length > 0 ? (
-                    <>
-                      Votre paiement de <strong className="text-slate-900">{currentFinalAmount.toLocaleString('fr-FR')} FCFA</strong> a été vérifié et confirmé avec succès.
-                      <br />
-                      Vos tickets sont prêts dans votre espace <strong>« Mes Tickets »</strong>.
-                    </>
-                  ) : (
-                    <>
-                      Votre compte a été crédité de <strong className="text-slate-900">{currentFinalAmount.toLocaleString('fr-FR')} FCFA</strong>.
-                    </>
-                  )}
-                </p>
-
-                {activePaymentRequest && (
-                  <div className="mt-3 p-3 bg-slate-50 border border-slate-100 rounded-xl inline-block text-left text-xs font-mono">
-                    <span className="text-slate-400 block text-[10px]">RÉFÉRENCE JEKO CONFIRMÉE :</span>
-                    <span className="font-bold text-slate-800">{activePaymentRequest.reference}</span>
-                  </div>
-                )}
-              </div>
+              <span className="text-[18px] font-extrabold text-[#ea580c] tracking-tight tabular-nums">
+                {currentFinalAmount.toLocaleString('fr-FR')} F CFA
+              </span>
 
               <button
                 type="button"
                 onClick={handleResetAndClose}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wide rounded-full transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center space-x-2"
+                aria-label="Fermer la fenêtre de paiement"
+                className="ios-btn-spring w-10 h-10 rounded-full bg-[var(--ios-bg)] text-[var(--ios-fg)] flex items-center justify-center border border-[var(--ios-border)]"
               >
-                <Ticket className="w-4 h-4" />
-                <span>Voir mes tickets & Retourner au menu</span>
+                <X className="w-5 h-5" />
               </button>
             </div>
-          )}
 
+            {/* Scrollable Body */}
+            <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
+              {errorMessage && (
+                <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-[18px] flex items-start gap-2.5 text-[14px] text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* STATE 1: SELECTION & FORM */}
+              {flowState === 'form' && (
+                <form onSubmit={handleInitiatePayment} className="space-y-5">
+                  <div>
+                    <label className="block text-[13px] font-semibold text-[var(--ios-fg-secondary)] mb-1.5">
+                      Pays
+                    </label>
+                    <div className="w-full px-4 py-3.5 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[16px] text-[16px] font-semibold text-[var(--ios-fg)] flex items-center justify-between">
+                      <span>{selectedCountry}</span>
+                      <ChevronDown className="w-4 h-4 text-[var(--ios-fg-secondary)]" />
+                    </div>
+                  </div>
+
+                  {/* Payment Methods Grid with REAL LOGOS */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSelectedMethod('wave');
+                      }}
+                      className={`ios-btn-spring p-3.5 rounded-[22px] border flex flex-col items-center justify-center gap-2 ${
+                        selectedMethod === 'wave'
+                          ? 'border-[#ea580c] bg-[#ea580c]/10 ring-1 ring-[#ea580c]'
+                          : 'border-[var(--ios-border)] bg-[var(--ios-bg)]/60'
+                      }`}
+                    >
+                      <PaymentLogoBadge brand="wave" size="lg" />
+                      <span className="text-[14px] font-bold text-[var(--ios-fg)]">Wave</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSelectedMethod('mobile_money');
+                      }}
+                      className={`ios-btn-spring p-3.5 rounded-[22px] border flex flex-col items-center justify-center gap-2 ${
+                        selectedMethod === 'mobile_money'
+                          ? 'border-[#ea580c] bg-[#ea580c]/10 ring-1 ring-[#ea580c]'
+                          : 'border-[var(--ios-border)] bg-[var(--ios-bg)]/60'
+                      }`}
+                    >
+                      <div className="w-24 h-14 rounded-[14px] bg-white border border-black/10 overflow-hidden flex items-center justify-center p-1">
+                        <img
+                          src="/assets/aistudio/IMG_1715_483931a6.png"
+                          alt="Orange, MTN et Moov Money"
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      <span className="text-[14px] font-bold text-[var(--ios-fg)]">Mobile Money</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSelectedMethod('djamo');
+                      }}
+                      className={`ios-btn-spring p-3.5 rounded-[22px] border flex flex-col items-center justify-center gap-2 ${
+                        selectedMethod === 'djamo'
+                          ? 'border-[#ea580c] bg-[#ea580c]/10 ring-1 ring-[#ea580c]'
+                          : 'border-[var(--ios-border)] bg-[var(--ios-bg)]/60'
+                      }`}
+                    >
+                      <PaymentLogoBadge brand="djamo" size="lg" />
+                      <span className="text-[14px] font-bold text-[var(--ios-fg)]">Djamo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSelectedMethod('carte');
+                      }}
+                      className={`ios-btn-spring p-3.5 rounded-[22px] border flex flex-col items-center justify-center gap-2 ${
+                        selectedMethod === 'carte'
+                          ? 'border-[#ea580c] bg-[#ea580c]/10 ring-1 ring-[#ea580c]'
+                          : 'border-[var(--ios-border)] bg-[var(--ios-bg)]/60'
+                      }`}
+                    >
+                      <PaymentLogoBadge brand="carte" size="lg" />
+                      <span className="text-[14px] font-bold text-[var(--ios-fg)]">Carte bancaire</span>
+                    </button>
+                  </div>
+
+                  {/* Mobile Money Operator Sub-selector with REAL LOGOS */}
+                  {selectedMethod === 'mobile_money' && (
+                    <div className="p-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[22px] space-y-3">
+                      <span className="text-[13px] font-bold text-[var(--ios-fg)] block">
+                        Opérateur Mobile Money :
+                      </span>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([
+                          { id: 'orange', label: 'Orange' },
+                          { id: 'mtn', label: 'MTN' },
+                          { id: 'moov', label: 'Moov' }
+                        ] as const).map((op) => (
+                          <button
+                            key={op.id}
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('light');
+                              setSelectedOperator(op.id);
+                            }}
+                            className={`ios-btn-spring py-2.5 px-2 rounded-[16px] border flex flex-col items-center gap-1.5 ${
+                              selectedOperator === op.id
+                                ? 'border-[#ea580c] bg-[#ea580c]/10 ring-1 ring-[#ea580c]'
+                                : 'border-[var(--ios-border)] bg-[var(--ios-surface)]'
+                            }`}
+                          >
+                            <PaymentLogoBadge brand={op.id} size="sm" />
+                            <span className="text-[13px] font-bold text-[var(--ios-fg)]">{op.label}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div>
+                        <label className="block text-[13px] font-medium text-[var(--ios-fg-secondary)] mb-1.5">
+                          Numéro {selectedOperator.toUpperCase()} (10 chiffres, optionnel)
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-[var(--ios-fg-secondary)] absolute left-3.5 top-4" />
+                          <input
+                            type="tel"
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.target.value.replace(/[^\d\s]/g, ''))}
+                            placeholder="Ex : 07 00 00 00 00"
+                            className="w-full pl-10 pr-4 py-3 bg-[var(--ios-surface)] border border-[var(--ios-border)] rounded-[14px] text-[16px] text-[var(--ios-fg)] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                          />
+                        </div>
+                        {selectedOperator === 'orange' && (
+                          <p className="text-[13px] text-orange-700 dark:text-orange-300 bg-orange-500/10 border border-orange-500/20 rounded-[12px] p-2.5 mt-2 leading-snug">
+                            Composez <strong>#144*82#</strong> sur votre téléphone Orange pour obtenir votre code d'autorisation.
+                          </p>
+                        )}
+                        {selectedOperator === 'mtn' && (
+                          <p className="text-[13px] text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-[12px] p-2.5 mt-2 leading-snug">
+                            Validez la notification sur votre écran ou composez <strong>*133#</strong>.
+                          </p>
+                        )}
+                        {selectedOperator === 'moov' && (
+                          <p className="text-[13px] text-sky-800 dark:text-sky-300 bg-sky-500/10 border border-sky-500/20 rounded-[12px] p-2.5 mt-2 leading-snug">
+                            Confirmez la notification USSD ou composez <strong>*155#</strong>.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Box */}
+                  <div className="border border-[var(--ios-border)] rounded-[20px] overflow-hidden divide-y divide-[var(--ios-border)] bg-[var(--ios-bg)] text-[15px]">
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <span className="text-[var(--ios-fg-secondary)]">
+                        Tickets ({totalTicketCount} × 200 F)
+                      </span>
+                      <span className="font-bold tabular-nums">
+                        {ticketBasePrice.toLocaleString('fr-FR')} F CFA
+                      </span>
+                    </div>
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <span className="text-[var(--ios-fg-secondary)]">Frais (1,5 % + 7 F)</span>
+                      <span className="font-semibold tabular-nums">
+                        +{transactionFee.toLocaleString('fr-FR')} F CFA
+                      </span>
+                    </div>
+                    <div className="px-4 py-3.5 flex items-center justify-between font-extrabold">
+                      <div>
+                        <span className="block">Total à payer</span>
+                        <span className="text-[12px] font-normal text-[var(--ios-fg-secondary)]">
+                          Soit 210 F CFA / repas
+                        </span>
+                      </div>
+                      <span className="text-[20px] text-[#ea580c] tabular-nums">
+                        {currentFinalAmount.toLocaleString('fr-FR')} F CFA
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Checkbox Terms */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                      className="mt-1 w-5 h-5 rounded-md accent-[#ea580c] cursor-pointer flex-shrink-0"
+                    />
+                    <span className="text-[13px] text-[var(--ios-fg-secondary)] leading-snug">
+                      J'accepte les conditions générales de vente et la politique de confidentialité.
+                    </span>
+                  </label>
+
+                  {/* Primary 56px CTA */}
+                  <button
+                    type="submit"
+                    disabled={isLoading || !termsAccepted}
+                    data-loading={isLoading ? 'true' : undefined}
+                    className="ios-btn-spring w-full min-h-[56px] px-6 bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[17px] rounded-[20px] shadow-lg shadow-orange-600/25 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <span>Payer avec {getMethodDisplayName()}</span>
+                  </button>
+
+                  <div className="flex items-center justify-center gap-2 text-[13px] text-[var(--ios-fg-secondary)]">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <span>Paiement sécurisé · CROU Korhogo</span>
+                  </div>
+                </form>
+              )}
+
+              {/* STATE 2: PROCESSING */}
+              {flowState === 'processing' && (
+                <div className="py-10 px-2 flex flex-col items-center justify-center text-center space-y-6">
+                  <div className="relative w-32 h-32 flex items-center justify-center">
+                    <svg className="w-full h-full animate-spin" viewBox="0 0 100 100" style={{ animationDuration: '1.6s' }}>
+                      <defs>
+                        <linearGradient id="ios-pay-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#ea580c" />
+                          <stop offset="100%" stopColor="#fb923c" />
+                        </linearGradient>
+                      </defs>
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="43"
+                        stroke="url(#ios-pay-grad)"
+                        strokeWidth="6"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray="175 80"
+                      />
+                    </svg>
+
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <PaymentLogoBadge brand={processingBadgeBrand} size="lg" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <h4 className="text-[20px] font-extrabold tracking-tight">
+                      {processingStep === 1 && 'Initialisation sécurisée...'}
+                      {processingStep === 2 && `Connexion à ${getMethodDisplayName()}...`}
+                      {processingStep === 3 && 'Ouverture de la passerelle...'}
+                    </h4>
+                    <p className="text-[15px] text-[var(--ios-fg-secondary)] tabular-nums">
+                      {currentFinalAmount.toLocaleString('fr-FR')} F CFA · Resto U Korhogo
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* STATE 3: AWAITING PAYMENT */}
+              {flowState === 'awaiting_payment' && activePaymentRequest && (
+                <div className="text-center py-4 space-y-5">
+                  <div className="w-16 h-16 bg-[#ea580c]/12 rounded-full flex items-center justify-center mx-auto text-[#ea580c]">
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <h4 className="text-[22px] font-extrabold">Validation en cours</h4>
+                    <p className="text-[15px] text-[var(--ios-fg-secondary)] max-w-xs mx-auto leading-snug">
+                      Finalisez votre règlement de <strong>{currentFinalAmount.toLocaleString('fr-FR')} F CFA</strong> sur Jeko.
+                    </p>
+                  </div>
+
+                  {activePaymentRequest.redirectUrl && (
+                    <div className="p-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[22px] space-y-3 text-left">
+                      <div className="flex items-center justify-between text-[13px]">
+                        <span className="text-[var(--ios-fg-secondary)]">Référence :</span>
+                        <span className="font-mono font-bold">{activePaymentRequest.reference}</span>
+                      </div>
+
+                      <a
+                        href={activePaymentRequest.redirectUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[16px] rounded-[18px] flex items-center justify-center gap-2 shadow-md"
+                      >
+                        <span>Ouvrir la page Jeko ({activePaymentRequest.method})</span>
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleManualCheck}
+                    disabled={isCheckingStatus}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[var(--ios-bg)] border border-[var(--ios-border)] text-[var(--ios-fg)] font-bold text-[15px] rounded-[18px] flex items-center justify-center gap-2"
+                  >
+                    {isCheckingStatus ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Vérification...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4" />
+                        <span>J'ai déjà validé sur mon téléphone</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* STATE 4: PAYMENT SUCCESS WITH ANIMATED CHECKMARK */}
+              {flowState === 'success' && (
+                <div className="text-center py-6 space-y-5">
+                  <div className="w-20 h-20 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto">
+                    <svg className="w-11 h-11 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path className="check-draw" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <h4 className="text-[24px] font-extrabold tracking-tight">
+                      {confirmedTickets.length > 0
+                        ? `${confirmedTickets.length} ticket${confirmedTickets.length > 1 ? 's' : ''} validé${confirmedTickets.length > 1 ? 's' : ''} !`
+                        : 'Recharge réussie !'}
+                    </h4>
+                    <p className="text-[16px] text-[var(--ios-fg-secondary)] leading-snug">
+                      Paiement de <strong className="text-[var(--ios-fg)]">{currentFinalAmount.toLocaleString('fr-FR')} FCFA</strong> confirmé.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleResetAndClose}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[17px] rounded-[20px] flex items-center justify-center gap-2 shadow-lg"
+                  >
+                    <Ticket className="w-5 h-5" />
+                    <span>Voir mes tickets</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 };
-
-

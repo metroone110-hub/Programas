@@ -1,24 +1,15 @@
 import React from 'react';
-import { 
-  UtensilsCrossed, 
-  MapPin, 
-  QrCode, 
-  User, 
-  LogOut, 
-  ShieldCheck, 
-  ChevronDown, 
-  ShoppingBag, 
-  GraduationCap,
-  Search,
-  Bell,
-  Ticket,
+import {
+  ChevronDown,
   Headphones,
   Lock,
+  User,
+  ShieldCheck,
   Smartphone
 } from 'lucide-react';
 import { Canteen, UserProfile } from '../types';
-import { PWAInstallButton } from './PWAInstallButton';
 import { lockAppNow } from './PinLock';
+import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
   canteens: Canteen[];
@@ -26,9 +17,9 @@ interface Props {
   onSelectCanteen: (canteen: Canteen) => void;
   user: UserProfile | null;
   onOpenAuth: () => void;
-  onOpenMyTickets: () => void;
+  onOpenMyTickets?: () => void;
   onOpenAdmin: () => void;
-  onLogout: () => void;
+  onLogout?: () => void;
   cartCount?: number;
   onOpenCart?: () => void;
   searchQuery?: string;
@@ -45,209 +36,119 @@ export const Navbar: React.FC<Props> = ({
   onSelectCanteen,
   user,
   onOpenAuth,
-  onOpenMyTickets,
   onOpenAdmin,
-  onLogout,
-  cartCount = 0,
-  onOpenCart,
-  searchQuery = '',
-  onSearchChange,
-  onOpenNotifications,
   onOpenGemini,
   onOpenSupport,
   onOpenApkModal
 }) => {
-  const activeTicketsCount = user?.savedTickets?.filter(t => t.status === 'valid').length || 0;
   const handleOpenSupport = onOpenSupport || onOpenGemini;
 
   return (
-    <header 
-      className="relative sm:sticky sm:top-0 z-30 bg-white border-b border-slate-200 shadow-xs select-none"
-      style={{ paddingTop: 'max(14px, env(safe-area-inset-top, 14px))' }}
-    >
-      <div className="max-w-6xl w-full mx-auto px-4 py-2.5 space-y-2.5">
-        
-        {/* ROW 1: Brand, Canteen Switcher & Admin Button (matching IMG_1079) */}
-        <div className="flex items-center justify-between gap-2">
-          
-          {/* Brand & Canteen Switcher */}
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl overflow-hidden shadow-sm flex-shrink-0">
-              <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex items-center space-x-1.5">
-                <span className="font-bold text-base text-slate-900 tracking-tight whitespace-nowrap">
-                  Programas
-                </span>
-                <span className="text-xs text-slate-400 font-medium">·</span>
-                <span className="text-xs text-slate-600 font-medium truncate">
-                  CROU-K
-                </span>
-              </div>
-
-              {/* Canteen Selector */}
-              <div className="relative group max-w-[160px] sm:max-w-xs">
-                <select
-                  value={selectedCanteen.id}
-                  onChange={(e) => {
-                    const found = canteens.find(c => c.id === e.target.value);
-                    if (found) onSelectCanteen(found);
-                  }}
-                  className="appearance-none bg-transparent pr-4 text-xs font-normal text-slate-500 hover:text-slate-900 cursor-pointer focus:outline-none transition-colors truncate w-full"
-                >
-                  {canteens.map(c => (
-                    <option key={c.id} value={c.id} className="text-slate-900">
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-0 top-1 pointer-events-none" />
-              </div>
-            </div>
+    <header className="sticky top-0 z-30 glass pt-safe select-none">
+      <div className="max-w-5xl w-full mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+        {/* Left: Brand App Icon + Programas + Canteen selector */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-10 h-10 rounded-[12px] overflow-hidden shadow-sm flex-shrink-0 border border-black/5 dark:border-white/10">
+            <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
           </div>
 
-          {/* Right: Assistance CROU, Admin, PWA & Lock Button */}
-          <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
+          <div className="min-w-0">
+            <span className="block font-extrabold text-[17px] text-[var(--ios-fg)] leading-tight tracking-tight whitespace-nowrap">
+              Programas
+            </span>
 
-            {/* Student Assistance Counselor Button */}
-            {handleOpenSupport && (
-              <button
-                type="button"
-                onClick={handleOpenSupport}
-                className="px-2.5 py-1.5 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
-                title="Discuter avec l'équipe d'accueil CROU Korhogo"
+            <div className="relative max-w-[175px] sm:max-w-xs">
+              <select
+                aria-label="Choisir le restaurant universitaire"
+                value={selectedCanteen.id}
+                onChange={(e) => {
+                  const found = canteens.find(c => c.id === e.target.value);
+                  if (found) onSelectCanteen(found);
+                }}
+                className="appearance-none bg-transparent pr-5 text-[14px] font-medium text-[var(--ios-fg-secondary)] hover:text-[var(--ios-fg)] cursor-pointer focus:outline-none truncate w-full"
               >
-                <Headphones className="w-3.5 h-3.5 text-orange-500" />
-                <span className="hidden xs:inline">Assistance</span>
-              </button>
-            )}
-
-            {/* Android APK Direct Download Modal Launcher */}
-            {onOpenApkModal && (
-              <button
-                type="button"
-                onClick={onOpenApkModal}
-                className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-400/50 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap"
-                title="Télécharger l'APK Android (Programas)"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden xs:inline">APK Android</span>
-              </button>
-            )}
-
-            <PWAInstallButton />
-
-            {/* Admin CROU Button */}
-            <button
-              type="button"
-              onClick={onOpenAdmin}
-              className="px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
-              title="Accès Administration CROU"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden xs:inline">Admin</span>
-            </button>
-
-            {/* If logged in, lock with PIN button */}
-            {user && (
-              <button
-                type="button"
-                onClick={lockAppNow}
-                className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
-                title="Verrouiller l'application par code PIN"
-              >
-                <Lock className="w-3.5 h-3.5" />
-              </button>
-            )}
-
-            {/* If logged in, logout option */}
-            {user && (
-              <button
-                type="button"
-                onClick={onLogout}
-                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
-                title="Se déconnecter"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
+                {canteens.map(c => (
+                  <option key={c.id} value={c.id} className="text-[#1d1d1f] bg-white">
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-[var(--ios-fg-secondary)] absolute right-0 top-1 pointer-events-none" />
+            </div>
           </div>
         </div>
 
-        {/* ROW 2: Mobile Search & Fast Action Icons (matching IMG_1079) */}
-        <div className="flex items-center space-x-2 sm:space-x-3">
-          
-          {/* User Profile Avatar Circle (Left in IMG_1079) */}
-          <button
-            type="button"
-            onClick={onOpenAuth}
-            className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs shadow-xs hover:bg-slate-800 flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
-            title={user ? `Compte de ${user.displayName}` : 'Connexion / Inscription Étudiant'}
-          >
-            {user ? (
-              <span className="uppercase text-xs">{user.displayName.charAt(0) || 'U'}</span>
-            ) : (
-              <User className="w-4 h-4 text-slate-300" />
-            )}
-          </button>
-
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-              placeholder="Rechercher un plat..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-100 hover:bg-slate-100/80 focus:bg-white border border-transparent focus:border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all"
-            />
-          </div>
-
-          {/* Direct Ticket Quick Access Pill */}
-          {user && activeTicketsCount > 0 && (
+        {/* Right: Concise icon controls with aria-labels */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {onOpenApkModal && (
             <button
               type="button"
-              onClick={onOpenMyTickets}
-              className="hidden xs:flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Mes tickets CROU valides"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenApkModal();
+              }}
+              aria-label="Télécharger l'application Android APK"
+              className="hidden sm:inline-flex ios-btn-spring px-3 min-h-[40px] rounded-full bg-[var(--ios-surface)] border border-[var(--ios-border)] text-[13px] font-semibold text-[var(--ios-fg)] items-center gap-1.5"
             >
-              <Ticket className="w-3.5 h-3.5 text-emerald-700" />
-              <span>{activeTicketsCount} ticket{activeTicketsCount > 1 ? 's' : ''}</span>
+              <Smartphone className="w-4 h-4 text-[#ea580c]" />
+              <span>App Android</span>
             </button>
           )}
 
-          {/* Shopping Cart Button with Count Badge (Right in IMG_1079) */}
-          {onOpenCart && (
+          {user?.role === 'admin' && (
             <button
               type="button"
-              onClick={onOpenCart}
-              className="relative w-9 h-9 bg-slate-100 hover:bg-orange-50 text-slate-700 hover:text-orange-600 rounded-full transition-all shadow-xs flex items-center justify-center active:scale-95 cursor-pointer flex-shrink-0"
-              title="Ouvrir mon panier"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenAdmin();
+              }}
+              aria-label="Administration CROU"
+              className="hidden sm:inline-flex ios-btn-spring px-3 min-h-[40px] rounded-full bg-[#1d1d1f] text-white text-[13px] font-semibold items-center gap-1.5"
             >
-              <ShoppingBag className="w-4 h-4" />
-              {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[17px] h-[17px] rounded-full bg-orange-600 text-white text-[10px] font-black flex items-center justify-center shadow-md animate-scaleUp">
-                  {cartCount}
-                </span>
-              )}
+              <ShieldCheck className="w-4 h-4 text-[#ea580c]" />
+              <span>Admin</span>
             </button>
           )}
 
-          {/* Notification Bell Button (Right in IMG_1079) */}
-          <button
-            type="button"
-            onClick={onOpenNotifications || onOpenMyTickets}
-            className="relative w-9 h-9 bg-slate-100 hover:bg-orange-50 text-slate-700 hover:text-orange-600 rounded-full transition-all shadow-xs flex items-center justify-center active:scale-95 cursor-pointer flex-shrink-0"
-            title="Mes tickets & Notifications"
-          >
-            <Bell className="w-4 h-4" />
-            {activeTicketsCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            )}
-          </button>
+          {handleOpenSupport && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                handleOpenSupport();
+              }}
+              aria-label="Contacter l'assistance CROU"
+              className="ios-btn-spring w-10 h-10 rounded-full bg-[var(--ios-surface)] border border-[var(--ios-border)] text-[#ea580c] flex items-center justify-center shadow-2xs"
+            >
+              <Headphones className="w-5 h-5" />
+            </button>
+          )}
 
+          {user ? (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                lockAppNow();
+              }}
+              aria-label="Verrouiller l'application par code PIN"
+              className="ios-btn-spring w-10 h-10 rounded-full bg-[var(--ios-surface)] border border-[var(--ios-border)] text-[var(--ios-fg)] flex items-center justify-center shadow-2xs"
+            >
+              <Lock className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenAuth();
+              }}
+              aria-label="Se connecter"
+              className="ios-btn-spring w-10 h-10 rounded-full bg-[#ea580c] text-white flex items-center justify-center shadow-sm"
+            >
+              <User className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
     </header>

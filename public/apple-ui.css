@@ -1,92 +1,64 @@
-/* apple-ui.css — couche « app native iOS » pour Programas (v2)
-   À charger APRÈS le CSS de l'app. Agit sur les boutons, liens, champs, textes
-   et images existants, sans modifier les composants. */
+/* apple-ui.css — couche « app native iOS » pour Programas (light & dark auto) */
 
 :root {
   --accent: #ea580c;
   --label: #1d1d1f;
-  --label-secondary: rgba(60, 60, 67, 0.6);
-  --label-tertiary: rgba(60, 60, 67, 0.3);
+  --label-secondary: rgba(60, 60, 67, 0.72);
+  --label-tertiary: rgba(60, 60, 67, 0.45);
   --fill: #e9e9ee;
-  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* relâchement avec léger rebond */
-  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);    /* ouverture de feuille iOS */
-
-  /* Échelle de texte alignée sur les styles iOS (base 17 px), pour Tailwind v4 */
-  --text-xs: 0.765rem;   --text-xs--line-height: 1.385;   /* Footnote 13 */
-  --text-sm: 0.882rem;   --text-sm--line-height: 1.333;   /* Subhead 15 */
-  --text-base: 1rem;     --text-base--line-height: 1.294; /* Body 17 */
-  --text-xl: 1.176rem;   --text-xl--line-height: 1.25;    /* Title 3 : 20 */
-  --text-2xl: 1.294rem;  --text-2xl--line-height: 1.273;  /* Title 2 : 22 */
-  --text-3xl: 1.647rem;  --text-3xl--line-height: 1.214;  /* Title 1 : 28 */
-  --text-4xl: 2rem;      --text-4xl--line-height: 1.206;  /* Large Title : 34 */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* ───────── Typographie ───────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --label: #f5f5f7;
+    --label-secondary: rgba(235, 235, 245, 0.7);
+    --label-tertiary: rgba(235, 235, 245, 0.45);
+    --fill: #2c2c2e;
+  }
+}
+
 html {
-  font-size: 106.25%;               /* 17 px : taille « Body » d'iOS */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
 }
-@supports (font: -apple-system-body) {
-  html { font: -apple-system-body; font-family: inherit; }   /* suit « Taille du texte » d'iOS */
-}
+
 body {
-  line-height: 1.294;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
-/* Note : la police système d'Apple règle elle-même l'espacement des lettres selon la taille.
-   Ne pas ajouter de letter-spacing manuel, ça le doublerait. */
+
 h1, h2, h3 { text-wrap: balance; }
 p { text-wrap: pretty; }
 .tabular, [data-price] { font-variant-numeric: tabular-nums; }
 
-/* Les micro-textes en px fixes deviennent lisibles (mini 12 px, comme Caption 1) */
-.text-\[9px\], .text-\[10px\], .text-\[11px\] { font-size: 0.706rem; line-height: 1.333; }
-.text-\[12px\] { font-size: 0.765rem; line-height: 1.385; }
-
-/* Styles iOS prêts à l'emploi : class="t-headline" */
-.t-large-title { font-size: 2rem;     line-height: 1.206; font-weight: 700; }
-.t-title1      { font-size: 1.647rem; line-height: 1.214; font-weight: 700; }
-.t-title2      { font-size: 1.294rem; line-height: 1.273; font-weight: 700; }
-.t-title3      { font-size: 1.176rem; line-height: 1.25;  font-weight: 600; }
-.t-headline    { font-size: 1rem;     line-height: 1.294; font-weight: 600; }
-.t-body        { font-size: 1rem;     line-height: 1.294; font-weight: 400; }
-.t-callout     { font-size: 0.941rem; line-height: 1.3125; font-weight: 400; }
-.t-subhead     { font-size: 0.882rem; line-height: 1.333; font-weight: 400; }
-.t-footnote    { font-size: 0.765rem; line-height: 1.385; font-weight: 400; }
-.t-caption     { font-size: 0.706rem; line-height: 1.333; font-weight: 400; }
-.t-secondary   { color: var(--label-secondary); }
-.t-tertiary    { color: var(--label-tertiary); }
-
-/* ───────── Champs : 16 px minimum, sinon iOS zoome la page au toucher ───────── */
 input, select, textarea {
   font-size: max(16px, 1rem);
-  border-radius: 12px;
+  border-radius: 14px;
   -webkit-appearance: none;
   appearance: none;
 }
 input, textarea { caret-color: var(--accent); }
 
-/* ───────── Comportement d'application, pas de site web ───────── */
-html { -webkit-tap-highlight-color: transparent; }
-body {
-  overscroll-behavior: none;                 /* pas d'effet élastique ni de rechargement par tirage */
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;                         /* le texte ne se sélectionne plus par accident */
-}
 input, textarea, [contenteditable], [data-selectable], [data-selectable] * {
   -webkit-user-select: text;
-  user-select: text;                         /* sauf dans les champs et là où tu mets data-selectable */
+  user-select: text;
 }
+
 a, button, [role="button"], [role="tab"], summary, label, select { touch-action: manipulation; }
 img, a { -webkit-user-drag: none; }
 button { cursor: pointer; }
 button:disabled { cursor: default; }
 
-/* Appui : léger rétrécissement ; relâchement : petit rebond (propriété `scale`, sans toucher à `transform`) */
+/* Appui : scale(.96) avec animation ressort */
 button:not(:disabled):not([data-no-press]),
 [role="button"]:not([data-no-press]),
 [role="tab"]:not([data-no-press]),
@@ -94,32 +66,27 @@ a[href]:not([data-no-press]),
 summary,
 [data-press] {
   transition:
-    scale 0.38s var(--spring),
+    scale 0.36s var(--spring),
     background-color 0.2s ease,
     color 0.2s ease,
     border-color 0.2s ease,
     box-shadow 0.2s ease,
     opacity 0.2s ease;
 }
+
 button:not(:disabled):not([data-no-press]):active,
 [role="button"]:not([data-no-press]):active,
 [role="tab"]:not([data-no-press]):active,
 a[href]:not([data-no-press]):active,
 summary:active,
 [data-press]:active {
-  scale: 0.97;
+  scale: 0.96;
   transition-duration: 0.1s, 0.2s, 0.2s, 0.2s, 0.2s, 0.2s;
 }
-[data-press="strong"]:active { scale: 0.93; }
 
-.hit { position: relative; }
-.hit::after { content: ""; position: absolute; inset: -8px; }   /* zone de toucher 44 pt */
-
-/* ───────── Focus clavier uniquement ───────── */
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: inherit; }
 
-/* ───────── Indicateur de chargement (le « spiral » qui tourne) ───────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner,
 [data-loading="true"]::after {
@@ -133,7 +100,6 @@ summary:active,
 }
 .spinner { display: inline-block; }
 
-/* Bouton en cours d'action : contenu masqué (la largeur ne bouge pas), spinner au centre */
 [data-loading="true"] {
   position: relative;
   pointer-events: none;
@@ -149,62 +115,57 @@ summary:active,
 }
 [data-loading="true"][data-spinner="dark"] { --spin: var(--label); }
 
-/* Succès : coche qui se dessine ; échec : petite secousse */
 @keyframes draw-check { to { stroke-dashoffset: 0; } }
-.check-draw { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw-check 0.35s 0.05s var(--ease-ios) forwards; }
+.check-draw { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw-check 0.42s 0.08s var(--ease-ios) forwards; }
+
 @keyframes shake {
   0%, 100% { translate: 0; } 20% { translate: -6px; } 40% { translate: 5px; }
   60% { translate: -3px; } 80% { translate: 2px; }
 }
 .shake { animation: shake 0.4s ease-in-out; }
 
-/* ───────── Images : fond gris pendant le chargement, apparition douce, plus de blanc ───────── */
 @keyframes shimmer { to { background-position: -200% 0; } }
 @keyframes img-fade { from { opacity: 0.35; } to { opacity: 1; } }
-img { background-color: var(--fill); }
 img.is-loading {
   color: transparent;
-  background-image: linear-gradient(100deg, var(--fill) 30%, #f5f5f7 50%, var(--fill) 70%);
+  background-color: var(--fill);
+  background-image: linear-gradient(100deg, var(--fill) 30%, rgba(255,255,255,0.2) 50%, var(--fill) 70%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
 img.is-loaded { animation: img-fade 0.3s ease-out; }
 
-/* ───────── Défilement ───────── */
-html { scroll-behavior: smooth; }
 @media (hover: none) {
   ::-webkit-scrollbar { display: none; }
   * { scrollbar-width: none; }
 }
-.scroll-snap-x { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
-.scroll-snap-x > * { scroll-snap-align: start; }
 
-/* ───────── Zones sûres ───────── */
 .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px); }
 .px-safe { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 
-/* ───────── Verre dépoli (barres de navigation, onglets) ───────── */
 .glass {
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 0.5px solid rgba(60, 60, 67, 0.18);
+  background: var(--ios-glass, rgba(255, 255, 255, 0.78));
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  border-bottom: 0.5px solid var(--ios-border, rgba(60, 60, 67, 0.14));
 }
-.glass-bottom { border-bottom: 0; border-top: 0.5px solid rgba(60, 60, 67, 0.18); }
-.hairline { border-width: 0; box-shadow: inset 0 -0.5px 0 rgba(60, 60, 67, 0.18); }
+.glass-bottom {
+  background: var(--ios-glass, rgba(255, 255, 255, 0.82));
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  border-top: 0.5px solid var(--ios-border, rgba(60, 60, 67, 0.14));
+}
 
-/* ───────── Transitions d'écrans et de feuilles ───────── */
 @keyframes sheet-up   { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes fade-in    { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop-in     { from { opacity: 0; scale: 0.94; } to { opacity: 1; scale: 1; } }
-@keyframes screen-in  { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
-.sheet-in  { animation: sheet-up 0.45s var(--ease-ios) both; }
-.fade-in   { animation: fade-in 0.25s ease-out both; }
-.pop-in    { animation: pop-in 0.3s var(--ease-ios) both; }
-.screen-in { animation: screen-in 0.35s var(--ease-ios) both; }   /* à mettre sur le conteneur de chaque écran */
+@keyframes screen-in  { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
+.sheet-in  { animation: sheet-up 0.42s var(--ease-ios) both; }
+.fade-in   { animation: fade-in 0.22s ease-out both; }
+.pop-in    { animation: pop-in 0.28s var(--ease-ios) both; }
+.screen-in { animation: screen-in 0.32s var(--ease-ios) both; }
 
-/* ───────── Mouvement réduit ───────── */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

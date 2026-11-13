@@ -1,11 +1,13 @@
 import React from 'react';
-import { Home, MapPin, Search, ShoppingBag, QrCode, User } from 'lucide-react';
+import { Home, UtensilsCrossed, QrCode, User } from 'lucide-react';
 import { UserProfile } from '../types';
+import { triggerHaptic } from '../utils/haptics';
+
+export type BottomTabId = 'home' | 'menu' | 'tickets' | 'profile';
 
 interface Props {
-  activeTab: 'home' | 'search' | 'cart' | 'tickets' | 'profile';
-  onTabChange: (tab: 'home' | 'search' | 'cart' | 'tickets' | 'profile') => void;
-  cartCount: number;
+  activeTab: BottomTabId;
+  onTabChange: (tab: BottomTabId) => void;
   validTicketsCount: number;
   user: UserProfile | null;
 }
@@ -13,88 +15,64 @@ interface Props {
 export const MobileBottomNav: React.FC<Props> = ({
   activeTab,
   onTabChange,
-  cartCount,
   validTicketsCount,
-  user
 }) => {
+  const tabs: Array<{
+    id: BottomTabId;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: number;
+  }> = [
+    { id: 'home', label: 'Accueil', icon: Home },
+    { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
+    { id: 'tickets', label: 'Tickets', icon: QrCode, badge: validTicketsCount },
+    { id: 'profile', label: 'Profil', icon: User },
+  ];
+
   return (
-    <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] inset-x-0 z-40 flex items-center justify-center px-4 pointer-events-none select-none">
-      <nav 
-        className="pointer-events-auto bg-white border border-slate-200 shadow-2xl rounded-full px-2 py-1.5 flex items-center space-x-1 sm:space-x-2 max-w-md w-full justify-around ring-1 ring-black/5"
-        aria-label="Navigation Principale"
-      >
-        {/* 1. Accueil */}
-        <button
-          type="button"
-          onClick={() => onTabChange('home')}
-          className={`flex items-center space-x-1.5 px-3 py-2 rounded-full transition-all cursor-pointer ${
-            activeTab === 'home'
-              ? 'bg-gradient-to-r from-orange-600 to-amber-500 text-white font-extrabold shadow-md shadow-orange-500/25'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Home className="w-4 h-4 flex-shrink-0" />
-          <span className="text-xs font-bold leading-none">Accueil</span>
-        </button>
-
-        {/* 3. Recherche */}
-        <button
-          type="button"
-          onClick={() => onTabChange('search')}
-          className={`p-2 rounded-full transition-all text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer relative ${
-            activeTab === 'search' ? 'text-orange-600 bg-orange-50 font-bold' : ''
-          }`}
-          title="Rechercher un plat"
-        >
-          <Search className="w-5 h-5" />
-        </button>
-
-        {/* 4. Panier */}
-        <button
-          type="button"
-          onClick={() => onTabChange('cart')}
-          className="p-2 rounded-full transition-all text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer relative"
-          title="Mon Panier"
-        >
-          <ShoppingBag className="w-5 h-5" />
-          {cartCount > 0 && (
-            <span className="absolute top-0 right-0 px-1.5 py-0.2 min-w-[17px] h-[17px] rounded-full bg-orange-600 text-white text-[10px] font-black flex items-center justify-center shadow-md animate-scaleUp">
-              {cartCount}
-            </span>
-          )}
-        </button>
-
-        {/* 5. Mes Tickets */}
-        <button
-          type="button"
-          onClick={() => onTabChange('tickets')}
-          className="p-2 rounded-full transition-all text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer relative"
-          title="Mes Tickets CROU (QR Code)"
-        >
-          <QrCode className="w-5 h-5" />
-          {validTicketsCount > 0 && (
-            <span className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-600 ring-2 ring-white animate-pulse"></span>
-          )}
-        </button>
-
-        {/* 6. Profil / Compte */}
-        <button
-          type="button"
-          onClick={() => onTabChange('profile')}
-          className={`p-1.5 rounded-full transition-all cursor-pointer ${
-            user ? 'ring-2 ring-orange-500/30' : 'text-slate-500 hover:text-orange-600'
-          }`}
-          title={user ? `Compte (${user.displayName})` : 'Se connecter'}
-        >
-          {user ? (
-            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 text-white flex items-center justify-center text-[10px] font-extrabold uppercase">
-              {user.displayName.charAt(0) || 'U'}
-            </div>
-          ) : (
-            <User className="w-5 h-5" />
-          )}
-        </button>
-      </nav>
-    </div>
+    <nav
+      aria-label="Navigation principale"
+      className="fixed bottom-0 inset-x-0 z-40 glass-bottom pb-safe select-none"
+    >
+      <div className="max-w-lg mx-auto grid grid-cols-4 items-center px-2 pt-2 pb-1">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onTabChange(tab.id);
+              }}
+              aria-label={tab.label}
+              aria-current={isActive ? 'page' : undefined}
+              className="ios-btn-spring relative flex flex-col items-center justify-center min-h-[48px] gap-1"
+            >
+              <div className="relative flex items-center justify-center">
+                <Icon
+                  className={`w-[22px] h-[22px] transition-colors ${
+                    isActive ? 'text-[#ea580c]' : 'text-[var(--ios-fg-secondary)]'
+                  }`}
+                />
+                {tab.badge && tab.badge > 0 ? (
+                  <span className="absolute -top-1.5 -right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-[#ea580c] text-white text-[11px] font-extrabold flex items-center justify-center leading-none shadow-xs tabular-nums">
+                    {tab.badge > 99 ? '99+' : tab.badge}
+                  </span>
+                ) : null}
+              </div>
+              <span
+                className={`text-[11px] font-bold leading-none ${
+                  isActive ? 'text-[#ea580c]' : 'text-[var(--ios-fg-secondary)]'
+                }`}
+              >
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 };

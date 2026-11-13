@@ -1,37 +1,35 @@
 import React, { useState } from 'react';
-import { 
-  Heart, 
-  Info,
-  Calendar,
-  Clock,
-  UtensilsCrossed
-} from 'lucide-react';
+import { Heart, UtensilsCrossed } from 'lucide-react';
 import { Dish } from '../types';
 import { ImageWithLoader } from './ImageWithLoader';
+import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
   dish: Dish;
   onSelectDetail?: (dish: Dish) => void;
 }
 
-export const DishCard: React.FC<Props> = ({ 
-  dish, 
-  onSelectDetail 
-}) => {
+export const DishCard: React.FC<Props> = ({ dish, onSelectDetail }) => {
   const [isFavorite, setIsFavorite] = useState(false);
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    triggerHaptic('light');
     setIsFavorite(!isFavorite);
   };
 
   const getCategoryBadge = () => {
     switch (dish.category) {
-      case 'plat_principal': return 'Plat chaud';
-      case 'entree': return 'Entrée';
-      case 'dessert': return 'Dessert';
-      case 'boisson': return 'Boisson';
-      default: return 'Plat chaud';
+      case 'plat_principal':
+        return 'Plat chaud';
+      case 'entree':
+        return 'Entrée';
+      case 'dessert':
+        return 'Dessert';
+      case 'boisson':
+        return 'Boisson';
+      default:
+        return 'Plat chaud';
     }
   };
 
@@ -42,38 +40,51 @@ export const DishCard: React.FC<Props> = ({
   };
 
   const hasAdminPhoto = Boolean(
-    dish.imageUrl && 
-    dish.imageUrl.trim().length > 0 && 
-    !dish.imageUrl.includes('placeholder') &&
-    !dish.imageUrl.includes('unsplash.com')
+    dish.imageUrl &&
+      dish.imageUrl.trim().length > 0 &&
+      !dish.imageUrl.includes('placeholder') &&
+      !dish.imageUrl.includes('unsplash.com')
   );
 
   return (
-    <div 
-      onClick={() => onSelectDetail && onSelectDetail(dish)}
-      className={`group bg-white rounded-2xl border border-slate-200 hover:border-orange-500/60 p-3.5 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between cursor-pointer select-none ${
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        triggerHaptic('light');
+        onSelectDetail?.(dish);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelectDetail?.(dish);
+        }
+      }}
+      className={`ios-btn-spring group ios-card rounded-[24px] p-3.5 flex flex-col justify-between cursor-pointer select-none shadow-xs hover:border-[#ea580c]/50 transition-colors ${
         dish.isAvailable ? '' : 'opacity-65'
       }`}
     >
-      {/* 1. Header: Heure Service + Favori */}
-      <div className="flex items-center justify-between gap-1 mb-2">
-        <div className="flex items-center space-x-1.5 text-xs text-slate-500 font-medium">
-          <span className="text-slate-800 font-semibold">{dish.mealType === 'dejeuner' ? 'Midi' : 'Soir'}</span>
+      {/* Top Meta + Favorite */}
+      <div className="flex items-center justify-between gap-1 mb-2.5">
+        <div className="flex items-center gap-1.5 text-[12px] text-[var(--ios-fg-secondary)] font-medium truncate">
+          <span className="text-[var(--ios-fg)] font-bold">
+            {dish.mealType === 'dejeuner' ? 'Midi' : 'Soir'}
+          </span>
           <span>·</span>
-          <span>{getTimeBadge()}</span>
+          <span className="truncate">{getTimeBadge()}</span>
         </div>
         <button
           type="button"
           onClick={handleFavoriteClick}
-          className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors"
-          title="Ajouter aux favoris"
+          aria-label={isFavorite ? `Retirer ${dish.name} des favoris` : `Ajouter ${dish.name} aux favoris`}
+          className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--ios-fg-secondary)] hover:text-red-500 flex-shrink-0"
         >
           <Heart className={`w-4 h-4 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
         </button>
       </div>
 
-      {/* 2. Photo si uploadée par l'Admin, sinon Présentation Typographique & Emblème CROU-K */}
-      <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-slate-900 shadow-xs flex items-center justify-center">
+      {/* Dish Artwork */}
+      <div className="relative w-full aspect-square rounded-[18px] overflow-hidden bg-zinc-900 flex items-center justify-center">
         {hasAdminPhoto ? (
           <ImageWithLoader
             src={dish.imageUrl}
@@ -83,56 +94,49 @@ export const DishCard: React.FC<Props> = ({
             spiralLabel="Chargement..."
           />
         ) : (
-          <div className="w-full h-full bg-slate-900 p-4 flex flex-col justify-between text-white relative">
-            <div className="flex items-center justify-between">
-              <span className="px-2 py-1 rounded text-xs font-semibold bg-orange-600 text-white">
+          <div className="w-full h-full bg-zinc-900 p-3.5 flex flex-col justify-between text-white">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="px-2 py-0.5 rounded-md font-bold bg-[#ea580c] text-white">
                 {dish.mealType === 'dejeuner' ? 'Midi' : 'Soir'}
               </span>
-              <span className="text-xs font-medium text-slate-400">
-                CROU-K
-              </span>
+              <span className="text-zinc-400 font-medium">CROU-K</span>
             </div>
 
-            <div className="my-auto text-center space-y-1.5">
-              <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/15 mx-auto flex items-center justify-center text-white">
-                <UtensilsCrossed className="w-6 h-6 text-orange-400" />
+            <div className="my-auto text-center space-y-2">
+              <div className="w-11 h-11 rounded-[14px] bg-white/10 mx-auto flex items-center justify-center">
+                <UtensilsCrossed className="w-5 h-5 text-[#ea580c]" />
               </div>
-              <h5 className="font-bold text-sm text-white line-clamp-2 px-1">
+              <h5 className="font-bold text-[14px] text-white line-clamp-2 px-1 leading-snug">
                 {dish.name}
               </h5>
             </div>
 
-            <div className="text-xs text-center text-slate-400">
-              Restaurant Universitaire
-            </div>
+            <span className="text-[11px] text-center text-zinc-400">Resto U UPGC</span>
           </div>
         )}
 
-        {/* Badge catégorie flottant en bas */}
-        <span className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-xs text-xs font-medium text-white shadow-xs">
+        <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-[10px] bg-black/75 backdrop-blur-xs text-[11px] font-semibold text-white">
           {getCategoryBadge()}
         </span>
       </div>
 
-      {/* 3. Titre du Plat & Description */}
+      {/* Dish Title */}
       <div className="mt-3 space-y-1">
-        <h4 className="font-bold text-base text-slate-900 group-hover:text-orange-600 transition-colors line-clamp-1">
+        <h4 className="font-bold text-[16px] text-[var(--ios-fg)] group-hover:text-[#ea580c] transition-colors line-clamp-1">
           {dish.name}
         </h4>
-        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-          {dish.description || 'Plat cuisiné et servi par le restaurant universitaire du CROU Korhogo.'}
+        <p className="text-[13px] text-[var(--ios-fg-secondary)] line-clamp-2 leading-snug">
+          {dish.description || 'Plat cuisiné et servi au restaurant universitaire du CROU Korhogo.'}
         </p>
       </div>
 
-      {/* 4. Mention Subvention & Accessibilité Ticket */}
-      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-        <div className="flex items-baseline space-x-1">
-          <span className="font-bold text-base text-slate-900">200 FCFA</span>
-          <span className="text-xs text-slate-500">/ repas</span>
-        </div>
-
-        <span className="text-xs text-slate-500 font-medium">
-          1 ticket repas
+      {/* Price */}
+      <div className="mt-3 pt-2.5 border-t border-[var(--ios-border)] flex items-baseline justify-between">
+        <span className="font-extrabold text-[16px] text-[#ea580c] tabular-nums">
+          200 FCFA
+        </span>
+        <span className="text-[12px] text-[var(--ios-fg-secondary)] font-medium">
+          1 ticket
         </span>
       </div>
     </div>

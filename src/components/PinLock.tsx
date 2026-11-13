@@ -1,10 +1,5 @@
 // src/components/PinLock.tsx
 // Verrouillage par code PIN à 4 chiffres rattaché directement au compte Firestore de l'étudiant.
-// - Empreinte PBKDF2 + sel stockés dans le document Firestore du compte étudiant (multi-appareils & anti-réinitialisation).
-// - Le compteur d'échecs est également persisté dans Firestore : recharger ou vider le cache ne remet pas les essais à zéro.
-// - Après 5 erreurs consécutives : le compte est bloqué dans Firestore, les identifiants mémorisés sont effacés,
-//   et AUCUN bouton "Code oublié" ne permet à l'étudiant de contourner ou choisir un nouveau PIN.
-//   Seul un administrateur CROU peut débloquer le compte et réinitialiser le PIN après vérification d'identité.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Delete, ShieldAlert, Lock } from 'lucide-react';
 import {
@@ -17,7 +12,16 @@ import {
 const ITERATIONS = 150_000;
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-const haptic = (ms: number) => (window as unknown as { haptic?: (n: number) => void }).haptic?.(ms);
+const haptic = (ms: number) => {
+  try {
+    (window as unknown as { haptic?: (n: number) => void }).haptic?.(ms);
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(ms);
+    }
+  } catch {
+    // Ignore haptic fallback errors
+  }
+};
 const toHex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 const fromHex = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
 
@@ -32,7 +36,6 @@ async function hashPin(pin: string, saltHex: string): Promise<string> {
 }
 
 type StoredPin = { salt: string; hash: string };
-
 type Mode = 'checking' | 'setup' | 'confirm' | 'locked' | 'open';
 
 interface Props {
@@ -53,9 +56,9 @@ interface Props {
 }
 
 const TEXT: Record<'setup' | 'confirm' | 'locked', { title: string; hint: string }> = {
-  setup: { title: 'Crée ton code PIN', hint: '4 chiffres rattachés à ton compte CROU' },
-  confirm: { title: 'Confirme ton code PIN', hint: 'Saisis-le une deuxième fois' },
-  locked: { title: 'Saisis ton code PIN', hint: 'Compte protégé par code de sécurité' },
+  setup: { title: 'Créez votre code PIN', hint: '4 chiffres rattachés à votre compte CROU' },
+  confirm: { title: 'Confirmez le code PIN', hint: 'Saisissez-le une deuxième fois' },
+  locked: { title: 'Code PIN requis', hint: 'Compte protégé par code de sécurité' },
 };
 
 export const PinLock: React.FC<Props> = ({
@@ -88,7 +91,6 @@ export const PinLock: React.FC<Props> = ({
   const hiddenAt = useRef<number | null>(null);
   const content = useRef<HTMLDivElement>(null);
 
-  // Résoudre le PIN effectif (priorité absolue aux données du compte Firestore)
   const getEffectivePin = useCallback((): StoredPin | null => {
     if (accountPinSalt && accountPinHash) {
       return { salt: accountPinSalt, hash: accountPinHash };
@@ -111,7 +113,6 @@ export const PinLock: React.FC<Props> = ({
     return localFails;
   }, [isStudent, accountPinFails, failStorageKey]);
 
-  // Au changement d'utilisateur ou au chargement : compte bloqué -> expulsion immédiate ; PIN existant -> verrouillé
   useEffect(() => {
     if (!enabled) {
       setMode('open');
@@ -127,17 +128,11 @@ export const PinLock: React.FC<Props> = ({
     }
 
     const effective = getEffectivePin();
-    // Si l'admin a réinitialisé le PIN sur Firestore (accountPinHash devient null/undefined), nettoyer le cache local
-    if (isStudent && accountPinHash === undefined && accountPinSalt === undefined) {
-      // Ne rien supprimer si le profil vient tout juste d'être chargé sans champ PIN, mais si on a déverrouillé en DB
-    }
-
     setPin('');
     setMessage('');
     setMode(effective ? 'locked' : 'setup');
   }, [enabled, scopeId, accountPinHash, accountPinSalt, accountIsBlocked]);
 
-  // Si un étudiant est déjà sur 'setup' sur un autre appareil mais reçoit son PIN cloud en temps réel
   useEffect(() => {
     if (enabled && accountPinSalt && accountPinHash && mode === 'setup') {
       setPin('');
@@ -147,7 +142,6 @@ export const PinLock: React.FC<Props> = ({
     }
   }, [enabled, accountPinSalt, accountPinHash, mode]);
 
-  // Verrouillage automatique après un temps en arrière-plan
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) {
@@ -166,7 +160,6 @@ export const PinLock: React.FC<Props> = ({
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [mode, lockAfterMs, getEffectivePin]);
 
-  // Verrouillage manuel à la demande
   useEffect(() => {
     const handleManualLock = () => {
       if (enabled && getEffectivePin()) {
@@ -179,7 +172,6 @@ export const PinLock: React.FC<Props> = ({
     return () => window.removeEventListener('programas:lock', handleManualLock);
   }, [enabled, getEffectivePin]);
 
-  // Le contenu de l'app est inactif tant qu'elle est verrouillée
   useEffect(() => {
     if (content.current) (content.current as HTMLElement & { inert: boolean }).inert = mode !== 'open';
   }, [mode]);
@@ -198,7 +190,7 @@ export const PinLock: React.FC<Props> = ({
     try {
       if (mode === 'setup') {
         setFirst(value);
-        await wait(160);
+        await wait(140);
         setPin('');
         setMessage('');
         setMode('confirm');
@@ -212,19 +204,18 @@ export const PinLock: React.FC<Props> = ({
             localStorage.removeItem(failStorageKey);
           } catch {}
 
-          // Rattacher le PIN au compte Firestore de l'étudiant (impossible de recréer un autre PIN en changeant d'appareil)
           if (isStudent && userMatricule) {
             await saveStudentPinToAccount(userMatricule, salt, hash);
             onPinUpdated?.(salt, hash);
           }
 
           haptic(20);
-          await wait(140);
+          await wait(120);
           setPin('');
           setMessage('');
           setMode('open');
         } else {
-          await fail('Les deux codes sont différents. Recommence.');
+          await fail('Les deux codes sont différents. Recommencez.');
           setFirst('');
           setMode('setup');
         }
@@ -238,7 +229,7 @@ export const PinLock: React.FC<Props> = ({
             updateStudentPinFails(userMatricule, 0).catch(() => {});
           }
           haptic(15);
-          await wait(120);
+          await wait(100);
           setPin('');
           setMessage('');
           setMode('open');
@@ -261,11 +252,9 @@ export const PinLock: React.FC<Props> = ({
                 console.error('Error blocking student account on PinLock:', bErr);
               }
 
-              await fail('5 erreurs ! Compte bloqué. Contactez l\'Admin CROU.');
+              await fail("5 erreurs. Compte bloqué, contactez l'Admin CROU.");
               await wait(1300);
 
-              // NE PAS supprimer pinHash du compte Firestore ! Seul l'Admin peut débloquer/réinitialiser.
-              // Effacer uniquement les identifiants mémorisés sur cet appareil.
               try {
                 localStorage.removeItem('crou_remembered_matricule');
                 localStorage.removeItem('crou_remembered_password');
@@ -274,8 +263,7 @@ export const PinLock: React.FC<Props> = ({
 
               onAccountBlocked?.(userMatricule, blockReason);
             } else {
-              // Pour le compte admin uniquement : retour à l'écran de connexion admin sans bloquer d'étudiant
-              await fail('5 erreurs ! Reconnexion administrateur requise.');
+              await fail('5 erreurs. Reconnexion administrateur requise.');
               await wait(1000);
               try {
                 localStorage.removeItem(pinStorageKey);
@@ -290,7 +278,7 @@ export const PinLock: React.FC<Props> = ({
         }
       }
     } catch {
-      await fail('Une erreur est survenue. Réessaie.');
+      await fail('Une erreur est survenue. Réessayez.');
     } finally {
       busy.current = false;
     }
@@ -299,6 +287,7 @@ export const PinLock: React.FC<Props> = ({
   const press = useCallback(
     (digit: string) => {
       if (busy.current || pin.length >= 4) return;
+      haptic(8);
       const next = pin + digit;
       setPin(next);
       if (next.length === 4) void submit(next);
@@ -306,9 +295,13 @@ export const PinLock: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pin, mode, first, accountPinHash, accountPinSalt, accountPinFails]
   );
-  const erase = () => !busy.current && setPin((p) => p.slice(0, -1));
 
-  // Clavier physique
+  const erase = () => {
+    if (busy.current) return;
+    haptic(6);
+    setPin((p) => p.slice(0, -1));
+  };
+
   useEffect(() => {
     if (mode === 'open' || mode === 'checking') return;
     const onKey = (e: KeyboardEvent) => {
@@ -331,43 +324,54 @@ export const PinLock: React.FC<Props> = ({
 
       {(mode === 'checking' || showLock) && (
         <div
-          className="fixed inset-0 z-[90] flex flex-col items-center bg-white px-6 text-[#1d1d1f] dark:bg-black dark:text-white"
-          style={{ paddingTop: 'max(env(safe-area-inset-top), 24px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}
+          className="fixed inset-0 z-[90] flex flex-col items-center justify-between bg-[var(--ios-bg)] text-[var(--ios-fg)] px-6 select-none"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 28px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}
         >
           {copy && (
             <>
-              <div className="mt-[8vh] h-14 w-14 rounded-2xl bg-orange-600 flex items-center justify-center shadow-lg shadow-orange-600/25" aria-hidden="true">
-                <Lock className="w-7 h-7 text-white" />
-              </div>
-
-              {userMatricule && (
-                <div className="mt-3 px-3 py-1 rounded-full bg-black/5 dark:bg-white/10 text-[11px] font-mono font-bold tracking-wider">
-                  {userName ? `${userName} · ` : ''}{userMatricule}
+              <div className="flex flex-col items-center mt-4 sm:mt-8">
+                <div className="w-16 h-16 rounded-[20px] bg-[#ea580c] flex items-center justify-center shadow-lg shadow-orange-600/25" aria-hidden="true">
+                  <Lock className="w-7 h-7 text-white" />
                 </div>
-              )}
 
-              <h1 className="mt-4 text-2xl font-semibold text-center">{copy.title}</h1>
-              <p
-                className={`mt-1 min-h-5 text-center text-[14px] ${
-                  message ? 'text-red-600 font-semibold dark:text-red-400' : 'text-[rgba(60,60,67,0.6)] dark:text-[rgba(235,235,245,0.6)]'
-                }`}
-                role="status"
-              >
-                {message || (mode === 'locked' && remainingAttempts < maxAttempts ? `${remainingAttempts} essai${remainingAttempts > 1 ? 's' : ''} restant${remainingAttempts > 1 ? 's' : ''} avant blocage` : copy.hint)}
-              </p>
+                {userMatricule && (
+                  <p className="mt-3 text-[13px] font-bold tracking-wide text-[var(--ios-fg-secondary)] tabular-nums">
+                    {userName ? `${userName} · ` : ''}{userMatricule}
+                  </p>
+                )}
 
-              <div className={`mt-7 flex gap-5 ${shake ? 'shake' : ''}`} aria-label={`${pin.length} chiffres saisis sur 4`}>
-                {[0, 1, 2, 3].map((i) => (
-                  <span
-                    key={i}
-                    className={`h-[14px] w-[14px] rounded-full border-[1.5px] border-[#1d1d1f] transition-colors duration-100 dark:border-white ${
-                      i < pin.length ? 'bg-[#1d1d1f] dark:bg-white' : 'bg-transparent'
-                    }`}
-                  />
-                ))}
+                <h1 className="mt-3 text-[28px] sm:text-[32px] font-extrabold tracking-tight text-center leading-tight">
+                  {copy.title}
+                </h1>
+                <p
+                  className={`mt-1.5 min-h-[24px] text-center text-[15px] ${
+                    message ? 'text-red-500 font-semibold' : 'text-[var(--ios-fg-secondary)]'
+                  }`}
+                  role="status"
+                >
+                  {message ||
+                    (mode === 'locked' && remainingAttempts < maxAttempts
+                      ? `${remainingAttempts} essai${remainingAttempts > 1 ? 's' : ''} restant${remainingAttempts > 1 ? 's' : ''} avant blocage`
+                      : copy.hint)}
+                </p>
+
+                {/* 4 PIN Dots */}
+                <div className={`mt-7 flex gap-5 ${shake ? 'shake' : ''}`} aria-label={`${pin.length} chiffres saisis sur 4`}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <span
+                      key={i}
+                      className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${
+                        i < pin.length
+                          ? 'bg-[#ea580c] border-[#ea580c] scale-110'
+                          : 'bg-transparent border-[var(--ios-fg-tertiary)]'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
 
-              <div className="mt-auto grid w-full max-w-[300px] grid-cols-3 justify-items-center gap-x-6 gap-y-4">
+              {/* Round iOS Keypad */}
+              <div className="grid w-full max-w-[296px] grid-cols-3 justify-items-center gap-x-5 gap-y-4 my-auto py-4">
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
                   <Key key={d} label={d} onPress={() => press(d)} />
                 ))}
@@ -376,22 +380,23 @@ export const PinLock: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={erase}
-                  aria-label="Effacer"
-                  className={`flex h-[76px] w-[76px] items-center justify-center text-[rgba(60,60,67,0.6)] dark:text-[rgba(235,235,245,0.6)] ${
+                  aria-label="Effacer le dernier chiffre"
+                  className={`ios-btn-spring flex h-[76px] w-[76px] items-center justify-center rounded-full text-[var(--ios-fg-secondary)] ${
                     pin.length ? 'opacity-100' : 'pointer-events-none opacity-0'
                   }`}
                 >
-                  <Delete className="h-7 w-7" strokeWidth={1.75} aria-hidden="true" />
+                  <Delete className="h-7 w-7" strokeWidth={1.8} aria-hidden="true" />
                 </button>
               </div>
 
-              <div className="mt-5 min-h-12 flex items-center justify-center text-center max-w-xs">
-                {mode === 'locked' && (
-                  isStudent ? (
-                    <div className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/50 dark:border-amber-500/30 dark:text-amber-200">
-                      <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              {/* Footer Status / Guard Notice */}
+              <div className="min-h-[56px] flex items-center justify-center text-center max-w-xs">
+                {mode === 'locked' &&
+                  (isStudent ? (
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-[18px] bg-[var(--ios-surface)] border border-[var(--ios-border)] text-[12px] font-medium text-[var(--ios-fg-secondary)] leading-snug">
+                      <ShieldAlert className="w-4 h-4 text-[#ea580c] flex-shrink-0" />
                       <span>
-                        Code oublié ou compte bloqué ? Déblocage exclusivement par l'Admin au guichet CROU.
+                        Code oublié ou compte bloqué ? Déblocage exclusivement au guichet Admin CROU.
                       </span>
                     </div>
                   ) : (
@@ -404,12 +409,11 @@ export const PinLock: React.FC<Props> = ({
                         } catch {}
                         onForgot?.();
                       }}
-                      className="h-10 px-4 text-sm font-semibold text-orange-600 hover:underline cursor-pointer"
+                      className="ios-btn-spring min-h-[48px] px-5 text-[15px] font-bold text-[#ea580c]"
                     >
                       Déconnexion Administrateur
                     </button>
-                  )
-                )}
+                  ))}
               </div>
             </>
           )}
@@ -423,13 +427,13 @@ const Key: React.FC<{ label: string; onPress: () => void }> = ({ label, onPress 
   <button
     type="button"
     onClick={onPress}
-    className="flex h-[76px] w-[76px] select-none items-center justify-center rounded-full bg-black/5 text-[32px] font-light tabular-nums transition-colors duration-100 active:bg-black/15 dark:bg-white/10 dark:active:bg-white/25"
+    aria-label={`Chiffre ${label}`}
+    className="ios-btn-spring flex h-[76px] w-[76px] select-none items-center justify-center rounded-full bg-[var(--ios-surface)] border border-[var(--ios-border)] text-[30px] font-semibold text-[var(--ios-fg)] tabular-nums shadow-xs active:bg-[#ea580c]/15"
   >
     {label}
   </button>
 );
 
-/** Déclenche le verrouillage immédiat de l'application depuis n'importe quel composant */
 export const lockAppNow = () => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('programas:lock'));

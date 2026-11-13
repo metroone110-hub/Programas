@@ -1,24 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Send, 
-  Ticket, 
-  User, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Clock, 
-  ShieldCheck, 
-  ArrowRight,
-  Sparkles,
-  Search
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Send,
+  Ticket,
+  User,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { MealTicket, UserProfile } from '../types';
-import { 
-  transferMealTicketToStudent, 
-  lookupStudentByMatricule 
+import {
+  transferMealTicketToStudent,
+  lookupStudentByMatricule
 } from '../services/studentAuth';
 import { soundSynthesizer } from '../utils/audioFeedback';
+import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
   isOpen: boolean;
@@ -43,8 +42,8 @@ export const TicketTransferModal: React.FC<Props> = ({
   const [isSearchingRecipient, setIsSearchingRecipient] = useState(false);
   const [transferNote, setTransferNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isTransferringRef = React.useRef(false);
-  const wasOpenRef = React.useRef(false);
+  const isTransferringRef = useRef(false);
+  const wasOpenRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{
     ticket: MealTicket;
@@ -52,7 +51,6 @@ export const TicketTransferModal: React.FC<Props> = ({
     recipientMatricule: string;
   } | null>(null);
 
-  // Initialiser proprement UNIQUEMENT à l'ouverture de la modale (jamais en boucle pendant le transfert)
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       isTransferringRef.current = false;
@@ -74,7 +72,6 @@ export const TicketTransferModal: React.FC<Props> = ({
     wasOpenRef.current = isOpen;
   }, [isOpen, initialTicket, validTickets]);
 
-  // Live lookup of recipient when typing matricule
   useEffect(() => {
     if (!isOpen || successInfo) return;
     const clean = recipientMatricule.trim().toUpperCase();
@@ -99,17 +96,14 @@ export const TicketTransferModal: React.FC<Props> = ({
     return () => clearTimeout(timer);
   }, [recipientMatricule, isOpen, successInfo]);
 
-  if (!isOpen) return null;
-
-  const currentSelectedTicket = validTickets.find(
-    t => t.id === selectedTicketId || t.ticketNumber === selectedTicketId
-  ) || validTickets[0];
+  const currentSelectedTicket =
+    validTickets.find(t => t.id === selectedTicketId || t.ticketNumber === selectedTicketId) ||
+    validTickets[0];
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    // Verrou immédiat synchrone anti double-clic & anti double-envoi
     if (isTransferringRef.current || isSubmitting || successInfo) {
       return;
     }
@@ -120,22 +114,23 @@ export const TicketTransferModal: React.FC<Props> = ({
     }
 
     if (currentSelectedTicket.status !== 'valid') {
-      setErrorMessage("🚨 Ce ticket a déjà été utilisé au restaurant universitaire et ne peut plus être transféré.");
+      setErrorMessage('Ce ticket a déjà été utilisé et ne peut plus être transféré.');
       return;
     }
 
     const cleanMat = recipientMatricule.trim().toUpperCase();
     if (!cleanMat || cleanMat.length < 4) {
-      setErrorMessage('Veuillez renseigner un numéro de matricule étudiant valide (au moins 4 caractères).');
+      setErrorMessage('Veuillez saisir un matricule valide (au moins 4 caractères).');
       return;
     }
 
     const senderMat = (user.matricule || user.uid || '').trim().toUpperCase();
     if (cleanMat === senderMat) {
-      setErrorMessage('Vous ne pouvez pas vous transférer un ticket à vous-même.');
+      setErrorMessage('Vous ne pouvez pas transférer un ticket à votre propre matricule.');
       return;
     }
 
+    triggerHaptic('medium');
     isTransferringRef.current = true;
     setIsSubmitting(true);
 
@@ -149,22 +144,18 @@ export const TicketTransferModal: React.FC<Props> = ({
       );
 
       if (!result.success || !result.updatedSender || !result.transferredTicket) {
+        triggerHaptic('error');
         setErrorMessage(result.error || 'Erreur lors du transfert du ticket.');
         return;
       }
 
-      // Success feedback
       soundSynthesizer.playSuccessBeep();
+      triggerHaptic('success');
       try {
-        confetti({
-          particleCount: 60,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
+        confetti({ particleCount: 60, spread: 70, origin: { y: 0.65 } });
       } catch {}
 
       setSelectedTicketId('');
-
       setSuccessInfo({
         ticket: result.transferredTicket,
         recipientName: result.recipientName || `Étudiant (${cleanMat})`,
@@ -173,7 +164,7 @@ export const TicketTransferModal: React.FC<Props> = ({
 
       onTransferSuccess(result.updatedSender, result.transferredTicket, cleanMat);
     } catch (err: any) {
-      console.error('Ticket transfer exception:', err);
+      triggerHaptic('error');
       setErrorMessage(err.message || 'Une erreur inattendue est survenue.');
     } finally {
       isTransferringRef.current = false;
@@ -192,274 +183,206 @@ export const TicketTransferModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] my-auto animate-scaleUp">
-        
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-20 flex-shrink-0 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-5 sm:p-6 text-white flex items-center justify-between shadow-xs">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl text-white">
-              <Send className="w-6 h-6 text-amber-200" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white tracking-tight">
-                Transférer un ticket repas
-              </h3>
-              <p className="text-xs text-orange-100">
-                Offrez un repas subventionné CROU à un camarade
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 overflow-hidden select-none">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onClick={handleResetAndClose}
-            className="w-10 h-10 rounded-full bg-black/25 hover:bg-black/40 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer flex-shrink-0"
-            aria-label="Fermer"
-            title="Fermer la fenêtre"
+            className="fixed inset-0 bg-black/60 backdrop-blur-md"
+          />
+
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 32, stiffness: 360, mass: 0.9 }}
+            className="relative z-10 w-full sm:max-w-lg bg-[var(--ios-surface)] text-[var(--ios-fg)] rounded-t-[30px] sm:rounded-[30px] shadow-2xl border-t sm:border border-[var(--ios-border)] overflow-hidden flex flex-col max-h-[92dvh]"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
           >
-            <X className="w-5 h-5 text-white stroke-[2.5]" />
-          </button>
-        </div>
+            <div className="sm:hidden pt-2.5 pb-1 flex justify-center">
+              <div className="w-10 h-1.5 rounded-full bg-[var(--ios-fg-tertiary)] opacity-45" />
+            </div>
 
-        {/* Content Body (Scrollable) */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1">
-          {successInfo ? (
-            /* Success confirmation screen */
-            <div className="text-center py-4 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
-                <CheckCircle2 className="w-9 h-9" />
-              </div>
-
-              <div className="space-y-1">
-                <h4 className="text-xl font-black text-slate-900 font-cabinet">
-                  Ticket transféré avec succès !
-                </h4>
-                <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
-                  Le ticket a été immédiatement crédité sur le compte de votre camarade avec son QR code officiel.
-                </p>
-              </div>
-
-              {/* Transferred Ticket Recap Box */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-2 text-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <span className="text-slate-500">Bénéficiaire :</span>
-                  <span className="font-bold text-slate-900">
-                    {successInfo.recipientName} ({successInfo.recipientMatricule})
-                  </span>
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-[var(--ios-border)] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-[14px] bg-[#ea580c] text-white flex items-center justify-center flex-shrink-0">
+                  <Send className="w-5 h-5" />
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Plat transféré :</span>
-                  <span className="font-bold text-slate-900">{successInfo.ticket.dishName}</span>
+                <div className="min-w-0">
+                  <h3 className="text-[18px] font-extrabold truncate">Offrir un ticket</h3>
+                  <p className="text-[13px] text-[var(--ios-fg-secondary)] truncate">
+                    Transfert par matricule étudiant
+                  </p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Service :</span>
-                  <span className="font-semibold text-orange-600">
-                    {successInfo.ticket.mealType === 'dejeuner' ? 'Midi (Déjeuner)' : 'Soir (Dîner)'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-slate-500">Numéro de série :</span>
-                  <span className="font-mono font-bold text-slate-700">{successInfo.ticket.ticketNumber}</span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 flex items-center space-x-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span>Ce ticket est désormais disponible dans « Mes tickets » de votre bénéficiaire.</span>
               </div>
 
               <button
                 type="button"
                 onClick={handleResetAndClose}
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl transition-all cursor-pointer shadow-md"
+                aria-label="Fermer la fenêtre de transfert"
+                className="ios-btn-spring w-10 h-10 rounded-full bg-[var(--ios-bg)] border border-[var(--ios-border)] flex items-center justify-center flex-shrink-0"
               >
-                Terminer
+                <X className="w-5 h-5" />
               </button>
             </div>
-          ) : validTickets.length === 0 ? (
-            /* Empty state: Sender has no tickets */
-            <div className="text-center py-8 space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto">
-                <Ticket className="w-8 h-8" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="font-bold text-slate-900 text-base">
-                  Aucun ticket disponible à transférer
-                </h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  Pour pouvoir envoyer un ticket repas à un proche, vous devez posséder au moins un ticket repas valide non utilisé dans votre compte.
-                </p>
-              </div>
 
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-left text-xs text-slate-600 space-y-1">
-                <p className="font-semibold text-slate-800 flex items-center space-x-1">
-                  <span>💡 Comment faire ?</span>
-                </p>
-                <p>1. Achetez un ou plusieurs tickets repas à 200 FCFA depuis le menu du jour.</p>
-                <p>2. Revenez ici pour offrir un ticket à votre camarade en renseignant son matricule.</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleResetAndClose}
-                className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
-              >
-                Compris, aller au menu du jour
-              </button>
-            </div>
-          ) : (
-            /* Normal transfer form */
-            <form onSubmit={handleTransfer} className="space-y-4">
-              
-              {/* Select Ticket to Transfer */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>1. Choisissez le ticket à offrir</span>
-                  <span className="text-[11px] font-semibold text-orange-600">
-                    {validTickets.length} ticket{validTickets.length > 1 ? 's' : ''} en votre possession
-                  </span>
-                </label>
-
-                {validTickets.length === 1 ? (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                    <div className="flex items-center space-x-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-xs">
-                        <Ticket className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="font-bold text-xs text-slate-900 block truncate">
-                          {validTickets[0].dishName}
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {validTickets[0].mealType === 'dejeuner' ? '☀️ Midi' : '🌙 Soir'} · {validTickets[0].ticketNumber}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-orange-600">200 FCFA</span>
+            {/* Content Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1">
+              {successInfo ? (
+                <div className="text-center py-4 space-y-5">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-9 h-9" />
                   </div>
-                ) : (
-                  <select
-                    value={selectedTicketId}
-                    onChange={(e) => setSelectedTicketId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+
+                  <div className="space-y-1">
+                    <h4 className="text-[22px] font-extrabold">Ticket transféré</h4>
+                    <p className="text-[15px] text-[var(--ios-fg-secondary)] leading-snug">
+                      Crédité immédiatement sur le compte de <strong>{successInfo.recipientName}</strong>.
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[20px] text-left space-y-2 text-[14px]">
+                    <div className="flex justify-between">
+                      <span className="text-[var(--ios-fg-secondary)]">Bénéficiaire :</span>
+                      <span className="font-bold tabular-nums">{successInfo.recipientMatricule}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--ios-fg-secondary)]">N° série :</span>
+                      <span className="font-mono font-bold">{successInfo.ticket.ticketNumber}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleResetAndClose}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] text-white font-bold text-[17px] rounded-[20px]"
                   >
-                    {validTickets.map((t) => (
-                      <option key={t.id || t.ticketNumber} value={t.id || t.ticketNumber}>
-                        {t.dishName} ({t.mealType === 'dejeuner' ? 'Midi' : 'Soir'}) · N° {t.ticketNumber}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Recipient Matricule Input */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  2. Numéro de matricule étudiant du bénéficiaire *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <User className="w-4 h-4" />
+                    Terminer
+                  </button>
+                </div>
+              ) : validTickets.length === 0 ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-16 h-16 rounded-[20px] bg-[var(--ios-bg)] text-[#ea580c] flex items-center justify-center mx-auto">
+                    <Ticket className="w-8 h-8" />
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={recipientMatricule}
-                    onChange={(e) => setRecipientMatricule(e.target.value.toUpperCase())}
-                    placeholder="Ex: 32165498 ou UPGC-2026-XXXX"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-orange-500 uppercase"
-                  />
-                  {isSearchingRecipient && (
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                      <div className="w-3.5 h-3.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                  <h4 className="font-extrabold text-[20px]">Aucun ticket disponible</h4>
+                  <p className="text-[15px] text-[var(--ios-fg-secondary)] max-w-xs mx-auto leading-snug">
+                    Achetez d'abord un ticket repas à 200 FCFA pour pouvoir l'offrir à un camarade.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleResetAndClose}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] text-white font-bold text-[16px] rounded-[20px]"
+                  >
+                    Compris
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleTransfer} className="space-y-4">
+                  <div>
+                    <label className="block text-[14px] font-bold mb-1.5">
+                      Ticket à offrir ({validTickets.length} disponible{validTickets.length > 1 ? 's' : ''})
+                    </label>
+                    {validTickets.length === 1 ? (
+                      <div className="p-3.5 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-[15px] block">{validTickets[0].dishName}</span>
+                          <span className="text-[13px] text-[var(--ios-fg-secondary)] font-mono">
+                            N° {validTickets[0].ticketNumber}
+                          </span>
+                        </div>
+                        <span className="font-extrabold text-[#ea580c]">200 F</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedTicketId}
+                        onChange={(e) => setSelectedTicketId(e.target.value)}
+                        className="w-full min-h-[52px] px-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[15px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                      >
+                        {validTickets.map((t) => (
+                          <option key={t.id || t.ticketNumber} value={t.id || t.ticketNumber} className="text-[#1d1d1f] bg-white">
+                            {t.dishName} · N° {t.ticketNumber}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[14px] font-bold mb-1.5">
+                      Matricule du bénéficiaire *
+                    </label>
+                    <div className="relative">
+                      <User className="w-5 h-5 text-[var(--ios-fg-secondary)] absolute left-4 top-4" />
+                      <input
+                        type="text"
+                        required
+                        value={recipientMatricule}
+                        onChange={(e) => setRecipientMatricule(e.target.value.toUpperCase())}
+                        placeholder="Ex : 32165498"
+                        className="w-full min-h-[54px] pl-11 pr-10 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                      />
+                    </div>
+
+                    {recipientPreview ? (
+                      <div className="mt-2 p-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-[14px] flex items-center gap-2 text-[13px] text-emerald-700 dark:text-emerald-300">
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                        <span>Étudiant identifié : <strong>{recipientPreview.displayName}</strong></span>
+                      </div>
+                    ) : recipientMatricule.trim().length >= 4 && !isSearchingRecipient ? (
+                      <div className="mt-2 p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-[14px] flex items-center gap-2 text-[13px] text-amber-700 dark:text-amber-300">
+                        <Sparkles className="w-4 h-4 flex-shrink-0" />
+                        <span>Sera attribué au matricule <strong>{recipientMatricule.trim().toUpperCase()}</strong>.</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label className="block text-[14px] font-bold mb-1.5">
+                      Message (facultatif)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={transferNote}
+                      onChange={(e) => setTransferNote(e.target.value)}
+                      placeholder="Ex : Bon appétit !"
+                      className="w-full min-h-[50px] px-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    />
+                  </div>
+
+                  {errorMessage && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-[16px] text-[14px] text-red-600 dark:text-red-400 flex items-start gap-2">
+                      <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                      <span>{errorMessage}</span>
                     </div>
                   )}
-                </div>
 
-                {/* Recipient Preview feedback */}
-                {recipientPreview ? (
-                  <div className="mt-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center space-x-2 text-[11px] text-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                    <span>Étudiant identifié : <strong className="font-bold">{recipientPreview.displayName}</strong></span>
+                  <div className="flex items-center gap-2 text-[13px] text-[var(--ios-fg-secondary)]">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Nouveau QR code généré automatiquement pour le destinataire.</span>
                   </div>
-                ) : recipientMatricule.trim().length >= 4 && !isSearchingRecipient ? (
-                  <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center space-x-2 text-[11px] text-amber-800">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                    <span>Nouveau bénéficiaire : le ticket sera assigné au matricule <strong>{recipientMatricule.trim().toUpperCase()}</strong> dès son ouverture.</span>
-                  </div>
-                ) : null}
-              </div>
 
-              {/* Optional friendly note */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  3. Message d'accompagnement (facultatif)
-                </label>
-                <input
-                  type="text"
-                  maxLength={80}
-                  value={transferNote}
-                  onChange={(e) => setTransferNote(e.target.value)}
-                  placeholder="Ex: Bon appétit mon frère ! / Pour ton repas de midi"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-
-              {/* Error Notice */}
-              {errorMessage && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                  <span>{errorMessage}</span>
-                </div>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !recipientMatricule.trim()}
+                    data-loading={isSubmitting ? 'true' : undefined}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[17px] rounded-[20px] shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Send className="w-5 h-5" />
+                    <span>{isSubmitting ? 'Transfert...' : 'Confirmer le transfert'}</span>
+                  </button>
+                </form>
               )}
-
-              {/* Security info notice */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500 space-y-1">
-                <div className="flex items-center space-x-1.5 font-semibold text-slate-700">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Transfert sécurisé certifié CROU</span>
-                </div>
-                <p>
-                  Ce ticket sera débité de vos tickets et recevra un nouveau QR code authentifié au nom du destinataire pour passage au tourniquet.
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex items-center space-x-3">
-                <button
-                  type="button"
-                  onClick={handleResetAndClose}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !recipientMatricule.trim()}
-                  className={`flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center space-x-1.5 ${
-                    isSubmitting ? 'cursor-not-allowed pointer-events-none opacity-60' : 'cursor-pointer'
-                  }`}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Transfert en cours...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Confirmer le Transfert</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-            </form>
-          )}
+            </div>
+          </motion.div>
         </div>
-
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 };

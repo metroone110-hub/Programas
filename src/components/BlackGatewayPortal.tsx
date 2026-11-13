@@ -1,32 +1,26 @@
-import React, { useState } from 'react';
-import { 
-  ShieldCheck, 
-  ShieldAlert,
-  Lock, 
-  User, 
-  ArrowRight, 
-  ArrowLeft,
-  KeyRound, 
-  UserPlus, 
-  GraduationCap, 
-  AlertCircle, 
-  Eye, 
+import React, { useState, useEffect } from 'react';
+import {
+  ShieldCheck,
+  Lock,
+  User,
+  ArrowRight,
+  KeyRound,
+  UserPlus,
+  GraduationCap,
+  AlertCircle,
+  Eye,
   EyeOff,
   CheckCircle2,
-  Ticket,
-  ChevronRight,
-  Smartphone,
-  UserCheck,
-  RefreshCw,
-  Hash,
   X
 } from 'lucide-react';
-import { 
-  registerStudentWithMatricule, 
-  loginStudentWithMatricule, 
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  registerStudentWithMatricule,
+  loginStudentWithMatricule,
   loginAdminDirect
 } from '../services/studentAuth';
 import { UserProfile } from '../types';
+import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
   isOpen: boolean;
@@ -34,14 +28,13 @@ interface Props {
   onGuestAccess?: () => void;
 }
 
-export const BlackGatewayPortal: React.FC<Props> = ({ 
-  isOpen, 
+export const BlackGatewayPortal: React.FC<Props> = ({
+  isOpen,
   onSuccess,
-  onGuestAccess 
+  onGuestAccess
 }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register' | 'admin'>('login');
-  
-  // Student Login State (Remembered credentials from previous sessions)
+
   const [loginMatricule, setLoginMatricule] = useState(() => {
     try {
       return localStorage.getItem('crou_remembered_matricule') || '';
@@ -58,7 +51,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   });
   const [rememberMe, setRememberMe] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const clearCreds = () => {
       setLoginMatricule('');
       setLoginPassword('');
@@ -67,7 +60,7 @@ export const BlackGatewayPortal: React.FC<Props> = ({
     return () => window.removeEventListener('crou:clear-remembered-creds', clearCreds);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       try {
         setLoginMatricule(localStorage.getItem('crou_remembered_matricule') || '');
@@ -75,24 +68,19 @@ export const BlackGatewayPortal: React.FC<Props> = ({
       } catch {}
     }
   }, [isOpen]);
-  
-  // Student Register State
+
   const [regMatricule, setRegMatricule] = useState('');
   const [regName, setRegName] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regUfr, setRegUfr] = useState('UFR Sciences Sociales');
-  
-  // Admin Login State
+
   const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
-  
-  // UI Helpers
+
   const [showPass, setShowPass] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
-
-  if (!isOpen) return null;
 
   const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,11 +101,14 @@ export const BlackGatewayPortal: React.FC<Props> = ({
             localStorage.removeItem('crou_remembered_password');
           } catch {}
         }
+        triggerHaptic('success');
         onSuccess(res.user);
       } else {
+        triggerHaptic('error');
         setErrorMsg(res.error || 'Matricule ou mot de passe incorrect.');
       }
     } catch (err: any) {
+      triggerHaptic('error');
       setErrorMsg(err.message || 'Erreur lors de la connexion.');
     } finally {
       setIsLoading(false);
@@ -142,14 +133,17 @@ export const BlackGatewayPortal: React.FC<Props> = ({
           localStorage.setItem('crou_remembered_matricule', regMatricule.trim().toUpperCase());
           localStorage.setItem('crou_remembered_password', regPassword);
         } catch {}
-        setSuccessNotice('Compte étudiant créé avec succès ! Votre pass repas est activé.');
+        triggerHaptic('success');
+        setSuccessNotice('Compte étudiant créé ! Votre pass repas est activé.');
         setTimeout(() => {
           onSuccess(res.user!);
-        }, 800);
+        }, 700);
       } else {
-        setErrorMsg(res.error || 'Erreur lors de l\'inscription.');
+        triggerHaptic('error');
+        setErrorMsg(res.error || "Erreur lors de l'inscription.");
       }
     } catch (err: any) {
+      triggerHaptic('error');
       setErrorMsg(err.message || 'Erreur réseau.');
     } finally {
       setIsLoading(false);
@@ -164,11 +158,14 @@ export const BlackGatewayPortal: React.FC<Props> = ({
     try {
       const res = await loginAdminDirect(adminUser, adminPass);
       if (res.success && res.user) {
+        triggerHaptic('success');
         onSuccess(res.user);
       } else {
+        triggerHaptic('error');
         setErrorMsg(res.error || 'Identifiants administrateur invalides.');
       }
     } catch (err: any) {
+      triggerHaptic('error');
       setErrorMsg(err.message || 'Erreur lors de la connexion.');
     } finally {
       setIsLoading(false);
@@ -176,394 +173,349 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#09090c] text-white flex flex-col justify-between overflow-y-auto animate-fadeIn select-none font-sans">
-      
-      {/* Background Ambient Elements */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-orange-600/15 rounded-full blur-[120px]"></div>
-        <div className="absolute top-1/2 -right-40 w-96 h-96 bg-amber-500/10 rounded-full blur-[140px]"></div>
-        <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-orange-700/10 rounded-full blur-[130px]"></div>
-      </div>
-
-      {/* Top Header */}
-      <header className="relative z-10 w-full max-w-4xl mx-auto px-6 pt-8 pb-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-white/10">
-        <div className="flex items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-orange-500/20 border border-amber-400/30 flex-shrink-0">
-            <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-base font-black tracking-tight font-cabinet text-white">
-                CROU KORHOGO
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-500/30 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
-                Restau. U 2026
-              </span>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 bg-[var(--ios-bg)] text-[var(--ios-fg)] flex flex-col justify-between overflow-y-auto select-none"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}
+        >
+          {/* Top Bar */}
+          <header className="w-full max-w-lg mx-auto px-5 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-[14px] overflow-hidden shadow-sm border border-[var(--ios-border)] flex-shrink-0">
+                <img src="/icon.svg" alt="Programas" className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-[17px] font-extrabold tracking-tight truncate">
+                  Programas · CROU Korhogo
+                </span>
+                <span className="block text-[13px] text-[var(--ios-fg-secondary)] truncate">
+                  Tarif étudiant · 200 FCFA / repas
+                </span>
+              </div>
             </div>
-            <p className="text-xs text-slate-400 font-medium">
-              Université Peleforo Gbon Coulibaly • Billetterie Officielle
-            </p>
-          </div>
-        </div>
 
-        {/* Subvention Ribbon & Close Button */}
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-xs font-bold text-slate-200">
-              Tarif Subventionné : <strong className="text-amber-400">200 FCFA</strong> / repas
-            </span>
-          </div>
-          {onGuestAccess && (
-            <div className="flex items-center space-x-2">
+            {onGuestAccess && (
               <button
                 type="button"
-                onClick={onGuestAccess}
-                className="hidden sm:inline-flex px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-all cursor-pointer items-center space-x-1 text-xs font-bold"
-                title="Fermer et voir les menus"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onGuestAccess();
+                }}
+                aria-label="Fermer et explorer le menu"
+                className="ios-btn-spring w-10 h-10 rounded-full bg-[var(--ios-surface)] border border-[var(--ios-border)] text-[var(--ios-fg)] flex items-center justify-center flex-shrink-0"
               >
-                <span>Voir le Menu</span>
-                <ChevronRight className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
+            )}
+          </header>
 
-              <button
-                type="button"
-                onClick={onGuestAccess}
-                className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-all active:scale-95 shadow-md cursor-pointer"
-                aria-label="Fermer"
-                title="Fermer"
-              >
-                <X className="w-5 h-5 text-white stroke-[2.5]" />
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Main Form Center Box */}
-      <main className="relative z-10 flex-1 max-w-md w-full mx-auto px-4 py-8 flex flex-col justify-center">
-        
-        {/* Card Container */}
-        <div className="bg-[#121217] border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/80 backdrop-blur-xl relative overflow-hidden pop-in">
-          
-          {/* Top Tabs */}
-          <div className="grid grid-cols-3 gap-1 p-1 bg-black/40 rounded-2xl border border-white/10 mb-6 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => { setActiveTab('login'); setErrorMsg(null); }}
-              className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1 ${
-                activeTab === 'login'
-                  ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+          {/* Main Auth Card */}
+          <main className="w-full max-w-lg mx-auto px-5 py-4 flex-1 flex flex-col justify-center">
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="ios-card p-6 sm:p-7 shadow-xl space-y-6"
             >
-              <User className="w-3.5 h-3.5" />
-              <span>Connexion</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setActiveTab('register'); setErrorMsg(null); }}
-              className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1 ${
-                activeTab === 'register'
-                  ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5 text-amber-300" />
-              <span>Inscription</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setActiveTab('admin'); setErrorMsg(null); }}
-              className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1 ${
-                activeTab === 'admin'
-                  ? 'bg-slate-800 text-amber-400 border border-amber-500/30 shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Admin</span>
-            </button>
-          </div>
-
-          {/* Feedback Alerts */}
-          {errorMsg && (
-            <div className="mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-2xl flex items-center space-x-2 text-xs text-red-200">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {successNotice && (
-            <div className="mb-4 p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl flex items-center space-x-2 text-xs text-emerald-200">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>{successNotice}</span>
-            </div>
-          )}
-
-          {/* TAB 1: CONNEXION ÉTUDIANT (Matricule + Mot de passe) */}
-          {activeTab === 'login' && (
-            <form onSubmit={handleStudentLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Numéro de matricule
-                </label>
-                <div className="relative">
-                  <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    name="username"
-                    autoComplete="username"
-                    value={loginMatricule}
-                    onChange={(e) => setLoginMatricule(e.target.value.toUpperCase())}
-                    placeholder="Ex: 01601834 ou UPGC-2026-0842"
-                    className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 font-mono tracking-wider uppercase transition-all"
-                    required
-                  />
-                </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Votre identifiant officiel à l'université UPGC.
+                <h1 className="text-[28px] sm:text-[32px] font-extrabold tracking-tight leading-tight">
+                  {activeTab === 'login' && 'Connexion'}
+                  {activeTab === 'register' && 'Inscription'}
+                  {activeTab === 'admin' && 'Administration'}
+                </h1>
+                <p className="text-[15px] text-[var(--ios-fg-secondary)] mt-1">
+                  {activeTab === 'login' && 'Accédez à votre pass repas UPGC'}
+                  {activeTab === 'register' && 'Créez votre compte étudiant CROU'}
+                  {activeTab === 'admin' && 'Espace direction et contrôleurs'}
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Mot de passe
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    name="password"
-                    autoComplete="current-password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Votre mot de passe"
-                    className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white"
-                  >
-                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+              {/* iOS Segmented Control */}
+              <div className="grid grid-cols-3 gap-1 p-1 bg-[var(--ios-bg)] rounded-[16px] border border-[var(--ios-border)]">
+                {[
+                  { id: 'login', label: 'Connexion', icon: User },
+                  { id: 'register', label: 'Inscription', icon: UserPlus },
+                  { id: 'admin', label: 'Admin', icon: ShieldCheck }
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setActiveTab(tab.id as any);
+                        setErrorMsg(null);
+                      }}
+                      className={`ios-btn-spring min-h-[42px] px-2 rounded-[12px] text-[13px] font-bold flex items-center justify-center gap-1.5 ${
+                        active
+                          ? 'bg-[var(--ios-surface)] text-[#ea580c] shadow-sm'
+                          : 'text-[var(--ios-fg-secondary)]'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {errorMsg && (
+                <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-[16px] flex items-center gap-2.5 text-[14px] text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <span>{errorMsg}</span>
                 </div>
-                
-                <div className="flex items-center justify-between pt-2">
-                  <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none">
+              )}
+
+              {successNotice && (
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-[16px] flex items-center gap-2.5 text-[14px] text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  <span>{successNotice}</span>
+                </div>
+              )}
+
+              {/* TAB 1: CONNEXION ÉTUDIANT */}
+              {activeTab === 'login' && (
+                <form onSubmit={handleStudentLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-[14px] font-semibold text-[var(--ios-fg)] mb-1.5">
+                      Numéro de matricule
+                    </label>
+                    <div className="relative">
+                      <GraduationCap className="w-5 h-5 text-[#ea580c] absolute left-4 top-4" />
+                      <input
+                        type="text"
+                        name="username"
+                        autoComplete="username"
+                        value={loginMatricule}
+                        onChange={(e) => setLoginMatricule(e.target.value.toUpperCase())}
+                        placeholder="Ex : 01601834"
+                        className="w-full min-h-[54px] pl-11 pr-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] font-mono uppercase tracking-wider text-[var(--ios-fg)] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[14px] font-semibold text-[var(--ios-fg)] mb-1.5">
+                      Mot de passe
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-5 h-5 text-[#ea580c] absolute left-4 top-4" />
+                      <input
+                        type={showPass ? 'text' : 'password'}
+                        name="password"
+                        autoComplete="current-password"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="Votre mot de passe"
+                        className="w-full min-h-[54px] pl-11 pr-12 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] text-[var(--ios-fg)] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(!showPass)}
+                        aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                        className="absolute right-3 top-2.5 w-10 h-10 flex items-center justify-center text-[var(--ios-fg-secondary)]"
+                      >
+                        {showPass ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 gap-2">
+                      <label className="flex items-center gap-2 text-[14px] text-[var(--ios-fg)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={rememberMe}
+                          onChange={(e) => setRememberMe(e.target.checked)}
+                          className="w-5 h-5 rounded accent-[#ea580c] cursor-pointer"
+                        />
+                        <span>Se souvenir</span>
+                      </label>
+                      <span className="text-[12px] text-[var(--ios-fg-secondary)] text-right">
+                        Accès gérés par l'Admin CROU
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    data-loading={isLoading ? 'true' : undefined}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[17px] rounded-[20px] shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <span>{isLoading ? 'Vérification...' : 'Se connecter'}</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </form>
+              )}
+
+              {/* TAB 2: INSCRIPTION ÉTUDIANT */}
+              {activeTab === 'register' && (
+                <form onSubmit={handleStudentRegister} className="space-y-4">
+                  <div>
+                    <label className="block text-[14px] font-semibold mb-1.5">
+                      Numéro de matricule *
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded bg-black/60 border-white/30 text-orange-500 focus:ring-orange-500 cursor-pointer accent-orange-500"
+                      type="text"
+                      value={regMatricule}
+                      onChange={(e) => setRegMatricule(e.target.value.toUpperCase())}
+                      placeholder="Ex : UPGC-2026-1102"
+                      className="w-full min-h-[54px] px-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                      required
                     />
-                    <span className="font-medium text-slate-300">Se souvenir de moi</span>
-                  </label>
+                  </div>
 
-                  <span className="text-[11px] text-slate-400 font-medium text-right">
-                    Accès gérés uniquement par l'Admin CROU
-                  </span>
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-[14px] font-semibold mb-1.5">
+                      Nom et prénom(s) *
+                    </label>
+                    <input
+                      type="text"
+                      value={regName}
+                      onChange={(e) => setRegName(e.target.value)}
+                      placeholder="Ex : Koffi Kouamé Emmanuel"
+                      className="w-full min-h-[54px] px-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                      required
+                    />
+                  </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                data-loading={isLoading ? "true" : undefined}
-                className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
-              >
-                <span>{isLoading ? 'Vérification...' : 'Se connecter'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          )}
+                  <div>
+                    <label className="block text-[14px] font-semibold mb-1.5">
+                      UFR / Faculté
+                    </label>
+                    <select
+                      value={regUfr}
+                      onChange={(e) => setRegUfr(e.target.value)}
+                      className="w-full min-h-[54px] px-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    >
+                      <option value="UFR Sciences Sociales">UFR Sciences Sociales</option>
+                      <option value="UFR Sciences Biologiques">UFR Sciences Biologiques</option>
+                      <option value="UFR Lettres et Arts">UFR Lettres et Arts</option>
+                      <option value="Institut Agro-Pastorale">Institut Agro-Pastorale</option>
+                    </select>
+                  </div>
 
-          {/* TAB 2: INSCRIPTION SIMPLE ÉTUDIANT (Matricule + Mot de passe + Nom) */}
-          {activeTab === 'register' && (
-            <form onSubmit={handleStudentRegister} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Numéro de matricule *
-                </label>
-                <div className="relative">
-                  <GraduationCap className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    value={regMatricule}
-                    onChange={(e) => setRegMatricule(e.target.value.toUpperCase())}
-                    placeholder="Ex: UPGC-2026-1102"
-                    className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 font-mono tracking-wider uppercase transition-all"
-                    required
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-[14px] font-semibold mb-1.5">
+                      Créer un mot de passe *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPass ? 'text' : 'password'}
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        placeholder="Au moins 4 caractères"
+                        className="w-full min-h-[54px] pl-4 pr-12 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(!showPass)}
+                        aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                        className="absolute right-3 top-2.5 w-10 h-10 flex items-center justify-center text-[var(--ios-fg-secondary)]"
+                      >
+                        {showPass ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Nom et prénom(s) *
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    value={regName}
-                    onChange={(e) => setRegName(e.target.value)}
-                    placeholder="Ex: Koffi Kouamé Emmanuel"
-                    className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
-                    required
-                  />
-                </div>
-              </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    data-loading={isLoading ? 'true' : undefined}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[17px] rounded-[20px] shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <span>{isLoading ? 'Création...' : 'Créer mon compte'}</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </form>
+              )}
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  UFR / Faculté
-                </label>
-                <select
-                  value={regUfr}
-                  onChange={(e) => setRegUfr(e.target.value)}
-                  className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white focus:outline-none focus:border-orange-500 transition-all"
+              {/* TAB 3: ADMIN */}
+              {activeTab === 'admin' && (
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-[14px] font-semibold mb-1.5">
+                      Identifiant administrateur
+                    </label>
+                    <div className="relative">
+                      <User className="w-5 h-5 text-[#ea580c] absolute left-4 top-4" />
+                      <input
+                        type="text"
+                        value={adminUser}
+                        onChange={(e) => setAdminUser(e.target.value)}
+                        placeholder="Identifiant"
+                        className="w-full min-h-[54px] pl-11 pr-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] font-mono focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[14px] font-semibold mb-1.5">
+                      Mot de passe administrateur
+                    </label>
+                    <div className="relative">
+                      <KeyRound className="w-5 h-5 text-[#ea580c] absolute left-4 top-4" />
+                      <input
+                        type={showPass ? 'text' : 'password'}
+                        value={adminPass}
+                        onChange={(e) => setAdminPass(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full min-h-[54px] pl-11 pr-12 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[18px] text-[16px] font-mono focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(!showPass)}
+                        aria-label={showPass ? 'Masquer' : 'Afficher'}
+                        className="absolute right-3 top-2.5 w-10 h-10 flex items-center justify-center text-[var(--ios-fg-secondary)]"
+                      >
+                        {showPass ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    data-loading={isLoading ? 'true' : undefined}
+                    className="ios-btn-spring w-full min-h-[56px] bg-[#1d1d1f] dark:bg-white text-white dark:text-[#1d1d1f] font-bold text-[17px] rounded-[20px] shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <span>{isLoading ? 'Connexion...' : 'Connexion administration'}</span>
+                    <ShieldCheck className="w-5 h-5" />
+                  </button>
+                </form>
+              )}
+
+              {onGuestAccess && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    onGuestAccess();
+                  }}
+                  className="ios-btn-spring w-full min-h-[48px] px-4 rounded-[16px] bg-[var(--ios-bg)] border border-[var(--ios-border)] text-[14px] font-semibold text-[var(--ios-fg)]"
                 >
-                  <option value="UFR Sciences Sociales" className="bg-slate-900">UFR Sciences Sociales</option>
-                  <option value="UFR Sciences Biologiques" className="bg-slate-900">UFR Sciences Biologiques</option>
-                  <option value="UFR Lettres et Arts" className="bg-slate-900">UFR Lettres et Arts</option>
-                  <option value="Institut Agro-Pastorale" className="bg-slate-900">Institut Agro-Pastorale</option>
-                </select>
-              </div>
+                  Consulter le menu sans connexion
+                </button>
+              )}
+            </motion.div>
+          </main>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Créer un mot de passe *
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="Au moins 4 caractères"
-                    className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white"
-                  >
-                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                data-loading={isLoading ? "true" : undefined}
-                className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
-              >
-                <span>{isLoading ? 'Création...' : 'Créer mon compte'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          )}
-
-          {/* TAB 3: CONNEXION ADMINISTRATION */}
-          {activeTab === 'admin' && (
-            <form onSubmit={handleAdminLogin} className="space-y-4">
-              <div className="p-3 bg-slate-800/60 border border-amber-500/30 rounded-2xl flex items-center space-x-2 text-xs text-amber-300">
-                <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <span>Espace réservé à la Direction et aux contrôleurs du CROU.</span>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Identifiant administrateur
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    value={adminUser}
-                    onChange={(e) => setAdminUser(e.target.value)}
-                    placeholder="Identifiant administrateur"
-                    className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Mot de passe administrateur
-                </label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 text-amber-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    value={adminPass}
-                    onChange={(e) => setAdminPass(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-10 pr-10 py-3 bg-black/50 border border-white/20 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white"
-                  >
-                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                data-loading={isLoading ? "true" : undefined}
-                className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold text-sm rounded-2xl border border-amber-500/30 transition-all flex items-center justify-center space-x-2 active:scale-98 disabled:opacity-50 cursor-pointer"
-              >
-                <span>{isLoading ? 'Connexion...' : 'Connexion administration'}</span>
-                <ShieldCheck className="w-4 h-4" />
-              </button>
-            </form>
-          )}
-
-          {/* Quick guest preview link if needed */}
-          {onGuestAccess && (
-            <div className="mt-6 pt-4 border-t border-white/10 space-y-2 text-center">
-              <button
-                type="button"
-                onClick={onGuestAccess}
-                className="w-full py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-bold text-amber-300 hover:text-white transition-all inline-flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm active:scale-98"
-              >
-                <span>🍽️ Découvrir le Menu du Jour Sans Connexion</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <p className="text-[10px] text-slate-400">
-                Vous pouvez consulter les plats du jour librement. Connectez-vous pour acheter vos tickets repas.
-              </p>
-            </div>
-          )}
-
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="relative z-10 w-full max-w-4xl mx-auto px-6 py-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-        <div className="flex items-center space-x-2">
-          <span>🏛️ UPGC Korhogo</span>
-          <span>•</span>
-          <span>Centre Régional des Œuvres Universitaires</span>
-        </div>
-        <div>
-          <span>Système Garanti Anti-Fraude & Billet Tourniquet 2026</span>
-        </div>
-      </footer>
-
-    </div>
+          <footer className="text-center px-5 py-2 text-[12px] text-[var(--ios-fg-secondary)]">
+            UPGC Korhogo · Centre Régional des Œuvres Universitaires
+          </footer>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
