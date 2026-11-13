@@ -42,37 +42,83 @@ function toFirestoreRestFields(obj) {
   return fields;
 }
 
+function fromFirestoreRestValue(val) {
+  if (!val || typeof val !== 'object') return val;
+  if ('stringValue' in val) return val.stringValue;
+  if ('integerValue' in val) return parseInt(val.integerValue, 10);
+  if ('doubleValue' in val) return parseFloat(val.doubleValue);
+  if ('booleanValue' in val) return val.booleanValue;
+  if ('nullValue' in val) return null;
+  if ('timestampValue' in val) return val.timestampValue;
+  if ('arrayValue' in val) {
+    const values = val.arrayValue?.values || [];
+    return values.map(fromFirestoreRestValue);
+  }
+  if ('mapValue' in val) {
+    const fields = val.mapValue?.fields || {};
+    const res = {};
+    for (const [k, v] of Object.entries(fields)) {
+      res[k] = fromFirestoreRestValue(v);
+    }
+    return res;
+  }
+  return val;
+}
+
+function parseDoc(doc) {
+  if (!doc || !doc.fields) return null;
+  const res = {};
+  for (const [k, v] of Object.entries(doc.fields)) {
+    res[k] = fromFirestoreRestValue(v);
+  }
+  return res;
+}
+
 async function main() {
-  const matricule = '32165498';
-  const password = '00000000';
-  const displayName = 'Étudiant 32165498';
+  const matricule = (process.argv[2] || '96480773').trim().toUpperCase();
+  const quantity = parseInt(process.argv[3] || '3', 10);
 
-  console.log(`Création et attribution de 5 tickets pour le matricule ${matricule}...`);
+  console.log(`Attribution de ${quantity} ticket(s) pour le matricule ${matricule}...`);
 
-  // Generate 5 distinct authentic meal tickets
+  // 1. Fetch existing student profile from Firestore
+  let existingStudent = null;
+  try {
+    const getRes = await fetch(`${BASE_URL}/students/${encodeURIComponent(matricule)}?key=${API_KEY}`);
+    if (getRes.ok) {
+      const data = await getRes.json();
+      existingStudent = parseDoc(data);
+      console.log(`✓ Étudiant trouvé : ${existingStudent.displayName || matricule}`);
+    }
+  } catch (e) {
+    console.warn('Recherche étudiant:', e.message);
+  }
+
+  const displayName = existingStudent?.displayName || `Étudiant ${matricule}`;
+
+  // Generate distinct authentic meal tickets
   const dishOptions = [
     'Riz blanc avec sauce graine & viande de bœuf',
     'Foutou banane avec sauce claire au poisson frais',
-    'Attiéké poisson carpe braisé & piment frais',
-    'Tô de maïs avec sauce gombo gluante au poulet bicyclette',
-    'Plat complet du jour (Protéines, féculents & légumes)'
+    'Attiéké poisson carpe braisé & alloco',
+    'Tô de maïs avec sauce gombo au poulet bicyclette',
+    'Plat complet Resto U (CROU-K)'
   ];
 
-  const tickets = [];
+  const newTickets = [];
   const today = new Date().toLocaleDateString('fr-FR');
   const nowTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= quantity; i++) {
     const serial = `CROUK-2026-${Math.floor(100000 + Math.random() * 900000)}`;
     const ticket = {
-      id: `tkt_32165498_${i}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: `tkt_${matricule}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       ticketNumber: serial,
-      studentId: matricule,
+      studentId: existingStudent?.uid || matricule,
       studentName: displayName,
       studentMatricule: matricule,
-      canteenId: 'canteen-central',
+      canteenId: 'resto-1',
       canteenName: 'Restaurant Universitaire UPGC',
-      dishName: dishOptions[i - 1],
+      dishName: dishOptions[(i - 1) % dishOptions.length],
       mealType: i % 2 === 0 ? 'diner' : 'dejeuner',
       date: today,
       price: 200,
@@ -80,24 +126,26 @@ async function main() {
       qrCodeData: `https://crou.ci/verify?tkt=${serial}&mat=${matricule}`,
       purchaseTime: nowTime
     };
-    tickets.push(ticket);
+    newTickets.push(ticket);
   }
 
-  // 1. Save student to Firestore: students/32165498
+  const existingTickets = Array.isArray(existingStudent?.savedTickets) ? existingStudent.savedTickets : [];
+  const mergedTickets = [...newTickets, ...existingTickets];
+
+  // 2. Save / update student document in Firestore
   const studentPayload = {
     fields: toFirestoreRestFields({
-      uid: matricule,
+      uid: existingStudent?.uid || matricule,
       matricule: matricule,
       displayName: displayName,
-      email: `${matricule}@upgc.ci`,
+      email: existingStudent?.email || `${matricule}@crou-korhogo.ci`,
       role: 'student',
-      balance: 0,
-      savedTickets: tickets,
-      passwordHash: password,
+      balance: existingStudent?.balance ?? 0,
+      savedTickets: mergedTickets,
+      passwordHash: existingStudent?.passwordHash || matricule.slice(-4) || '1234',
       university: 'Université Peleforo Gbon Coulibaly (UPGC)',
       campus: 'Campus UPGC Korhogo',
-      phone: '+225 0700000000',
-      createdAt: new Date().toISOString(),
+      createdAt: existingStudent?.createdAt || new Date().toISOString(),
       lastSync: new Date().toISOString()
     })
   };
@@ -115,10 +163,10 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`✓ Profil étudiant enregistré dans Firestore: students/${matricule}`);
+  console.log(`✓ Profil étudiant mis à jour dans Firestore: students/${matricule}`);
 
-  // 2. Also save each of the 5 tickets into the top-level 'tickets' collection in Firestore
-  for (const tkt of tickets) {
+  // 3. Save each ticket to top-level 'tickets' collection in Firestore
+  for (const tkt of newTickets) {
     const tktUrl = `${BASE_URL}/tickets/${encodeURIComponent(tkt.ticketNumber)}?key=${API_KEY}`;
     const tktPayload = { fields: toFirestoreRestFields(tkt) };
     const resTkt = await fetch(tktUrl, {
@@ -128,16 +176,20 @@ async function main() {
     });
     if (resTkt.ok) {
       console.log(`  ✓ Ticket synchronisé dans tickets/${tkt.ticketNumber} (${tkt.dishName})`);
-    } else {
-      console.warn(`  ! Note enregistrement ticket ${tkt.ticketNumber}:`, resTkt.status);
     }
+
+    // Also by id
+    const tktIdUrl = `${BASE_URL}/tickets/${encodeURIComponent(tkt.id)}?key=${API_KEY}`;
+    await fetch(tktIdUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tktPayload)
+    });
   }
 
-  console.log('\n Succès ! Compte configuré avec 5 tickets valides.');
-  console.log('Récapitulatif des 5 tickets :');
-  tickets.forEach((t, idx) => {
-    console.log(`  ${idx + 1}. N° ${t.ticketNumber} | ${t.mealType === 'dejeuner' ? 'Midi' : 'Soir'} | ${t.dishName}`);
-  });
+  const validCount = mergedTickets.filter(t => t.status === 'valid').length;
+  console.log(`\nSuccès ! ${quantity} tickets attribués à ${displayName} (${matricule}).`);
+  console.log(`Total tickets valides disponibles pour cet étudiant : ${validCount}`);
 }
 
 main().catch(err => {

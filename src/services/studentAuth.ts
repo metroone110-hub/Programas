@@ -1,11 +1,14 @@
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, MealTicket } from '../types';
 import { 
   fetchStudentRest, 
   saveStudentRest, 
+  patchStudentFieldsRest,
   fetchStudentTicketsRest, 
-  saveTicketRest 
+  saveTicketRest,
+  saveFraudLogRest,
+  fetchFraudLogsRest
 } from './firestoreRestClient';
 
 const STORAGE_KEY = 'crou_user_profile';
@@ -78,6 +81,59 @@ export function sanitizeMatriculeId(matricule: string): string {
 }
 
 /**
+ * Déduplication stricte des tickets en liant à la fois ticketNumber ET id
+ * pour qu'un même ticket ne puisse JAMAIS apparaître en double même s'il a été indexé par ses deux clés.
+ * Préserve toujours de manière irrévocable le statut 'used'.
+ */
+export function deduplicateTickets(tickets: MealTicket[]): MealTicket[] {
+  const canonicalMap = new Map<string, MealTicket>();
+  const aliasToCanonical = new Map<string, string>();
+
+  for (const t of tickets || []) {
+    if (!t || (!t.ticketNumber && !t.id)) continue;
+    const tNum = t.ticketNumber ? String(t.ticketNumber).trim() : '';
+    const tId = t.id ? String(t.id).trim() : '';
+
+    let canonicalKey = (tNum && aliasToCanonical.get(tNum)) || (tId && aliasToCanonical.get(tId));
+    if (!canonicalKey) {
+      canonicalKey = tNum || tId;
+    }
+
+    if (tNum) aliasToCanonical.set(tNum, canonicalKey);
+    if (tId) aliasToCanonical.set(tId, canonicalKey);
+
+    const prev = canonicalMap.get(canonicalKey);
+    if (!prev) {
+      canonicalMap.set(canonicalKey, t);
+    } else {
+      const isUsed = prev.status === 'used' || t.status === 'used';
+      canonicalMap.set(canonicalKey, {
+        ...prev,
+        ...t,
+        status: isUsed ? 'used' : (t.status || prev.status || 'valid'),
+        usedTime: prev.usedTime || t.usedTime
+      });
+    }
+  }
+
+  return Array.from(canonicalMap.values());
+}
+
+// Registre temporaire en mémoire des tickets transférés hors de ce compte pour empêcher toute réinjection par cache
+const recentlyTransferredOutKeys = new Set<string>();
+
+function markTicketTransferredOut(ticket: MealTicket) {
+  if (ticket.ticketNumber) recentlyTransferredOutKeys.add(ticket.ticketNumber.trim());
+  if (ticket.id) recentlyTransferredOutKeys.add(ticket.id.trim());
+}
+
+function isRecentlyTransferredOut(ticket: MealTicket): boolean {
+  if (ticket.ticketNumber && recentlyTransferredOutKeys.has(ticket.ticketNumber.trim())) return true;
+  if (ticket.id && recentlyTransferredOutKeys.has(ticket.id.trim())) return true;
+  return false;
+}
+
+/**
  * Inscription Simple Étudiant sans Google :
  * Numéro de Matricule + Mot de passe + Nom
  * Les tickets et données sont garantis stockés intégralement dans Firestore !
@@ -111,11 +167,25 @@ export async function registerStudentWithMatricule(data: {
     return { success: false, error: `Le matricule ${cleanMatricule} est déjà enregistré. Veuillez utiliser l'onglet "Connexion".` };
   }
 
-  // Check if matricule already exists in Firestore on any device
+  // Check if matricule already exists in Firestore (REST + SDK, incl. zero-padded variants & blocked accounts)
+  try {
+    const restExisting = await fetchStudentRest(cleanMatricule);
+    if (restExisting) {
+      if (restExisting.isBlocked) {
+        return { success: false, error: `⚠️ Ce compte (${cleanMatricule}) est bloqué pour sécurité. Adressez-vous directement à l'administration CROU.` };
+      }
+      return { success: false, error: `Le matricule ${cleanMatricule} est déjà enregistré. Veuillez utiliser l'onglet "Connexion".` };
+    }
+  } catch {}
+
   try {
     const studentRef = doc(db, 'students', safeId);
     const snap = await getDoc(studentRef);
     if (snap.exists()) {
+      const existingData = snap.data() as UserProfile;
+      if (existingData?.isBlocked) {
+        return { success: false, error: `⚠️ Ce compte (${cleanMatricule}) est bloqué pour sécurité. Adressez-vous directement à l'administration CROU.` };
+      }
       return { success: false, error: `Le matricule ${cleanMatricule} est déjà enregistré. Veuillez utiliser l'onglet "Connexion".` };
     }
   } catch (checkErr) {
@@ -133,6 +203,8 @@ export async function registerStudentWithMatricule(data: {
     university: 'Université Peleforo Gbon Coulibaly (UPGC)',
     campus: data.ufr ? `UPGC Korhogo - ${data.ufr}` : 'Campus UPGC Korhogo',
     phone: data.phone || undefined,
+    isBlocked: false,
+    pinFails: 0,
     createdAt: new Date().toISOString()
   };
 
@@ -474,91 +546,94 @@ export async function loginStudentWithMatricule(
   }
 
   // 1. Look up in Firestore (REST + SDK) and local registry
-  let firestoreStudent: (UserProfile & { passwordHash?: string; isBlocked?: boolean }) | null = null;
+  let restStudent: (UserProfile & { passwordHash?: string }) | null = null;
+  let sdkStudent: (UserProfile & { passwordHash?: string }) | null = null;
   const safeId = sanitizeMatriculeId(cleanMatricule);
-  
+
   try {
-    firestoreStudent = await fetchStudentRest(cleanMatricule);
+    restStudent = await fetchStudentRest(cleanMatricule);
   } catch (restErr) {
     console.warn('REST lookup error:', restErr);
   }
 
-  // Complément via Firestore SDK
   try {
     const studentRef = doc(db, 'students', safeId);
     const snap = await getDoc(studentRef);
     if (snap.exists()) {
-      const sdkData = snap.data() as any;
-      if (!firestoreStudent) {
-        firestoreStudent = sdkData;
-      } else if (!firestoreStudent.passwordHash && sdkData.passwordHash) {
-        firestoreStudent.passwordHash = sdkData.passwordHash;
-      }
+      sdkStudent = snap.data() as any;
     }
   } catch (err) {
     console.warn('Firestore SDK lookup note:', err);
   }
 
-  // Complément via registre local si le mot de passe est en cache sur l'appareil
   const localRegistry = getLocalStudentsRegistry();
   const localAccount = localRegistry[cleanMatricule];
-  if (!firestoreStudent && localAccount) {
-    firestoreStudent = localAccount as any;
-  } else if (firestoreStudent && !firestoreStudent.passwordHash && localAccount?.passwordHash) {
-    firestoreStudent.passwordHash = localAccount.passwordHash;
-  }
+
+  const baseStudent = sdkStudent || restStudent || localAccount || null;
 
   // Strict Account Existence Check: Must exist in Firestore or Local Registry!
-  if (!firestoreStudent) {
+  if (!baseStudent) {
     return {
       success: false,
       error: `Aucun compte étudiant trouvé avec le matricule ${cleanMatricule}. Veuillez d'abord vous inscrire dans l'onglet "Inscription".`
     };
   }
 
-  // Strict Security Check: Compte verrouillé suite à 5 tentatives PIN erronées
-  if (firestoreStudent.isBlocked) {
+  // Fusion sécurisée des champs critiques (isBlocked & PIN cloud)
+  // RÈGLE : si le cloud (REST ou SDK) indique isBlocked: true, le compte est STRICTEMENT bloqué
+  // Si le cloud indique explicitement isBlocked === false (débloqué par Admin), le cloud fait foi sur le cache local!
+  const cloudHasBlockInfo = restStudent !== null || sdkStudent !== null;
+  const isBlockedInCloud = Boolean(restStudent?.isBlocked) || Boolean(sdkStudent?.isBlocked);
+  const effectiveIsBlocked = cloudHasBlockInfo ? isBlockedInCloud : Boolean(localAccount?.isBlocked);
+
+  const effectivePinSalt = sdkStudent?.pinSalt || restStudent?.pinSalt || (!cloudHasBlockInfo ? localAccount?.pinSalt : undefined);
+  const effectivePinHash = sdkStudent?.pinHash || restStudent?.pinHash || (!cloudHasBlockInfo ? localAccount?.pinHash : undefined);
+  const effectivePinFails = cloudHasBlockInfo
+    ? Math.max(sdkStudent?.pinFails || 0, restStudent?.pinFails || 0)
+    : (localAccount?.pinFails || 0);
+
+  // Strict Security Check: Compte verrouillé suite à 5 tentatives PIN erronées (déblocage Admin uniquement)
+  if (effectiveIsBlocked) {
+    try {
+      localStorage.removeItem('crou_remembered_matricule');
+      localStorage.removeItem('crou_remembered_password');
+    } catch {}
     return {
       success: false,
-      error: `⚠️ Compte verrouillé pour votre sécurité : 5 tentatives consécutives de code PIN erronées ont été détectées. Veuillez vous adresser directement aux responsables de Programas au Guichet Restauration CROU Korhogo muni(e) de votre carte d'étudiant pour réactiver votre accès.`
+      error: `⚠️ Compte verrouillé pour sécurité : 5 tentatives de code PIN erronées détectées. Aucune récupération en ligne possible. Présentez votre carte d'étudiant à l'administration CROU Korhogo pour déblocage.`
     };
   }
 
   // Strict Password Verification:
-  const targetPass = (firestoreStudent.passwordHash || '').trim();
+  const targetPass = (sdkStudent?.passwordHash || restStudent?.passwordHash || localAccount?.passwordHash || '').trim();
   let isPasswordMatch = false;
 
   if (targetPass) {
     isPasswordMatch = targetPass === cleanPass || targetPass.toLowerCase() === cleanPass.toLowerCase();
   } else if (cleanPass.length >= 4) {
-    // Si l'ancien compte a eu son mot de passe effacé par le bug précédent,
-    // on accepte la reconnexion avec le mot de passe saisi et on le re-sauvegarde immédiatement
     isPasswordMatch = true;
   }
 
   if (!isPasswordMatch) {
-    return { 
-      success: false, 
-      error: 'Mot de passe incorrect pour ce matricule. En cas d\'oubli, veuillez vous adresser aux responsables de Programas au Guichet Restauration CROU.' 
+    return {
+      success: false,
+      error: 'Mot de passe incorrect pour ce matricule. En cas d\'oubli, veuillez vous adresser directement à l\'administration CROU.'
     };
   }
 
-  const target = firestoreStudent;
+  const target = baseStudent;
 
-  // 3. MULTI-DEVICE TICKET RETRIEVAL:
-  // Gather from ALL possible stores across all matricule variations to guarantee 0% data loss:
-  // Store A: Document savedTickets in Firestore
-  const firestoreDocTickets: MealTicket[] = Array.isArray(firestoreStudent?.savedTickets) 
-    ? firestoreStudent.savedTickets 
+  // 3. MULTI-DEVICE TICKET RETRIEVAL (with strict deduplication by id AND ticketNumber):
+  const cloudStudentDoc = sdkStudent || restStudent;
+  const firestoreDocTickets: MealTicket[] = Array.isArray(cloudStudentDoc?.savedTickets)
+    ? cloudStudentDoc.savedTickets
     : [];
 
-  // Store B: Direct REST structuredQuery for all student tickets across devices
   let restTickets: MealTicket[] = [];
   try {
     restTickets = await fetchStudentTicketsRest(cleanMatricule, target.uid);
   } catch {}
 
-  // Store C: Query ALL tickets directly from Firestore SDK 'tickets' collection
   const unpaddedMatricule = cleanMatricule.replace(/^0+/, '');
   const zeroPaddedMatricule = '0' + unpaddedMatricule;
   const firestoreCollectionTickets: MealTicket[] = [];
@@ -583,22 +658,37 @@ export async function loginStudentWithMatricule(
     console.warn('Firestore tickets query note:', err);
   }
 
-  // Store D: Retrieve local device vault tickets
+  // Ne consulter le coffre-fort local QUE si le cloud n'a pas pu répondre (mode hors-ligne)
   let vaultTickets: MealTicket[] = [];
-  try {
-    const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
-    if (rawVault) vaultTickets = JSON.parse(rawVault);
-  } catch {}
+  if (!cloudStudentDoc) {
+    try {
+      const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
+      if (rawVault) vaultTickets = JSON.parse(rawVault);
+    } catch {}
+  }
 
-  // 4. Merge ALL sources into a single deduplicated ticket list (ticketNumber or id as key)
-  const mergedMap = new Map<string, MealTicket>();
-  firestoreDocTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  restTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  firestoreCollectionTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
-  vaultTickets.forEach((t: MealTicket) => { if (t && (t.ticketNumber || t.id)) mergedMap.set(t.ticketNumber || t.id, t); });
+  // Ne garder que les tickets appartenant réellement à ce matricule et non transférés hors du compte
+  const ownFilter = (t: MealTicket) => {
+    if (!t) return false;
+    if (isRecentlyTransferredOut(t)) return false;
+    if (t.studentMatricule && t.studentMatricule.toUpperCase() !== cleanMatricule &&
+        t.studentMatricule.toUpperCase() !== unpaddedMatricule &&
+        t.studentMatricule.toUpperCase() !== zeroPaddedMatricule) {
+      return false;
+    }
+    return true;
+  };
 
-  const mergedTickets = Array.from(mergedMap.values());
-  
+  // Si le document cloud du compte existe, ses savedTickets + tickets collection appartenant encore à l'étudiant font foi
+  const rawMerged = [
+    ...firestoreDocTickets.filter(ownFilter),
+    ...restTickets.filter(ownFilter),
+    ...firestoreCollectionTickets.filter(ownFilter),
+    ...vaultTickets.filter(ownFilter)
+  ];
+
+  const mergedTickets = deduplicateTickets(rawMerged);
+
   const studentProfile: UserProfile = {
     uid: target.uid || cleanMatricule,
     matricule: cleanMatricule,
@@ -610,18 +700,36 @@ export async function loginStudentWithMatricule(
     university: target.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
     campus: target.campus || 'Campus UPGC Korhogo',
     phone: target.phone,
+    isBlocked: false,
+    pinSalt: effectivePinSalt || undefined,
+    pinHash: effectivePinHash || undefined,
+    pinFails: effectivePinFails,
     createdAt: target.createdAt || new Date().toISOString()
   };
 
-  // 5. Permanently re-anchor tickets and password into both local storage and Firestore (REST + SDK)
-  const finalPassword = cleanPass || target.passwordHash || 'upgc2026';
+  // Synchroniser le cache PIN local avec le PIN du compte cloud (empêche le contournement multi-appareils/reload)
+  try {
+    const scopeId = sanitizeMatriculeId(cleanMatricule);
+    if (effectivePinSalt && effectivePinHash) {
+      localStorage.setItem(`programas_pin_${scopeId}`, JSON.stringify({ salt: effectivePinSalt, hash: effectivePinHash }));
+    } else {
+      localStorage.removeItem(`programas_pin_${scopeId}`);
+    }
+    if (effectivePinFails > 0) {
+      localStorage.setItem(`programas_pin_fails_${scopeId}`, String(effectivePinFails));
+    } else {
+      localStorage.removeItem(`programas_pin_fails_${scopeId}`);
+    }
+  } catch {}
+
+  const finalPassword = cleanPass || targetPass || 'upgc2026';
   updateStudentInLocalRegistry(studentProfile, finalPassword);
   saveLocalUserProfile(studentProfile);
   try {
     localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedTickets));
   } catch {}
 
-  // Sync back to Firestore via both REST and SDK so all devices see the updated ticket list and password
+  // Sync back to Firestore via both REST and SDK
   try {
     saveStudentRest(studentProfile, finalPassword).catch(() => {});
     const studentRef = doc(db, 'students', safeId);
@@ -710,7 +818,7 @@ export async function purchaseTicketsBatch(
     }
   });
 
-  const allTickets = [...generatedTickets, ...(student.savedTickets || [])];
+  const allTickets = deduplicateTickets([...generatedTickets, ...(student.savedTickets || [])]);
   const updatedUser: UserProfile = {
     ...student,
     savedTickets: allTickets
@@ -731,9 +839,7 @@ export async function purchaseTicketsBatch(
 
   try {
     for (const t of generatedTickets) {
-      // 1. Save by internal ID
       await setDoc(doc(db, 'tickets', t.id), t, { merge: true });
-      // 2. Also save directly by ticketNumber so turnstile scanner direct lookup is instant!
       await setDoc(doc(db, 'tickets', t.ticketNumber), t, { merge: true });
     }
 
@@ -752,8 +858,99 @@ export async function purchaseTicketsBatch(
 }
 
 /**
- * Synchronisation en arrière-plan des tickets depuis Firestore et coffre-fort local
- * Permet de récupérer les nouveaux tickets achetés sur n'importe quel appareil
+ * Attribuer manuellement des tickets repas à un étudiant par son matricule (Administration CROU)
+ */
+export async function grantTicketsToMatricule(
+  matricule: string,
+  quantity: number = 3,
+  dishName: string = 'Plat Resto U Complet (CROU-K)'
+): Promise<{ success: boolean; message: string; tickets: MealTicket[] }> {
+  const cleanMat = (matricule || '').trim().toUpperCase();
+  const safeId = sanitizeMatriculeId(cleanMat);
+
+  // 1. Récupérer l'étudiant
+  let student: UserProfile | null = null;
+  try {
+    const sSnap = await getDoc(doc(db, 'students', safeId));
+    if (sSnap.exists()) {
+      student = sSnap.data() as UserProfile;
+    }
+  } catch {}
+
+  if (!student) {
+    const registry = getLocalStudentsRegistry();
+    if (registry[cleanMat]) {
+      student = registry[cleanMat];
+    }
+  }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('fr-FR');
+  const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  const generatedTickets: MealTicket[] = [];
+  for (let i = 0; i < quantity; i++) {
+    const random6 = Math.floor(100000 + Math.random() * 900000);
+    const serial = `CROUK-2026-${random6}`;
+    const newTicket: MealTicket = {
+      id: 'tkt_' + Math.random().toString(36).substring(2, 10),
+      ticketNumber: serial,
+      studentId: student?.uid || `stu_${cleanMat}`,
+      studentName: student?.displayName || `Étudiant ${cleanMat}`,
+      studentMatricule: cleanMat,
+      canteenId: 'resto-1',
+      canteenName: 'Restaurant Universitaire UPGC',
+      dishName: dishName,
+      mealType: 'dejeuner',
+      date: dateStr,
+      price: 200,
+      status: 'valid',
+      qrCodeData: `https://crou.ci/verify?tkt=${serial}&mat=${cleanMat}`,
+      purchaseTime: timeStr
+    };
+    generatedTickets.push(newTicket);
+  }
+
+  const allTickets = deduplicateTickets([...generatedTickets, ...(student?.savedTickets || [])]);
+  const updatedStudent: UserProfile = {
+    ...(student || {}),
+    uid: student?.uid || `stu_${cleanMat}`,
+    displayName: student?.displayName || `Étudiant ${cleanMat}`,
+    email: student?.email || `${cleanMat}@crou-korhogo.ci`,
+    role: 'student',
+    balance: student?.balance ?? 0,
+    matricule: cleanMat,
+    savedTickets: allTickets,
+    createdAt: student?.createdAt || new Date().toISOString()
+  };
+
+  saveLocalUserProfile(updatedStudent);
+  try {
+    localStorage.setItem(`crou_student_vault_${cleanMat}`, JSON.stringify(allTickets));
+  } catch {}
+
+  try {
+    for (const t of generatedTickets) {
+      saveTicketRest(t).catch(() => {});
+      await setDoc(doc(db, 'tickets', t.id), t, { merge: true });
+      await setDoc(doc(db, 'tickets', t.ticketNumber), t, { merge: true });
+    }
+    saveStudentRest(updatedStudent).catch(() => {});
+    await setDoc(doc(db, 'students', safeId), updatedStudent, { merge: true });
+  } catch (err) {
+    console.warn('Grant tickets error:', err);
+  }
+
+  return {
+    success: true,
+    message: `${quantity} ticket(s) attribué(s) avec succès à ${updatedStudent.displayName} (${cleanMat}) !`,
+    tickets: generatedTickets
+  };
+}
+
+/**
+ * Synchronisation en arrière-plan des tickets depuis Firestore
+ * RÈGLE : Ne réinjecte JAMAIS un ticket qui a été transféré hors du compte.
  */
 export async function syncStudentTicketsWithFirestore(user: UserProfile): Promise<UserProfile> {
   if (!user.matricule) return user;
@@ -761,25 +958,25 @@ export async function syncStudentTicketsWithFirestore(user: UserProfile): Promis
   const safeId = sanitizeMatriculeId(cleanMatricule);
 
   try {
-    // 0. Query direct HTTPS REST for tickets (ultra-fast and guaranteed across all networks)
     let restTickets: MealTicket[] = [];
     try {
       restTickets = await fetchStudentTicketsRest(cleanMatricule, user.uid);
     } catch {}
 
-    // 1. Check direct student document
+    let studentDocExists = false;
+    let studentDocData: UserProfile | null = null;
     let studentDocTickets: MealTicket[] = [];
     try {
       const sSnap = await getDoc(doc(db, 'students', safeId));
       if (sSnap.exists()) {
-        const sData = sSnap.data();
-        if (Array.isArray(sData.savedTickets)) {
-          studentDocTickets = sData.savedTickets;
+        studentDocExists = true;
+        studentDocData = sSnap.data() as UserProfile;
+        if (Array.isArray(studentDocData.savedTickets)) {
+          studentDocTickets = studentDocData.savedTickets;
         }
       }
     } catch {}
 
-    // 2. Query tickets collection by studentMatricule
     const firestoreTickets: MealTicket[] = [];
     try {
       const tq = query(collection(db, 'tickets'), where('studentMatricule', '==', cleanMatricule));
@@ -787,60 +984,79 @@ export async function syncStudentTicketsWithFirestore(user: UserProfile): Promis
       snap.forEach(d => firestoreTickets.push(d.data() as MealTicket));
     } catch {}
 
-    // 3. Vault tickets
-    let vaultTickets: MealTicket[] = [];
-    try {
-      const rawVault = localStorage.getItem(`crou_student_vault_${cleanMatricule}`);
-      if (rawVault) vaultTickets = JSON.parse(rawVault);
-    } catch {}
-
-    // Merge all without loss - RÈGLE DE SÉCURITÉ : Un ticket 'used' reste 'used' de manière irrévocable
-    const mergedMap = new Map<string, MealTicket>();
-    const processTicket = (t: MealTicket) => {
-      if (!t) return;
-      const key = t.ticketNumber || t.id;
-      if (!key) return;
-      if (!mergedMap.has(key)) {
-        mergedMap.set(key, t);
-      } else {
-        const prev = mergedMap.get(key)!;
-        const isUsed = prev.status === 'used' || t.status === 'used';
-        mergedMap.set(key, {
-          ...prev,
-          ...t,
-          status: isUsed ? 'used' : 'valid',
-          usedTime: prev.usedTime || t.usedTime
-        });
-      }
+    const ownValidFilter = (t: MealTicket) => {
+      if (!t) return false;
+      if (isRecentlyTransferredOut(t)) return false;
+      if (t.studentMatricule && t.studentMatricule.toUpperCase() !== cleanMatricule) return false;
+      if (t.transferredTo && t.transferredTo.toUpperCase() !== cleanMatricule && t.studentMatricule?.toUpperCase() !== cleanMatricule) return false;
+      return true;
     };
 
-    (user.savedTickets || []).forEach(processTicket);
-    restTickets.forEach(processTicket);
-    studentDocTickets.forEach(processTicket);
-    firestoreTickets.forEach(processTicket);
-    vaultTickets.forEach(processTicket);
-    const mergedList = Array.from(mergedMap.values());
+    // Si le document cloud existe déjà, on fait confiance au cloud (savedTickets + tickets collection appartenant à l'étudiant)
+    // et on préserve les statuts 'used' locaux éventuels pour éviter les régressions.
+    const candidateTickets: MealTicket[] = studentDocExists
+      ? [
+          ...studentDocTickets.filter(ownValidFilter),
+          ...restTickets.filter(ownValidFilter),
+          ...firestoreTickets.filter(ownValidFilter)
+        ]
+      : [
+          ...(user.savedTickets || []).filter(ownValidFilter),
+          ...restTickets.filter(ownValidFilter),
+          ...firestoreTickets.filter(ownValidFilter)
+        ];
 
-    if (mergedList.length > 0) {
-      const updatedUser: UserProfile = {
-        ...user,
-        savedTickets: mergedList
-      };
-      saveLocalUserProfile(updatedUser);
-      try {
-        localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(mergedList));
-      } catch {}
+    // Préserver statut 'used' depuis le state local si un ticket toujours présent vient d'être scanné
+    const localUsedMap = new Map<string, string>();
+    (user.savedTickets || []).forEach(lt => {
+      if (lt.status === 'used') {
+        if (lt.ticketNumber) localUsedMap.set(lt.ticketNumber, lt.usedTime || 'Scanné');
+        if (lt.id) localUsedMap.set(lt.id, lt.usedTime || 'Scanné');
+      }
+    });
 
-      // Anchor back to Firestore
-      try {
-        setDoc(doc(db, 'students', safeId), {
-          ...updatedUser,
-          savedTickets: mergedList
-        }, { merge: true }).catch(() => {});
-      } catch {}
+    const deduped = deduplicateTickets(candidateTickets).map(t => {
+      const usedTime = (t.ticketNumber && localUsedMap.get(t.ticketNumber)) || (t.id && localUsedMap.get(t.id));
+      if (usedTime && t.status !== 'used') {
+        return { ...t, status: 'used' as const, usedTime };
+      }
+      return t;
+    });
 
-      return updatedUser;
-    }
+    const adminResetPin = Boolean(studentDocData && 'pinHash' in studentDocData && !studentDocData.pinHash);
+    const nextPinSalt = studentDocData?.pinSalt ? studentDocData.pinSalt : (adminResetPin ? undefined : user.pinSalt);
+    const nextPinHash = studentDocData?.pinHash ? studentDocData.pinHash : (adminResetPin ? undefined : user.pinHash);
+    const nextPinFails = typeof studentDocData?.pinFails === 'number' ? studentDocData.pinFails : (user.pinFails || 0);
+
+    try {
+      if (nextPinSalt && nextPinHash) {
+        localStorage.setItem(`programas_pin_${safeId}`, JSON.stringify({ salt: nextPinSalt, hash: nextPinHash }));
+      } else if (adminResetPin) {
+        localStorage.removeItem(`programas_pin_${safeId}`);
+      }
+      if (nextPinFails > 0) {
+        localStorage.setItem(`programas_pin_fails_${safeId}`, String(nextPinFails));
+      } else if (typeof studentDocData?.pinFails === 'number') {
+        localStorage.removeItem(`programas_pin_fails_${safeId}`);
+      }
+    } catch {}
+
+    const updatedUser: UserProfile = {
+      ...user,
+      isBlocked: studentDocData?.isBlocked ?? user.isBlocked,
+      blockedReason: studentDocData?.blockedReason ?? user.blockedReason,
+      pinSalt: nextPinSalt,
+      pinHash: nextPinHash,
+      pinFails: nextPinFails,
+      savedTickets: deduped
+    };
+
+    saveLocalUserProfile(updatedUser);
+    try {
+      localStorage.setItem(`crou_student_vault_${cleanMatricule}`, JSON.stringify(deduped));
+    } catch {}
+
+    return updatedUser;
   } catch (err) {
     console.warn('Sync tickets note:', err);
   }
@@ -875,7 +1091,7 @@ export async function updateUserBalance(profile: UserProfile, newBalance: number
  * Ajout d'un ticket individuel
  */
 export async function addMealTicket(profile: UserProfile, ticket: MealTicket): Promise<UserProfile> {
-  const updatedTickets = [ticket, ...(profile.savedTickets || [])];
+  const updatedTickets = deduplicateTickets([ticket, ...(profile.savedTickets || [])]);
   const updated: UserProfile = {
     ...profile,
     savedTickets: updatedTickets
@@ -889,6 +1105,8 @@ export async function addMealTicket(profile: UserProfile, ticket: MealTicket): P
   } catch {}
 
   try {
+    saveTicketRest(ticket).catch(() => {});
+    saveStudentRest(updated).catch(() => {});
     await setDoc(doc(db, 'tickets', ticket.id), ticket, { merge: true });
     await setDoc(doc(db, 'tickets', ticket.ticketNumber), ticket, { merge: true });
 
@@ -1188,15 +1406,22 @@ export async function verifyTurnstileTicket(
   foundTicket.usedTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   if (ownerStudent) {
-    ownerStudent.savedTickets = (ownerStudent.savedTickets || []).map(t => 
-      (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+    ownerStudent.savedTickets = deduplicateTickets(
+      (ownerStudent.savedTickets || []).map(t =>
+        (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+      )
     );
-    saveLocalUserProfile(ownerStudent);
+    updateStudentInLocalRegistry(ownerStudent);
+    const activeLocal = getLocalUserProfile();
+    if (activeLocal && activeLocal.matricule?.toUpperCase() === ownerStudent.matricule?.toUpperCase()) {
+      saveLocalUserProfile(ownerStudent);
+    }
   }
 
-  // Synchronisation Firestore en tâche de fond (non bloquante pour répondre instantanément)
+  // Synchronisation Firestore en tâche de fond (SDK + REST)
   (async () => {
     try {
+      saveTicketRest(foundTicket!).catch(() => {});
       await Promise.all([
         setDoc(doc(db, 'tickets', foundTicket!.id), foundTicket, { merge: true }),
         setDoc(doc(db, 'tickets', foundTicket!.ticketNumber), foundTicket, { merge: true }),
@@ -1207,10 +1432,13 @@ export async function verifyTurnstileTicket(
             const sSnap = await getDoc(sRef);
             if (sSnap.exists()) {
               const studentData = sSnap.data() as UserProfile;
-              const updatedList = (studentData.savedTickets || []).map(t => 
-                (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+              const updatedList = deduplicateTickets(
+                (studentData.savedTickets || []).map(t =>
+                  (t.ticketNumber === foundTicket!.ticketNumber || t.id === foundTicket!.id) ? foundTicket! : t
+                )
               );
               await updateDoc(sRef, { savedTickets: updatedList });
+              patchStudentFieldsRest(foundTicket.studentMatricule, { savedTickets: updatedList }).catch(() => {});
             }
           }
         })()
@@ -1232,7 +1460,7 @@ export async function verifyTurnstileTicket(
  */
 export function recordFraudLog(log: Omit<FraudAuditLog, 'id' | 'timestamp'>): void {
   const newLog: FraudAuditLog = {
-    id: 'fraud_' + Math.random().toString(36).substring(2, 9),
+    id: 'fraud_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
     timestamp: new Date().toLocaleString('fr-FR'),
     ...log
   };
@@ -1241,10 +1469,11 @@ export function recordFraudLog(log: Omit<FraudAuditLog, 'id' | 'timestamp'>): vo
     const raw = localStorage.getItem(FRAUD_LOGS_STORAGE_KEY);
     const logs: FraudAuditLog[] = raw ? JSON.parse(raw) : [];
     logs.unshift(newLog);
-    localStorage.setItem(FRAUD_LOGS_STORAGE_KEY, JSON.stringify(logs.slice(0, 50)));
+    localStorage.setItem(FRAUD_LOGS_STORAGE_KEY, JSON.stringify(logs.slice(0, 80)));
 
-    // Firestore log
+    // Firestore log (SDK + REST pour visibilité multi-appareils immédiate)
     setDoc(doc(db, 'fraud_logs', newLog.id), newLog).catch(() => {});
+    saveFraudLogRest(newLog).catch(() => {});
   } catch {
     // Ignore
   }
@@ -1257,6 +1486,70 @@ export function getFraudAuditLogs(): FraudAuditLog[] {
     return JSON.parse(raw);
   } catch {
     return [];
+  }
+}
+
+/**
+ * Récupérer les alertes de fraude depuis Cloud Firestore (tous appareils)
+ */
+export async function fetchFraudAuditLogsFromCloud(): Promise<FraudAuditLog[]> {
+  const logsMap = new Map<string, FraudAuditLog>();
+  getFraudAuditLogs().forEach(l => {
+    if (l && l.id) logsMap.set(l.id, l);
+  });
+
+  try {
+    const [restLogs, sdkSnap] = await Promise.all([
+      fetchFraudLogsRest().catch(() => []),
+      getDocs(collection(db, 'fraud_logs')).catch(() => null)
+    ]);
+
+    restLogs.forEach((l: FraudAuditLog) => {
+      if (l && l.id) logsMap.set(l.id, l);
+    });
+
+    if (sdkSnap) {
+      sdkSnap.forEach(d => {
+        const l = d.data() as FraudAuditLog;
+        if (l && l.id) logsMap.set(l.id, l);
+      });
+    }
+  } catch {}
+
+  const list = Array.from(logsMap.values()).slice(0, 100);
+  try {
+    localStorage.setItem(FRAUD_LOGS_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+  return list;
+}
+
+/**
+ * Abonnement temps réel aux alertes de fraude sur tous les appareils Admin
+ */
+export function subscribeToFraudAuditLogs(onUpdate: (logs: FraudAuditLog[]) => void): () => void {
+  fetchFraudAuditLogsFromCloud().then(onUpdate).catch(() => {});
+
+  try {
+    const unsub = onSnapshot(collection(db, 'fraud_logs'), (snap) => {
+      const logsMap = new Map<string, FraudAuditLog>();
+      getFraudAuditLogs().forEach(l => {
+        if (l && l.id) logsMap.set(l.id, l);
+      });
+      snap.forEach(d => {
+        const l = d.data() as FraudAuditLog;
+        if (l && l.id) logsMap.set(l.id, l);
+      });
+      const list = Array.from(logsMap.values()).slice(0, 100);
+      try {
+        localStorage.setItem(FRAUD_LOGS_STORAGE_KEY, JSON.stringify(list));
+      } catch {}
+      onUpdate(list);
+    }, () => {
+      fetchFraudAuditLogsFromCloud().then(onUpdate).catch(() => {});
+    });
+    return unsub;
+  } catch {
+    return () => {};
   }
 }
 
@@ -1316,7 +1609,87 @@ export function verifyAdminPassword(password: string): boolean {
 }
 
 /**
- * Verrouiller définitivement le compte d'un étudiant suite à 5 tentatives de code PIN erronées
+ * Enregistrer le code PIN (sel + empreinte PBKDF2) directement sur le compte Firestore de l'étudiant
+ */
+export async function saveStudentPinToAccount(
+  matricule: string,
+  pinSalt: string,
+  pinHash: string
+): Promise<void> {
+  const cleanMat = (matricule || '').trim().toUpperCase();
+  if (!cleanMat) return;
+  const safeId = sanitizeMatriculeId(cleanMat);
+
+  // 1. Registre local + session active
+  const registry = getLocalStudentsRegistry();
+  if (registry[cleanMat]) {
+    registry[cleanMat].pinSalt = pinSalt;
+    registry[cleanMat].pinHash = pinHash;
+    registry[cleanMat].pinFails = 0;
+    try { localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry)); } catch {}
+  }
+
+  try {
+    const rawUser = localStorage.getItem(STORAGE_KEY);
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.matricule?.toUpperCase() === cleanMat || u.uid?.toUpperCase() === cleanMat) {
+        u.pinSalt = pinSalt;
+        u.pinHash = pinHash;
+        u.pinFails = 0;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      }
+    }
+  } catch {}
+
+  // 2. Cloud Firestore (REST + SDK)
+  patchStudentFieldsRest(cleanMat, { pinSalt, pinHash, pinFails: 0 }).catch(() => {});
+  try {
+    await setDoc(doc(db, 'students', safeId), {
+      pinSalt,
+      pinHash,
+      pinFails: 0
+    }, { merge: true });
+  } catch (err) {
+    console.warn('saveStudentPinToAccount Firestore note:', err);
+  }
+}
+
+/**
+ * Mettre à jour le compteur d'erreurs PIN sur le compte Firestore (anti-reset par rechargement / changement d'appareil)
+ */
+export async function updateStudentPinFails(matricule: string, pinFails: number): Promise<void> {
+  const cleanMat = (matricule || '').trim().toUpperCase();
+  if (!cleanMat) return;
+  const safeId = sanitizeMatriculeId(cleanMat);
+
+  const registry = getLocalStudentsRegistry();
+  if (registry[cleanMat]) {
+    registry[cleanMat].pinFails = pinFails;
+    try { localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry)); } catch {}
+  }
+
+  try {
+    const rawUser = localStorage.getItem(STORAGE_KEY);
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.matricule?.toUpperCase() === cleanMat || u.uid?.toUpperCase() === cleanMat) {
+        u.pinFails = pinFails;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      }
+    }
+  } catch {}
+
+  patchStudentFieldsRest(cleanMat, { pinFails }).catch(() => {});
+  try {
+    await setDoc(doc(db, 'students', safeId), { pinFails }, { merge: true });
+  } catch {}
+}
+
+/**
+ * Verrouiller définitivement le compte d'un étudiant suite à 5 tentatives de code PIN erronées.
+ * EFFACE les identifiants mémorisés sur l'appareil tout en conservant le PIN et le blocage dans le cloud.
+ * Seul l'administrateur CROU peut débloquer ce compte.
  */
 export async function blockStudentAccount(
   matricule: string,
@@ -1335,6 +1708,7 @@ export async function blockStudentAccount(
     registry[cleanMat].isBlocked = true;
     registry[cleanMat].blockedReason = reason;
     registry[cleanMat].blockedAt = now;
+    registry[cleanMat].pinFails = 5;
     studentName = registry[cleanMat].displayName || cleanMat;
   }
   Object.values(registry).forEach((s: UserProfile) => {
@@ -1342,6 +1716,7 @@ export async function blockStudentAccount(
       s.isBlocked = true;
       s.blockedReason = reason;
       s.blockedAt = now;
+      s.pinFails = 5;
       studentName = s.displayName || studentName;
     }
   });
@@ -1349,28 +1724,24 @@ export async function blockStudentAccount(
     localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
   } catch {}
 
-  // 2. Mettre à jour la session utilisateur active si présente
+  // 2. Effacer immédiatement les identifiants mémorisés et la session active sur l'appareil (anti-reconnexion automatique)
   try {
-    const rawUser = localStorage.getItem(STORAGE_KEY);
-    if (rawUser) {
-      const u = JSON.parse(rawUser);
-      if (u.matricule?.toUpperCase() === cleanMat || u.uid?.toUpperCase() === cleanMat) {
-        u.isBlocked = true;
-        u.blockedReason = reason;
-        u.blockedAt = now;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-      }
+    localStorage.removeItem('crou_remembered_matricule');
+    localStorage.removeItem('crou_remembered_password');
+    localStorage.removeItem(STORAGE_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('crou:clear-remembered-creds'));
     }
   } catch {}
 
-  // 3. Persister dans Firestore (REST + SDK)
+  // 3. Persister le blocage dans Firestore (PATCH strict sans écraser les tickets/solde/PIN!)
   try {
-    await saveStudentRest({
-      matricule: cleanMat,
+    await patchStudentFieldsRest(cleanMat, {
       isBlocked: true,
       blockedReason: reason,
-      blockedAt: now
-    } as any);
+      blockedAt: now,
+      pinFails: 5
+    });
   } catch {}
 
   try {
@@ -1378,19 +1749,20 @@ export async function blockStudentAccount(
     await setDoc(sRef, {
       isBlocked: true,
       blockedReason: reason,
-      blockedAt: now
+      blockedAt: now,
+      pinFails: 5
     }, { merge: true });
   } catch (err) {
     console.warn('blockStudentAccount Firestore SDK note:', err);
   }
 
-  // 4. Enregistrer un rapport d'alerte dans les logs de fraude
+  // 4. Enregistrer un rapport d'alerte critique dans les logs de fraude (visible par Admin sur tous appareils)
   try {
     recordFraudLog({
       matricule: cleanMat,
       studentName: studentName,
-      ticketNumber: 'PIN-BRUTE-FORCE',
-      reason: `Compte bloqué : 5 erreurs consécutives de code PIN. Contact aux responsables Programas obligatoire.`,
+      ticketNumber: 'PIN-LOCK-5-FAILS',
+      reason: `Compte bloqué : 5 erreurs consécutives de code PIN. Déblocage exclusivement par l'Admin CROU.`,
       severity: 'critical'
     });
   } catch {}
@@ -1402,28 +1774,40 @@ export async function blockStudentAccount(
 }
 
 /**
- * Déverrouiller le compte d'un étudiant par un responsable Programas (Admin)
+ * Déverrouiller le compte et/ou réinitialiser le code PIN d'un étudiant par l'Administration CROU uniquement
  */
 export async function unblockStudentAccount(
-  matricule: string
+  matricule: string,
+  options: { resetPin?: boolean } = { resetPin: true }
 ): Promise<{ success: boolean; message: string }> {
   const cleanMat = (matricule || '').trim().toUpperCase();
   if (!cleanMat) return { success: false, message: 'Matricule requis' };
 
   const safeId = sanitizeMatriculeId(cleanMat);
+  const shouldResetPin = options.resetPin !== false;
 
   // 1. Mettre à jour dans le registre local
   const registry = getLocalStudentsRegistry();
   if (registry[cleanMat]) {
     registry[cleanMat].isBlocked = false;
+    registry[cleanMat].pinFails = 0;
     delete registry[cleanMat].blockedReason;
     delete registry[cleanMat].blockedAt;
+    if (shouldResetPin) {
+      delete registry[cleanMat].pinSalt;
+      delete registry[cleanMat].pinHash;
+    }
   }
   Object.values(registry).forEach((s: UserProfile) => {
     if (s.matricule?.toUpperCase() === cleanMat || s.uid?.toUpperCase() === cleanMat || sanitizeMatriculeId(s.matricule || '') === safeId) {
       s.isBlocked = false;
+      s.pinFails = 0;
       delete s.blockedReason;
       delete s.blockedAt;
+      if (shouldResetPin) {
+        delete s.pinSalt;
+        delete s.pinHash;
+      }
     }
   });
   try {
@@ -1437,44 +1821,66 @@ export async function unblockStudentAccount(
       const u = JSON.parse(rawUser);
       if (u.matricule?.toUpperCase() === cleanMat || u.uid?.toUpperCase() === cleanMat) {
         u.isBlocked = false;
+        u.pinFails = 0;
         u.blockedReason = undefined;
         u.blockedAt = undefined;
+        if (shouldResetPin) {
+          u.pinSalt = undefined;
+          u.pinHash = undefined;
+        }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
       }
     }
   } catch {}
 
-  // 3. Persister dans Firestore (REST + SDK)
+  // 3. Persister dans Firestore (PATCH strict sans écraser tickets/solde)
+  const patchPayload: Record<string, any> = {
+    isBlocked: false,
+    blockedReason: '',
+    blockedAt: '',
+    pinFails: 0
+  };
+  if (shouldResetPin) {
+    patchPayload.pinSalt = null;
+    patchPayload.pinHash = null;
+  }
+
   try {
-    await saveStudentRest({
-      matricule: cleanMat,
-      isBlocked: false,
-      blockedReason: '',
-      blockedAt: ''
-    } as any);
+    await patchStudentFieldsRest(cleanMat, patchPayload);
   } catch {}
 
   try {
     const sRef = doc(db, 'students', safeId);
-    await setDoc(sRef, {
-      isBlocked: false,
-      blockedReason: null,
-      blockedAt: null
-    }, { merge: true });
+    await setDoc(sRef, patchPayload, { merge: true });
   } catch (err) {
     console.warn('unblockStudentAccount Firestore SDK note:', err);
   }
 
-  // Réinitialiser les compteurs d'échecs PIN en local
+  // Nettoyer les compteurs d'échecs locaux pour ce matricule
   try {
+    localStorage.removeItem(`programas_pin_fails_${safeId}`);
+    if (shouldResetPin) {
+      localStorage.removeItem(`programas_pin_${safeId}`);
+    }
     localStorage.removeItem('programas_pin_fails');
-    localStorage.removeItem('programas_pin');
+    if (shouldResetPin) {
+      localStorage.removeItem('programas_pin');
+    }
   } catch {}
 
   return {
     success: true,
-    message: `Le compte ${cleanMat} a été débloqué avec succès.`
+    message: shouldResetPin
+      ? `Le compte ${cleanMat} a été débloqué et son code PIN a été réinitialisé.`
+      : `Le compte ${cleanMat} a été débloqué avec succès.`
   };
+}
+
+/**
+ * Réinitialiser uniquement le code PIN d'un étudiant par l'Administration CROU
+ */
+export async function resetStudentPinByAdmin(matricule: string): Promise<{ success: boolean; message: string }> {
+  return unblockStudentAccount(matricule, { resetPin: true });
 }
 
 /**
@@ -1483,9 +1889,6 @@ export async function unblockStudentAccount(
 export async function lookupStudentByMatricule(matricule: string): Promise<UserProfile | null> {
   const clean = (matricule || '').trim().toUpperCase();
   if (!clean || clean.length < 3) return null;
-
-  const localRegistry = getLocalStudentsRegistry();
-  if (localRegistry[clean]) return localRegistry[clean];
 
   try {
     const restStudent = await fetchStudentRest(clean);
@@ -1499,16 +1902,20 @@ export async function lookupStudentByMatricule(matricule: string): Promise<UserP
     }
   } catch {}
 
+  const localRegistry = getLocalStudentsRegistry();
+  if (localRegistry[clean]) return localRegistry[clean];
+
   return null;
 }
 
+// Verrou de concurrence en mémoire pour garantir qu'un ticket ne peut JAMAIS être transféré en double
+const activeTicketTransferLocks = new Set<string>();
+
 /**
- * Transfère un ticket repas d'un étudiant à un camarade / proche via son numéro de matricule.
- * - Vérifie que l'expéditeur possède le ticket avec status === 'valid'
- * - Vérifie le matricule du destinataire
- * - Met à jour l'expéditeur (retrait du ticket) dans Firestore et local
- * - Met à jour le destinataire (ajout du ticket avec QR code valide) dans Firestore et local
- * - Met à jour le document ticket dans la collection 'tickets'
+ * Transfère STRICTEMENT 1 seul ticket repas d'un étudiant à un autre via transaction atomique Firestore :
+ * - Exemple : 4 tickets -> envoie 1 -> expéditeur passe à 3, destinataire reçoit +1.
+ * - Transaction Firestore atomique (runTransaction) sur sender, recipient et tickets/*.
+ * - Aucun doublon par id vs ticketNumber ni réinjection par cache.
  */
 export async function transferMealTicketToStudent(
   senderProfile: UserProfile,
@@ -1540,187 +1947,322 @@ export async function transferMealTicketToStudent(
     };
   }
 
-  // Vérifier la présence du ticket valide chez l'expéditeur
-  const senderTickets = senderProfile.savedTickets || [];
-  const ticketIndex = senderTickets.findIndex(
+  const senderTickets = deduplicateTickets(senderProfile.savedTickets || []);
+  const ticketToTransfer = senderTickets.find(
     t => (t.id === ticketIdOrNumber || t.ticketNumber === ticketIdOrNumber) && t.status === 'valid'
   );
 
-  if (ticketIndex === -1) {
+  if (!ticketToTransfer) {
     return {
       success: false,
-      error: "Ce ticket n'est plus disponible dans votre compte ou a déjà été utilisé."
+      error: "Ce ticket n'est plus disponible dans votre compte ou a déjà été utilisé/transféré."
     };
   }
 
-  const ticketToTransfer = senderTickets[ticketIndex];
+  const serialKey = ticketToTransfer.ticketNumber || ticketToTransfer.id;
+  const ticketIdKey = ticketToTransfer.id || serialKey;
 
-  // RÈGLE CRITIQUE DE SÉCURITÉ : Vérification temps réel dans la base centrale Firestore
-  // Si le ticket a déjà été scanné au tourniquet, le transfert est IMMÉDIATEMENT BLOQUÉ
+  if (activeTicketTransferLocks.has(serialKey) || activeTicketTransferLocks.has(ticketIdKey)) {
+    return {
+      success: false,
+      error: 'Ce ticket est actuellement en cours de transfert. Veuillez patienter un instant...'
+    };
+  }
+  activeTicketTransferLocks.add(serialKey);
+  if (ticketIdKey) activeTicketTransferLocks.add(ticketIdKey);
+
+  const safeSenderId = sanitizeMatriculeId(senderMat);
+  const safeRecipientId = sanitizeMatriculeId(cleanRecipientMat);
+
   try {
-    let cloudTkt: MealTicket | null = null;
-    const snapTkt = await getDoc(doc(db, 'tickets', ticketToTransfer.ticketNumber));
-    if (snapTkt.exists()) {
-      cloudTkt = snapTkt.data() as MealTicket;
-    } else if (ticketToTransfer.id) {
-      const snapId = await getDoc(doc(db, 'tickets', ticketToTransfer.id));
-      if (snapId.exists()) {
-        cloudTkt = snapId.data() as MealTicket;
-      }
-    }
+    let txResult: {
+      updatedSender: UserProfile;
+      updatedRecipient: UserProfile;
+      transferredTicket: MealTicket;
+      recipientName: string;
+    } | null = null;
 
-    if (cloudTkt && cloudTkt.status === 'used') {
-      // Synchroniser immédiatement en rouge chez l'expéditeur
-      const fixedSenderList = senderTickets.map(t => 
-        (t.ticketNumber === ticketToTransfer.ticketNumber || t.id === ticketToTransfer.id)
-          ? { ...t, status: 'used' as const, usedTime: cloudTkt!.usedTime || 'service précédent' }
-          : t
-      );
-      const updatedSenderProfile: UserProfile = { ...senderProfile, savedTickets: fixedSenderList };
-      saveLocalUserProfile(updatedSenderProfile);
-      if (senderMat) {
-        updateStudentInLocalRegistry(updatedSenderProfile);
+    try {
+      txResult = await runTransaction(db, async (tx) => {
+        const senderRef = doc(db, 'students', safeSenderId);
+        const recipientRef = doc(db, 'students', safeRecipientId);
+        const tktSerialRef = doc(db, 'tickets', serialKey);
+        const tktIdRef = (ticketIdKey && ticketIdKey !== serialKey) ? doc(db, 'tickets', ticketIdKey) : null;
+
+        const [senderSnap, recipientSnap, tktSerialSnap, tktIdSnap] = await Promise.all([
+          tx.get(senderRef),
+          tx.get(recipientRef),
+          tx.get(tktSerialRef),
+          tktIdRef ? tx.get(tktIdRef) : Promise.resolve(null)
+        ]);
+
+        const cloudTicketDoc = (
+          tktSerialSnap.exists()
+            ? tktSerialSnap.data()
+            : (tktIdSnap && tktIdSnap.exists() ? tktIdSnap.data() : null)
+        ) as MealTicket | null;
+
+        if (cloudTicketDoc) {
+          if (cloudTicketDoc.status === 'used') {
+            throw new Error(`ALREADY_USED:${cloudTicketDoc.usedTime || 'service précédent'}`);
+          }
+          if (cloudTicketDoc.studentMatricule && senderMat && cloudTicketDoc.studentMatricule.toUpperCase() !== senderMat) {
+            throw new Error(`ALREADY_TRANSFERRED:${cloudTicketDoc.studentMatricule}`);
+          }
+        }
+
+        const cloudSenderData = senderSnap.exists() ? (senderSnap.data() as UserProfile) : null;
+        const authoritativeSenderTickets = deduplicateTickets(
+          cloudSenderData && Array.isArray(cloudSenderData.savedTickets)
+            ? cloudSenderData.savedTickets
+            : senderTickets
+        );
+
+        const exactIndex = authoritativeSenderTickets.findIndex(
+          t => (t.ticketNumber === serialKey || t.id === ticketIdKey || t.id === ticketIdOrNumber || t.ticketNumber === ticketIdOrNumber) && t.status === 'valid'
+        );
+
+        if (exactIndex === -1) {
+          throw new Error('NOT_FOUND_OR_USED');
+        }
+
+        const chosenTicket = authoritativeSenderTickets[exactIndex];
+        const chosenNum = chosenTicket.ticketNumber;
+        const chosenId = chosenTicket.id;
+
+        // Retirer STRICTEMENT ce seul ticket chez l'expéditeur
+        const nextSenderTickets = authoritativeSenderTickets.filter((t, idx) => {
+          if (idx === exactIndex) return false;
+          if (chosenNum && t.ticketNumber === chosenNum) return false;
+          if (chosenId && t.id === chosenId) return false;
+          return true;
+        });
+
+        const recipientData = recipientSnap.exists() ? (recipientSnap.data() as UserProfile) : null;
+        const recipientName = recipientData?.displayName || `Étudiant (${cleanRecipientMat})`;
+        const recipientUid = recipientData?.uid || cleanRecipientMat;
+
+        const newQrData = JSON.stringify({
+          app: 'CROUK_RESTO_U',
+          tkt: chosenTicket.ticketNumber,
+          mat: cleanRecipientMat,
+          cnt: chosenTicket.canteenId,
+          dish: chosenTicket.dishName,
+          date: chosenTicket.date,
+          prc: chosenTicket.price,
+          ts: Date.now()
+        });
+
+        const transferredTicket: MealTicket = {
+          ...chosenTicket,
+          studentId: recipientUid,
+          studentName: recipientName,
+          studentMatricule: cleanRecipientMat,
+          qrCodeData: newQrData,
+          transferredFrom: senderProfile.displayName || senderMat || 'Un camarade',
+          transferredTo: cleanRecipientMat,
+          transferredAt: new Date().toISOString()
+        };
+
+        const existingRecipientTickets = deduplicateTickets(
+          Array.isArray(recipientData?.savedTickets) ? recipientData.savedTickets : []
+        );
+
+        // Ajouter STRICTEMENT ce 1 seul ticket chez le destinataire (zéro doublon)
+        const nextRecipientTickets = deduplicateTickets([transferredTicket, ...existingRecipientTickets]);
+
+        const nextSenderProfile: UserProfile = {
+          ...senderProfile,
+          ...(cloudSenderData || {}),
+          matricule: senderMat,
+          savedTickets: nextSenderTickets
+        };
+
+        const nextRecipientProfile: UserProfile = {
+          ...(recipientData || {
+            uid: recipientUid,
+            email: `${cleanRecipientMat.toLowerCase()}@upgc.ci`,
+            role: 'student',
+            balance: 0,
+            university: 'Université Peleforo Gbon Coulibaly (UPGC)',
+            campus: 'Campus UPGC Korhogo',
+            createdAt: new Date().toISOString()
+          }),
+          matricule: cleanRecipientMat,
+          displayName: recipientName,
+          savedTickets: nextRecipientTickets
+        };
+
+        tx.set(senderRef, {
+          savedTickets: nextSenderTickets,
+          lastTransferAt: transferredTicket.transferredAt
+        }, { merge: true });
+
+        tx.set(recipientRef, {
+          uid: nextRecipientProfile.uid,
+          matricule: cleanRecipientMat,
+          displayName: recipientName,
+          email: nextRecipientProfile.email,
+          role: nextRecipientProfile.role || 'student',
+          balance: typeof nextRecipientProfile.balance === 'number' ? nextRecipientProfile.balance : 0,
+          university: nextRecipientProfile.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
+          campus: nextRecipientProfile.campus || 'Campus UPGC Korhogo',
+          savedTickets: nextRecipientTickets,
+          lastReceivedAt: transferredTicket.transferredAt
+        }, { merge: true });
+
+        tx.set(tktSerialRef, transferredTicket, { merge: true });
+        if (tktIdRef) {
+          tx.set(tktIdRef, transferredTicket, { merge: true });
+        }
+
+        return {
+          updatedSender: nextSenderProfile,
+          updatedRecipient: nextRecipientProfile,
+          transferredTicket,
+          recipientName
+        };
+      });
+    } catch (txErr: any) {
+      const msg = String(txErr?.message || '');
+      if (msg.startsWith('ALREADY_USED:')) {
+        const usedAt = msg.split(':')[1] || 'ce service';
+        return {
+          success: false,
+          error: `🚨 Transfert impossible : Ce ticket (${ticketToTransfer.ticketNumber}) a déjà été scanné et consommé à ${usedAt}.`
+        };
       }
-      return {
-        success: false,
-        error: `🚨 Transfert impossible : Ce ticket (${ticketToTransfer.ticketNumber}) a déjà été scanné et consommé au restaurant universitaire à ${cloudTkt.usedTime || 'ce service'}.`
+      if (msg.startsWith('ALREADY_TRANSFERRED:') || msg === 'NOT_FOUND_OR_USED') {
+        return {
+          success: false,
+          error: "Ce ticket a déjà été transféré ou n'est plus disponible dans votre compte."
+        };
+      }
+
+      // Fallback REST si transaction SDK impossible (réseau restreint)
+      console.warn('Firestore runTransaction transfer fallback REST:', txErr);
+
+      const restRecipient = await fetchStudentRest(cleanRecipientMat).catch(() => null);
+      const restSender = senderMat ? await fetchStudentRest(senderMat).catch(() => null) : null;
+
+      const baseSenderTickets = deduplicateTickets(
+        restSender && Array.isArray(restSender.savedTickets) ? restSender.savedTickets : senderTickets
+      );
+      const chosen = baseSenderTickets.find(
+        t => (t.ticketNumber === serialKey || t.id === ticketIdKey || t.id === ticketIdOrNumber || t.ticketNumber === ticketIdOrNumber) && t.status === 'valid'
+      );
+      if (!chosen) {
+        return {
+          success: false,
+          error: "Ce ticket n'est plus disponible dans votre compte ou a déjà été transféré."
+        };
+      }
+
+      const recipientName = restRecipient?.displayName || `Étudiant (${cleanRecipientMat})`;
+      const recipientUid = restRecipient?.uid || cleanRecipientMat;
+
+      const newQrData = JSON.stringify({
+        app: 'CROUK_RESTO_U',
+        tkt: chosen.ticketNumber,
+        mat: cleanRecipientMat,
+        cnt: chosen.canteenId,
+        dish: chosen.dishName,
+        date: chosen.date,
+        prc: chosen.price,
+        ts: Date.now()
+      });
+
+      const transferredTicket: MealTicket = {
+        ...chosen,
+        studentId: recipientUid,
+        studentName: recipientName,
+        studentMatricule: cleanRecipientMat,
+        qrCodeData: newQrData,
+        transferredFrom: senderProfile.displayName || senderMat || 'Un camarade',
+        transferredTo: cleanRecipientMat,
+        transferredAt: new Date().toISOString()
+      };
+
+      const nextSenderTickets = baseSenderTickets.filter(
+        t => t.ticketNumber !== chosen.ticketNumber && (!chosen.id || t.id !== chosen.id)
+      );
+
+      const existingRecipientTickets = deduplicateTickets(
+        Array.isArray(restRecipient?.savedTickets) ? restRecipient.savedTickets : []
+      );
+      const nextRecipientTickets = deduplicateTickets([transferredTicket, ...existingRecipientTickets]);
+
+      const nextSenderProfile: UserProfile = {
+        ...senderProfile,
+        savedTickets: nextSenderTickets
+      };
+
+      const nextRecipientProfile: UserProfile = {
+        ...(restRecipient || {
+          uid: recipientUid,
+          email: `${cleanRecipientMat.toLowerCase()}@upgc.ci`,
+          role: 'student',
+          balance: 0,
+          university: 'Université Peleforo Gbon Coulibaly (UPGC)',
+          campus: 'Campus UPGC Korhogo',
+          createdAt: new Date().toISOString()
+        }),
+        matricule: cleanRecipientMat,
+        displayName: recipientName,
+        savedTickets: nextRecipientTickets
+      };
+
+      if (senderMat) {
+        await patchStudentFieldsRest(senderMat, { savedTickets: nextSenderTickets }).catch(() => {});
+      }
+      await saveStudentRest(nextRecipientProfile).catch(() => {});
+      await saveTicketRest(transferredTicket).catch(() => {});
+
+      txResult = {
+        updatedSender: nextSenderProfile,
+        updatedRecipient: nextRecipientProfile,
+        transferredTicket,
+        recipientName
       };
     }
-  } catch (err) {
-    console.warn('Vérification Firestore ticket transfert:', err);
-  }
 
-  // 1. Rechercher le destinataire (Local Registry + REST + Firestore)
-  let recipientFound: UserProfile | null = null;
-  const localRegistry = getLocalStudentsRegistry();
-  if (localRegistry[cleanRecipientMat]) {
-    recipientFound = localRegistry[cleanRecipientMat];
-  }
+    // Mémoriser ce ticket comme transféré hors de ce compte pour empêcher toute réinjection locale
+    markTicketTransferredOut(txResult.transferredTicket);
 
-  if (!recipientFound) {
+    // Mise à jour locale immédiate de l'expéditeur et du destinataire
+    saveLocalUserProfile(txResult.updatedSender);
+    if (senderMat) {
+      try {
+        localStorage.setItem(`crou_student_vault_${senderMat}`, JSON.stringify(txResult.updatedSender.savedTickets));
+      } catch {}
+      updateStudentInLocalRegistry(txResult.updatedSender);
+      patchStudentFieldsRest(senderMat, { savedTickets: txResult.updatedSender.savedTickets }).catch(() => {});
+    }
+
     try {
-      recipientFound = await fetchStudentRest(cleanRecipientMat);
+      localStorage.setItem(`crou_student_vault_${cleanRecipientMat}`, JSON.stringify(txResult.updatedRecipient.savedTickets));
     } catch {}
+    updateStudentInLocalRegistry(txResult.updatedRecipient);
+    saveStudentRest(txResult.updatedRecipient).catch(() => {});
+    saveTicketRest(txResult.transferredTicket).catch(() => {});
+
+    return {
+      success: true,
+      updatedSender: txResult.updatedSender,
+      transferredTicket: txResult.transferredTicket,
+      recipientName: txResult.recipientName,
+      recipientMatricule: cleanRecipientMat
+    };
+  } finally {
+    activeTicketTransferLocks.delete(serialKey);
+    if (ticketIdKey) activeTicketTransferLocks.delete(ticketIdKey);
   }
-
-  if (!recipientFound) {
-    try {
-      const snap = await getDoc(doc(db, 'students', sanitizeMatriculeId(cleanRecipientMat)));
-      if (snap.exists()) {
-        recipientFound = snap.data() as UserProfile;
-      }
-    } catch {}
-  }
-
-  // Si l'étudiant destinataire n'a pas encore créé son compte dans l'app,
-  // nous créons son profil récepteur afin que dès sa première connexion, le ticket soit présent !
-  const recipientName = recipientFound?.displayName || `Étudiant (${cleanRecipientMat})`;
-  const recipientUid = recipientFound?.uid || cleanRecipientMat;
-
-  // 2. Construire le ticket réassigné avec QR code valide
-  const newQrData = JSON.stringify({
-    app: 'CROUK_RESTO_U',
-    tkt: ticketToTransfer.ticketNumber,
-    mat: cleanRecipientMat,
-    cnt: ticketToTransfer.canteenId,
-    dish: ticketToTransfer.dishName,
-    date: ticketToTransfer.date,
-    prc: ticketToTransfer.price,
-    ts: Date.now()
-  });
-
-  const transferredTicket: MealTicket = {
-    ...ticketToTransfer,
-    studentId: recipientUid,
-    studentName: recipientName,
-    studentMatricule: cleanRecipientMat,
-    qrCodeData: newQrData,
-    transferredFrom: senderProfile.displayName || senderMat || 'Un camarade',
-    transferredTo: cleanRecipientMat,
-    transferredAt: new Date().toISOString()
-  };
-
-  // 3. Mettre à jour l'expéditeur (retrait immédiat du ticket)
-  const updatedSenderTickets = senderTickets.filter((_, idx) => idx !== ticketIndex);
-  const updatedSender: UserProfile = {
-    ...senderProfile,
-    savedTickets: updatedSenderTickets
-  };
-
-  saveLocalUserProfile(updatedSender);
-  if (senderMat) {
-    try {
-      localStorage.setItem(`crou_student_vault_${senderMat}`, JSON.stringify(updatedSenderTickets));
-    } catch {}
-    updateStudentInLocalRegistry(updatedSender);
-    saveStudentRest(updatedSender).catch(() => {});
-    try {
-      const senderRef = doc(db, 'students', sanitizeMatriculeId(senderMat));
-      await setDoc(senderRef, { ...updatedSender, savedTickets: updatedSenderTickets }, { merge: true });
-    } catch {}
-  }
-
-  // 4. Mettre à jour le destinataire (crédit immédiat du ticket dans ses tickets)
-  const existingRecipientTickets: MealTicket[] = Array.isArray(recipientFound?.savedTickets) 
-    ? recipientFound.savedTickets 
-    : (() => {
-        try {
-          const raw = localStorage.getItem(`crou_student_vault_${cleanRecipientMat}`);
-          return raw ? JSON.parse(raw) : [];
-        } catch {
-          return [];
-        }
-      })();
-
-  const updatedRecipientTickets = [
-    transferredTicket,
-    ...existingRecipientTickets.filter(t => t.ticketNumber !== transferredTicket.ticketNumber)
-  ];
-
-  const updatedRecipient: UserProfile = {
-    ...(recipientFound || {
-      uid: cleanRecipientMat,
-      email: `${cleanRecipientMat.toLowerCase()}@upgc.ci`,
-      role: 'student',
-      balance: 0,
-      university: 'Université Peleforo Gbon Coulibaly (UPGC)',
-      campus: 'Campus UPGC Korhogo'
-    }),
-    matricule: cleanRecipientMat,
-    displayName: recipientName,
-    savedTickets: updatedRecipientTickets
-  };
-
-  try {
-    localStorage.setItem(`crou_student_vault_${cleanRecipientMat}`, JSON.stringify(updatedRecipientTickets));
-  } catch {}
-  updateStudentInLocalRegistry(updatedRecipient);
-  saveStudentRest(updatedRecipient).catch(() => {});
-  try {
-    const recRef = doc(db, 'students', sanitizeMatriculeId(cleanRecipientMat));
-    await setDoc(recRef, { ...updatedRecipient, savedTickets: updatedRecipientTickets }, { merge: true });
-  } catch {}
-
-  // 5. Mettre à jour la collection centrale 'tickets' dans Firestore
-  saveTicketRest(transferredTicket).catch(() => {});
-  try {
-    await setDoc(doc(db, 'tickets', transferredTicket.id), transferredTicket, { merge: true });
-    await setDoc(doc(db, 'tickets', transferredTicket.ticketNumber), transferredTicket, { merge: true });
-  } catch {}
-
-  return {
-    success: true,
-    updatedSender,
-    transferredTicket,
-    recipientName,
-    recipientMatricule: cleanRecipientMat
-  };
 }
 
 /**
- * Écoute en temps réel les changements sur le profil et les tickets de l'étudiant
- * Permet au téléphone de l'étudiant de passer immédiatement son ticket en ROUGE "UTILISÉ"
- * dès que la borne de la cantine scanne le QR code, sans devoir rafraîchir la page !
+ * Écoute en temps réel les changements sur le profil et les tickets de l'étudiant.
+ * Fait confiance au document cloud (savedTickets) pour refléter immédiatement achats, scans ET transferts sortants (4 -> 3)
+ * sans jamais réinjecter un ticket qui vient d'être transféré.
  */
 export function subscribeToStudentProfile(
   matricule: string,
@@ -1736,35 +2278,57 @@ export function subscribeToStudentProfile(
         const cloudData = snapshot.data() as UserProfile;
         const currentLocal = getLocalUserProfile();
         const localTickets = currentLocal?.savedTickets || [];
-        const cloudTickets = cloudData.savedTickets || [];
+        const hasCloudTicketsArray = Array.isArray(cloudData.savedTickets);
+        const cloudTickets = hasCloudTicketsArray ? cloudData.savedTickets : localTickets;
 
-        // Fusion stricte où 'used' l'emporte toujours
-        const mergedMap = new Map<string, MealTicket>();
-        const addTkt = (t: MealTicket) => {
-          if (!t) return;
-          const k = t.ticketNumber || t.id;
-          if (!k) return;
-          if (!mergedMap.has(k)) {
-            mergedMap.set(k, t);
-          } else {
-            const prev = mergedMap.get(k)!;
-            const isUsed = prev.status === 'used' || t.status === 'used';
-            mergedMap.set(k, {
-              ...prev,
-              ...t,
-              status: isUsed ? 'used' : 'valid',
-              usedTime: prev.usedTime || t.usedTime
-            });
+        // Préserver le statut 'used' si un ticket toujours présent dans le compte vient d'être scanné
+        const localUsedMap = new Map<string, string>();
+        localTickets.forEach(lt => {
+          if (lt.status === 'used') {
+            if (lt.ticketNumber) localUsedMap.set(lt.ticketNumber, lt.usedTime || 'Scanné');
+            if (lt.id) localUsedMap.set(lt.id, lt.usedTime || 'Scanné');
           }
-        };
+        });
 
-        localTickets.forEach(addTkt);
-        cloudTickets.forEach(addTkt);
-        const mergedList = Array.from(mergedMap.values());
+        const filteredCloud = cloudTickets
+          .filter(t => {
+            if (!t) return false;
+            if (isRecentlyTransferredOut(t)) return false;
+            if (t.studentMatricule && t.studentMatricule.toUpperCase() !== cleanMat) return false;
+            if (t.transferredTo && t.transferredTo.toUpperCase() !== cleanMat && t.studentMatricule?.toUpperCase() !== cleanMat) return false;
+            return true;
+          })
+          .map(t => {
+            const usedTime = (t.ticketNumber && localUsedMap.get(t.ticketNumber)) || (t.id && localUsedMap.get(t.id));
+            if (usedTime && t.status !== 'used') {
+              return { ...t, status: 'used' as const, usedTime };
+            }
+            return t;
+          });
+
+        const mergedList = deduplicateTickets(filteredCloud);
+
+        const adminResetPin = 'pinHash' in cloudData && !cloudData.pinHash;
+        try {
+          if (cloudData.pinSalt && cloudData.pinHash) {
+            localStorage.setItem(`programas_pin_${safeId}`, JSON.stringify({ salt: cloudData.pinSalt, hash: cloudData.pinHash }));
+          } else if (adminResetPin) {
+            localStorage.removeItem(`programas_pin_${safeId}`);
+          }
+          if (typeof cloudData.pinFails === 'number') {
+            if (cloudData.pinFails > 0) {
+              localStorage.setItem(`programas_pin_fails_${safeId}`, String(cloudData.pinFails));
+            } else {
+              localStorage.removeItem(`programas_pin_fails_${safeId}`);
+            }
+          }
+        } catch {}
 
         const mergedUser: UserProfile = {
           ...(currentLocal || {}),
           ...cloudData,
+          pinSalt: cloudData.pinSalt || (adminResetPin ? undefined : currentLocal?.pinSalt),
+          pinHash: cloudData.pinHash || (adminResetPin ? undefined : currentLocal?.pinHash),
           matricule: cleanMat,
           savedTickets: mergedList
         };

@@ -74,7 +74,18 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // User & Portal State (Interface 1 vs Interface 2)
-  const [user, setUser] = useState<UserProfile | null>(() => getLocalUserProfile());
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    const local = getLocalUserProfile();
+    if (local && local.isBlocked && local.role === 'student') {
+      try {
+        localStorage.removeItem('crou_remembered_matricule');
+        localStorage.removeItem('crou_remembered_password');
+        localStorage.removeItem('crou_user_profile');
+      } catch {}
+      return null;
+    }
+    return local;
+  });
   const [showBlackPortal, setShowBlackPortal] = useState<boolean>(false);
   
   // Cart State (Inspired by IMG_0875.webp Screen 3)
@@ -140,10 +151,28 @@ export const App: React.FC = () => {
 
     // 1. Synchronisation initiale
     syncStudentTicketsWithFirestore(user).then((synced) => {
+      if (synced && synced.isBlocked && synced.role === 'student') {
+        try {
+          localStorage.removeItem('crou_remembered_matricule');
+          localStorage.removeItem('crou_remembered_password');
+          localStorage.removeItem('crou_user_profile');
+          window.dispatchEvent(new CustomEvent('crou:clear-remembered-creds'));
+        } catch {}
+        setUser(null);
+        setIsAdminView(false);
+        setActiveTicket(null);
+        setShowBlackPortal(true);
+        setBlockedAlertMessage(synced.blockedReason || "Compte bloqué suite à 5 erreurs PIN. Veuillez vous adresser à l'administration CROU.");
+        return;
+      }
       if (synced && synced.savedTickets) {
         setUser(prev => {
           if (!prev) return synced;
-          if (JSON.stringify(prev.savedTickets) !== JSON.stringify(synced.savedTickets)) {
+          if (
+            JSON.stringify(prev.savedTickets) !== JSON.stringify(synced.savedTickets) ||
+            prev.pinHash !== synced.pinHash ||
+            prev.pinFails !== synced.pinFails
+          ) {
             return synced;
           }
           return prev;
@@ -153,8 +182,25 @@ export const App: React.FC = () => {
       console.warn('Sync student tickets notice:', err);
     });
 
-    // 2. Écoute temps réel : bascule instantanée en rouge quand la borne scanne
+    // 2. Écoute temps réel : bascule instantanée en rouge quand la borne scanne + blocage sécurité temps réel
     const unsubscribe = subscribeToStudentProfile(user.matricule, (updatedProfile) => {
+      if (updatedProfile.isBlocked && updatedProfile.role === 'student') {
+        try {
+          localStorage.removeItem('crou_remembered_matricule');
+          localStorage.removeItem('crou_remembered_password');
+          localStorage.removeItem('crou_user_profile');
+          window.dispatchEvent(new CustomEvent('crou:clear-remembered-creds'));
+        } catch {}
+        setUser(null);
+        setIsAdminView(false);
+        setActiveTicket(null);
+        setShowMyTicketsModal(false);
+        setShowTransferModal(false);
+        setShowBlackPortal(true);
+        setBlockedAlertMessage(updatedProfile.blockedReason || "Compte bloqué suite à 5 erreurs PIN. Contactez l'administration CROU.");
+        return;
+      }
+
       setUser(prev => {
         if (!prev) return updatedProfile;
         return updatedProfile;
@@ -509,9 +555,20 @@ export const App: React.FC = () => {
         enabled={Boolean(user)} 
         userMatricule={user?.matricule || user?.uid}
         userName={user?.displayName}
+        userRole={user?.role}
+        accountPinSalt={user?.pinSalt}
+        accountPinHash={user?.pinHash}
+        accountPinFails={user?.pinFails}
+        accountIsBlocked={user?.isBlocked}
+        onPinUpdated={(pinSalt, pinHash) => {
+          setUser(prev => prev ? { ...prev, pinSalt, pinHash, pinFails: 0 } : prev);
+        }}
         onForgot={handleLogout}
-        onAccountBlocked={(mat, reason) => {
-          handleLogout();
+        onAccountBlocked={(_mat, reason) => {
+          logoutUser().catch(() => {});
+          setUser(null);
+          setIsAdminView(false);
+          setCart([]);
           setBlockedAlertMessage(reason);
           setShowBlackPortal(true);
         }}
@@ -535,9 +592,20 @@ export const App: React.FC = () => {
       enabled={Boolean(user)} 
       userMatricule={user?.matricule || user?.uid}
       userName={user?.displayName}
+      userRole={user?.role}
+      accountPinSalt={user?.pinSalt}
+      accountPinHash={user?.pinHash}
+      accountPinFails={user?.pinFails}
+      accountIsBlocked={user?.isBlocked}
+      onPinUpdated={(pinSalt, pinHash) => {
+        setUser(prev => prev ? { ...prev, pinSalt, pinHash, pinFails: 0 } : prev);
+      }}
       onForgot={handleLogout}
-      onAccountBlocked={(mat, reason) => {
-        handleLogout();
+      onAccountBlocked={(_mat, reason) => {
+        logoutUser().catch(() => {});
+        setUser(null);
+        setIsAdminView(false);
+        setCart([]);
         setBlockedAlertMessage(reason);
         setShowBlackPortal(true);
       }}
@@ -886,6 +954,11 @@ export const App: React.FC = () => {
             setActiveTicket(ticket);
           }}
           onTransferSuccess={handleTransferSuccess}
+          onOpenTransfer={(ticket) => {
+            setShowMyTicketsModal(false);
+            setTransferModalTicket(ticket || null);
+            setShowTransferModal(true);
+          }}
         />
       )}
 

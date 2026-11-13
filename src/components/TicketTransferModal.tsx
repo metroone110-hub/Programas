@@ -37,16 +37,14 @@ export const TicketTransferModal: React.FC<Props> = ({
 }) => {
   const validTickets = (user.savedTickets || []).filter(t => t.status === 'valid');
 
-  const [selectedTicketId, setSelectedTicketId] = useState<string>(() => {
-    if (initialTicket && initialTicket.status === 'valid') return initialTicket.id || initialTicket.ticketNumber;
-    return validTickets.length > 0 ? (validTickets[0].id || validTickets[0].ticketNumber) : '';
-  });
-
+  const [selectedTicketId, setSelectedTicketId] = useState<string>('');
   const [recipientMatricule, setRecipientMatricule] = useState('');
   const [recipientPreview, setRecipientPreview] = useState<UserProfile | null>(null);
   const [isSearchingRecipient, setIsSearchingRecipient] = useState(false);
   const [transferNote, setTransferNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isTransferringRef = React.useRef(false);
+  const wasOpenRef = React.useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{
     ticket: MealTicket;
@@ -54,16 +52,31 @@ export const TicketTransferModal: React.FC<Props> = ({
     recipientMatricule: string;
   } | null>(null);
 
+  // Initialiser proprement UNIQUEMENT à l'ouverture de la modale (jamais en boucle pendant le transfert)
   useEffect(() => {
-    if (initialTicket && initialTicket.status === 'valid') {
-      setSelectedTicketId(initialTicket.id || initialTicket.ticketNumber);
-    } else if (validTickets.length > 0 && !selectedTicketId) {
-      setSelectedTicketId(validTickets[0].id || validTickets[0].ticketNumber);
+    if (isOpen && !wasOpenRef.current) {
+      isTransferringRef.current = false;
+      setIsSubmitting(false);
+      setErrorMessage(null);
+      setSuccessInfo(null);
+      setRecipientMatricule('');
+      setRecipientPreview(null);
+      setTransferNote('');
+
+      if (initialTicket && initialTicket.status === 'valid') {
+        setSelectedTicketId(initialTicket.id || initialTicket.ticketNumber);
+      } else if (validTickets.length > 0) {
+        setSelectedTicketId(validTickets[0].id || validTickets[0].ticketNumber);
+      } else {
+        setSelectedTicketId('');
+      }
     }
-  }, [initialTicket, validTickets]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialTicket, validTickets]);
 
   // Live lookup of recipient when typing matricule
   useEffect(() => {
+    if (!isOpen || successInfo) return;
     const clean = recipientMatricule.trim().toUpperCase();
     if (clean.length < 3) {
       setRecipientPreview(null);
@@ -84,7 +97,7 @@ export const TicketTransferModal: React.FC<Props> = ({
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [recipientMatricule]);
+  }, [recipientMatricule, isOpen, successInfo]);
 
   if (!isOpen) return null;
 
@@ -95,6 +108,11 @@ export const TicketTransferModal: React.FC<Props> = ({
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    // Verrou immédiat synchrone anti double-clic & anti double-envoi
+    if (isTransferringRef.current || isSubmitting || successInfo) {
+      return;
+    }
 
     if (validTickets.length === 0 || !currentSelectedTicket) {
       setErrorMessage("Vous n'avez aucun ticket valide à transférer.");
@@ -118,18 +136,20 @@ export const TicketTransferModal: React.FC<Props> = ({
       return;
     }
 
+    isTransferringRef.current = true;
     setIsSubmitting(true);
+
     try {
+      const ticketTargetId = currentSelectedTicket.ticketNumber || currentSelectedTicket.id;
       const result = await transferMealTicketToStudent(
         user,
-        currentSelectedTicket.id || currentSelectedTicket.ticketNumber,
+        ticketTargetId,
         cleanMat,
         transferNote.trim()
       );
 
       if (!result.success || !result.updatedSender || !result.transferredTicket) {
         setErrorMessage(result.error || 'Erreur lors du transfert du ticket.');
-        setIsSubmitting(false);
         return;
       }
 
@@ -143,6 +163,8 @@ export const TicketTransferModal: React.FC<Props> = ({
         });
       } catch {}
 
+      setSelectedTicketId('');
+
       setSuccessInfo({
         ticket: result.transferredTicket,
         recipientName: result.recipientName || `Étudiant (${cleanMat})`,
@@ -154,6 +176,7 @@ export const TicketTransferModal: React.FC<Props> = ({
       console.error('Ticket transfer exception:', err);
       setErrorMessage(err.message || 'Une erreur inattendue est survenue.');
     } finally {
+      isTransferringRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -161,8 +184,10 @@ export const TicketTransferModal: React.FC<Props> = ({
   const handleResetAndClose = () => {
     setSuccessInfo(null);
     setRecipientMatricule('');
+    setRecipientPreview(null);
     setTransferNote('');
     setErrorMessage(null);
+    isTransferringRef.current = false;
     onClose();
   };
 
@@ -412,7 +437,9 @@ export const TicketTransferModal: React.FC<Props> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting || !recipientMatricule.trim()}
-                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-md flex items-center justify-center space-x-1.5"
+                  className={`flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center space-x-1.5 ${
+                    isSubmitting ? 'cursor-not-allowed pointer-events-none opacity-60' : 'cursor-pointer'
+                  }`}
                 >
                   {isSubmitting ? (
                     <>

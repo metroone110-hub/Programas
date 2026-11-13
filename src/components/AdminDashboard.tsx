@@ -44,13 +44,18 @@ import {
   getFraudAuditLogs, 
   FraudAuditLog,
   subscribeToStudentsRegistry,
+  subscribeToFraudAuditLogs,
   syncAllLocalAccountsToFirestore,
   resetStudentPassword,
-  unblockStudentAccount
+  unblockStudentAccount,
+  resetStudentPinByAdmin,
+  grantTicketsToMatricule,
+  deduplicateTickets
 } from '../services/studentAuth';
 import { 
   DailyLedgerStats,
   getActiveDailyLedger,
+  subscribeToActiveDailyLedger,
   getAllDailyArchives,
   archivePastDay,
   getTodayDateString,
@@ -129,6 +134,9 @@ export const AdminDashboard: React.FC<Props> = ({
   const [resettingStudent, setResettingStudent] = useState<UserProfile | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [resetStatus, setResetStatus] = useState<{ loading: boolean; message?: string; error?: string }>({ loading: false });
+  const [grantingTicketsStudent, setGrantingTicketsStudent] = useState<UserProfile | null>(null);
+  const [grantTicketsQty, setGrantTicketsQty] = useState<number>(3);
+  const [grantStatus, setGrantStatus] = useState<{ loading: boolean; message?: string; error?: string }>({ loading: false });
 
   // Google Drive Integration State
   const [driveUser, setDriveUser] = useState<any>(() => getCachedDriveUser());
@@ -139,8 +147,10 @@ export const AdminDashboard: React.FC<Props> = ({
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
+    subtitle?: string;
     description: string;
     confirmText?: string;
+    variant?: 'blue' | 'amber' | 'red' | 'emerald';
     onConfirm: () => void;
   } | null>(null);
 
@@ -150,17 +160,21 @@ export const AdminDashboard: React.FC<Props> = ({
   const [manualScanResult, setManualScanResult] = useState<{ status: string; message: string; ticket?: MealTicket } | null>(null);
   const [isVerifyingManual, setIsVerifyingManual] = useState(false);
 
-  // Subscribe to real-time student registry from Firestore and Drive auth
+  // Subscribe to real-time student registry, daily ledger, and fraud logs from Firestore (100% synced across phone/PC)
   useEffect(() => {
-    // 1. Multi-Device Real-Time Subscription: Every student registered on any phone appears instantly!
     const unsubscribeStudents = subscribeToStudentsRegistry((liveStudents) => {
       setStudents(liveStudents);
-      setFraudLogs(getFraudAuditLogs());
     });
 
-    loadLedgerData();
+    const unsubscribeLedger = subscribeToActiveDailyLedger((liveLedger) => {
+      setDailyLedger(liveLedger);
+    });
 
-    // 2. Drive Auth listener
+    const unsubscribeFraud = subscribeToFraudAuditLogs((liveLogs) => {
+      setFraudLogs(liveLogs);
+    });
+
+    // Drive Auth listener
     const unsubscribeDrive = initDriveAuth((user, token) => {
       setDriveUser(user);
       setIsDriveConnected(!!user && !!token);
@@ -171,6 +185,8 @@ export const AdminDashboard: React.FC<Props> = ({
 
     return () => {
       unsubscribeStudents();
+      unsubscribeLedger();
+      unsubscribeFraud();
       unsubscribeDrive();
     };
   }, []);
@@ -414,17 +430,76 @@ export const AdminDashboard: React.FC<Props> = ({
     }
   };
 
-  const handleAdminUnblockStudent = async (student: UserProfile) => {
-    const mat = student.matricule || student.uid;
-    const confirm = window.confirm(`Débloquer le compte de ${student.displayName} (${mat}) ? Cela réinitialisera les compteurs d'échecs de sécurité.`);
-    if (!confirm) return;
+  const handleConfirmGrantTickets = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!grantingTicketsStudent || grantTicketsQty <= 0) return;
+    setGrantStatus({ loading: true });
     try {
-      const res = await unblockStudentAccount(mat);
-      alert(res.message);
-      loadRegistryData();
+      const res = await grantTicketsToMatricule(grantingTicketsStudent.matricule || grantingTicketsStudent.uid, grantTicketsQty);
+      if (res.success) {
+        setGrantStatus({
+          loading: false,
+          message: `${grantTicketsQty} ticket(s) attribué(s) avec succès à ${grantingTicketsStudent.displayName} (${grantingTicketsStudent.matricule}) !`
+        });
+        loadRegistryData();
+        setTimeout(() => {
+          setGrantingTicketsStudent(null);
+          setGrantStatus({ loading: false });
+        }, 1500);
+      } else {
+        setGrantStatus({ loading: false, error: res.message || 'Échec de l\'attribution' });
+      }
     } catch (err: any) {
-      alert('Erreur: ' + (err.message || err));
+      setGrantStatus({ loading: false, error: err.message || 'Erreur lors de l\'attribution' });
     }
+  };
+
+  const handleAdminUnblockStudent = (student: UserProfile) => {
+    const mat = student.matricule || student.uid;
+    setConfirmModal({
+      isOpen: true,
+      title: `Débloquer le compte ${mat}`,
+      subtitle: 'Sécurité CROU Korhogo',
+      variant: 'emerald',
+      description: `Confirmez-vous le déblocage du compte de ${student.displayName} (${mat}) après vérification physique de sa carte d'étudiant ? Cela remettra le compteur d'erreurs à 0 et réinitialisera son code PIN.`,
+      confirmText: 'Débloquer & Réinitialiser PIN',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          const res = await unblockStudentAccount(mat, { resetPin: true });
+          setActionSuccessNotice(res.message);
+          setTimeout(() => setActionSuccessNotice(null), 4500);
+          await loadRegistryData();
+        } catch (err: any) {
+          setActionSuccessNotice('Erreur lors du déblocage : ' + (err.message || err));
+          setTimeout(() => setActionSuccessNotice(null), 4500);
+        }
+      }
+    });
+  };
+
+  const handleAdminResetPin = (student: UserProfile) => {
+    const mat = student.matricule || student.uid;
+    setConfirmModal({
+      isOpen: true,
+      title: `Réinitialiser le PIN de ${mat}`,
+      subtitle: 'Sécurité CROU Korhogo',
+      variant: 'amber',
+      description: `L'étudiant ${student.displayName} (${mat}) devra définir un nouveau code PIN à 4 chiffres lors de sa prochaine ouverture d'application.`,
+      confirmText: 'Réinitialiser le code PIN',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          const res = await resetStudentPinByAdmin(mat);
+          setActionSuccessNotice(res.message);
+          setTimeout(() => setActionSuccessNotice(null), 4500);
+          await loadRegistryData();
+        } catch (err: any) {
+          setActionSuccessNotice('Erreur lors de la réinitialisation PIN : ' + (err.message || err));
+          setTimeout(() => setActionSuccessNotice(null), 4500);
+        }
+      }
+    });
   };
 
   const canteenDishes = dishes.filter(d => 
@@ -977,9 +1052,18 @@ export const AdminDashboard: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm('Voulez-vous vraiment supprimer TOUS les plats du menu ?')) {
-                            onDeleteAllDishes();
-                          }
+                          setConfirmModal({
+                            isOpen: true,
+                            title: 'Supprimer tous les plats du menu ?',
+                            subtitle: 'Gestion du Menu CROU',
+                            variant: 'red',
+                            description: 'Cette action retirera tous les plats publiés aujourd’hui sur l’ensemble des téléphones étudiants. Continuer ?',
+                            confirmText: 'Tout supprimer',
+                            onConfirm: () => {
+                              setConfirmModal(null);
+                              onDeleteAllDishes();
+                            }
+                          });
                         }}
                         className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1 cursor-pointer"
                         title="Supprimer tous les plats du menu"
@@ -1134,10 +1218,11 @@ export const AdminDashboard: React.FC<Props> = ({
                       </tr>
                     ) : (
                       filteredStudents.map((st) => {
-                        const validCount = (st.savedTickets || []).filter(t => t.status === 'valid').length;
-                        const usedCount = (st.savedTickets || []).filter(t => t.status === 'used').length;
+                        const studentUniqueTickets = deduplicateTickets(st.savedTickets || []);
+                        const validCount = studentUniqueTickets.filter(t => t.status === 'valid').length;
+                        const usedCount = studentUniqueTickets.filter(t => t.status === 'used').length;
                         return (
-                          <tr key={st.uid} className="hover:bg-slate-50 transition-colors">
+                          <tr key={st.uid || st.matricule} className="hover:bg-slate-50 transition-colors">
                             <td className="py-3 px-4 font-mono font-bold text-orange-600">
                               {st.matricule || st.uid}
                             </td>
@@ -1162,25 +1247,55 @@ export const AdminDashboard: React.FC<Props> = ({
                                   <span>Compte Bloqué (5 PIN)</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  <UserCheck className="w-3 h-3 text-emerald-600" />
-                                  <span>Authentifié UPGC</span>
-                                </span>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <UserCheck className="w-3 h-3 text-emerald-600" />
+                                    <span>Authentifié UPGC</span>
+                                  </span>
+                                  {st.pinHash && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                      PIN actif{(st.pinFails || 0) > 0 ? ` (${st.pinFails}/5)` : ''}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </td>
                             <td className="py-3 px-4 text-right">
                               <div className="flex items-center justify-end space-x-1.5">
-                                {st.isBlocked && (
+                                {st.isBlocked ? (
                                   <button
                                     type="button"
                                     onClick={() => handleAdminUnblockStudent(st)}
                                     className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
-                                    title="Débloquer le compte de cet étudiant"
+                                    title="Débloquer le compte et réinitialiser le PIN"
                                   >
                                     <Unlock className="w-3 h-3 text-white" />
-                                    <span>Débloquer</span>
+                                    <span>Débloquer & Réinit. PIN</span>
                                   </button>
-                                )}
+                                ) : st.pinHash ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminResetPin(st)}
+                                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                    title="Réinitialiser le code PIN de cet étudiant"
+                                  >
+                                    <RotateCcw className="w-3 h-3 text-slate-700" />
+                                    <span>Réinit. PIN</span>
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGrantingTicketsStudent(st);
+                                    setGrantTicketsQty(3);
+                                    setGrantStatus({ loading: false });
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                  title="Attribuer des tickets de repas à cet étudiant"
+                                >
+                                  <Ticket className="w-3 h-3 text-emerald-600" />
+                                  <span>+ Tickets</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1270,57 +1385,64 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
 
             {/* Issued Tickets List */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-extrabold text-sm text-slate-900">
-                    Tickets Émis et Liés aux Matricules
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    Traçabilité complète contre la fraude ou double utilisation.
-                  </p>
-                </div>
-                <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-mono font-bold text-slate-700">
-                  {students.flatMap(s => s.savedTickets || []).length} tickets émis
-                </span>
-              </div>
-
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                {students.flatMap(s => s.savedTickets || []).length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-400">
-                    Aucun ticket encore émis pour le moment.
-                  </div>
-                ) : (
-                  students.flatMap(s => s.savedTickets || []).map((t) => (
-                    <div
-                      key={t.id}
-                      className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
-                          🎟️
-                        </div>
-                        <div>
-                          <span className="font-black text-slate-900 block">{t.dishName}</span>
-                          <span className="text-[11px] text-slate-500 font-mono">
-                            {t.ticketNumber} • {t.studentName} ({t.studentMatricule})
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="font-black text-orange-600 block">{t.price} FCFA</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          t.status === 'valid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                        }`}>
-                          {t.status === 'valid' ? 'Valide' : 'Consommé'}
-                        </span>
-                      </div>
+            {(() => {
+              const uniqueIssuedTickets = deduplicateTickets(
+                students.flatMap(s => deduplicateTickets(s.savedTickets || []))
+              );
+              return (
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900">
+                        Tickets Émis et Liés aux Matricules
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Traçabilité complète contre la fraude ou double utilisation.
+                      </p>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
+                    <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-mono font-bold text-slate-700">
+                      {uniqueIssuedTickets.length} tickets émis
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                    {uniqueIssuedTickets.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400">
+                        Aucun ticket encore émis pour le moment.
+                      </div>
+                    ) : (
+                      uniqueIssuedTickets.map((t) => (
+                        <div
+                          key={`${t.studentMatricule || 'stu'}_${t.ticketNumber || t.id}`}
+                          className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
+                              🎟️
+                            </div>
+                            <div>
+                              <span className="font-black text-slate-900 block">{t.dishName}</span>
+                              <span className="text-[11px] text-slate-500 font-mono">
+                                {t.ticketNumber} • {t.studentName} ({t.studentMatricule})
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="font-black text-orange-600 block">{t.price} FCFA</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              t.status === 'valid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                            }`}>
+                              {t.status === 'valid' ? 'Valide' : 'Consommé'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
           </div>
         )}
@@ -1557,26 +1679,44 @@ export const AdminDashboard: React.FC<Props> = ({
 
       </main>
 
-      {/* CONFIRMATION MODAL (MANDATORY FOR GOOGLE DRIVE ACTIONS) */}
+      {/* CONFIRMATION MODAL (GOOGLE DRIVE & ACTIONS SÉCURITÉ CROU) */}
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-scaleUp">
             <div className="flex items-start justify-between">
               <div className="flex items-center space-x-3">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
-                  <HardDrive className="w-6 h-6" />
+                <div className={`p-3 rounded-2xl ${
+                  confirmModal.variant === 'red'
+                    ? 'bg-red-50 text-red-600'
+                    : confirmModal.variant === 'emerald'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : confirmModal.variant === 'amber'
+                    ? 'bg-amber-50 text-amber-600'
+                    : 'bg-blue-50 text-blue-600'
+                }`}>
+                  {confirmModal.variant === 'red' ? (
+                    <AlertTriangle className="w-6 h-6" />
+                  ) : confirmModal.variant === 'emerald' ? (
+                    <Unlock className="w-6 h-6" />
+                  ) : confirmModal.variant === 'amber' ? (
+                    <ShieldCheck className="w-6 h-6" />
+                  ) : (
+                    <HardDrive className="w-6 h-6" />
+                  )}
                 </div>
                 <div>
                   <h3 className="font-black text-sm text-slate-900 font-cabinet">
                     {confirmModal.title}
                   </h3>
-                  <span className="text-[11px] text-slate-400">Google Drive API</span>
+                  <span className="text-[11px] text-slate-400">
+                    {confirmModal.subtitle || 'Google Drive API'}
+                  </span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1590,14 +1730,22 @@ export const AdminDashboard: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
                 Annuler
               </button>
               <button
                 type="button"
                 onClick={confirmModal.onConfirm}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center space-x-1.5"
+                className={`px-4 py-2 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer ${
+                  confirmModal.variant === 'red'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : confirmModal.variant === 'emerald'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : confirmModal.variant === 'amber'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>{confirmModal.confirmText || 'Confirmer'}</span>
@@ -1817,6 +1965,115 @@ export const AdminDashboard: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => { setResettingStudent(null); setResetStatus({ loading: false }); }}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ATTRIBUTION DIRECTE DE TICKETS REPAS ÉTUDIANT */}
+      {grantingTicketsStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl relative border border-slate-200 text-left">
+            <button
+              type="button"
+              onClick={() => { setGrantingTicketsStudent(null); setGrantStatus({ loading: false }); }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
+              <Ticket className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-extrabold text-slate-900 mb-1 font-cabinet">
+              Attribution de Tickets Repas
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Guichet Responsable Programas • CROU Korhogo
+            </p>
+
+            {/* Fiche Étudiant Bénéficiaire */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1 mb-4">
+              <div className="flex items-center justify-between font-bold">
+                <span className="text-slate-500">Matricule :</span>
+                <span className="font-mono text-orange-600 font-extrabold">{grantingTicketsStudent.matricule || grantingTicketsStudent.uid}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Étudiant :</span>
+                <span className="font-bold text-slate-900">{grantingTicketsStudent.displayName}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                <span>Tickets actifs actuels :</span>
+                <span className="font-bold text-emerald-700">
+                  {(grantingTicketsStudent.savedTickets || []).filter(t => t.status === 'valid').length} ticket(s)
+                </span>
+              </div>
+            </div>
+
+            {grantStatus.message && (
+              <div className="p-3 mb-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{grantStatus.message}</span>
+              </div>
+            )}
+
+            {grantStatus.error && (
+              <div className="p-3 mb-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <span>{grantStatus.error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmGrantTickets} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Nombre de tickets à créditer
+                </label>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {[1, 3, 5].map((qty) => (
+                    <button
+                      key={qty}
+                      type="button"
+                      onClick={() => setGrantTicketsQty(qty)}
+                      className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                        grantTicketsQty === qty
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      +{qty} Ticket{qty > 1 ? 's' : ''}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={grantTicketsQty}
+                  onChange={(e) => setGrantTicketsQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-2xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-center"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={grantStatus.loading || grantTicketsQty <= 0}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-98 disabled:opacity-50 cursor-pointer flex items-center justify-center space-x-1.5"
+                >
+                  <Ticket className="w-4 h-4" />
+                  <span>{grantStatus.loading ? 'Attribution en cours...' : `Attribuer ${grantTicketsQty} ticket${grantTicketsQty > 1 ? 's' : ''} maintenant`}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setGrantingTicketsStudent(null); setGrantStatus({ loading: false }); }}
                   className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Annuler

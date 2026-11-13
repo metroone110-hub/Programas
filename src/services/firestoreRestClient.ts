@@ -95,7 +95,7 @@ export async function fetchStudentRest(matricule: string): Promise<(UserProfile 
   for (const cand of candidates) {
     try {
       const url = `${BASE_URL}/students/${encodeURIComponent(cand)}?key=${API_KEY}`;
-      const res = await fetch(url, { method: 'GET' });
+      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       if (res.ok) {
         const docJson = await res.json();
         const data = fromFirestoreRestDoc(docJson);
@@ -112,6 +112,12 @@ export async function fetchStudentRest(matricule: string): Promise<(UserProfile 
             campus: data.campus || 'Campus UPGC Korhogo',
             phone: data.phone || '',
             passwordHash: data.passwordHash,
+            isBlocked: Boolean(data.isBlocked),
+            blockedReason: data.blockedReason || undefined,
+            blockedAt: data.blockedAt || undefined,
+            pinSalt: data.pinSalt || undefined,
+            pinHash: data.pinHash || undefined,
+            pinFails: typeof data.pinFails === 'number' ? data.pinFails : 0,
             createdAt: data.createdAt || new Date().toISOString()
           };
         }
@@ -125,40 +131,75 @@ export async function fetchStudentRest(matricule: string): Promise<(UserProfile 
 }
 
 /**
- * Sauvegarde ou met à jour un profil étudiant dans Firestore via l'API REST (UPSERT garanti)
+ * Met à jour uniquement les champs fournis d'un profil étudiant dans Firestore via REST (UpdateMask strict)
  */
-export async function saveStudentRest(student: UserProfile, passwordHash?: string): Promise<boolean> {
-  if (!student.matricule) return false;
-  const safeId = student.matricule.trim().toUpperCase();
+export async function patchStudentFieldsRest(matricule: string, fieldsToPatch: Record<string, any>): Promise<boolean> {
+  const safeId = (matricule || '').trim().toUpperCase().replace(/[\/\s.#$\[\]]/g, '_');
+  if (!safeId) return false;
 
   const dataToSave: Record<string, any> = {
-    uid: student.uid || safeId,
-    matricule: safeId,
-    displayName: student.displayName || `Étudiant (${safeId})`,
-    email: student.email || `${safeId.toLowerCase()}@upgc.ci`,
-    role: student.role || 'student',
-    balance: typeof student.balance === 'number' ? student.balance : 0,
-    savedTickets: student.savedTickets || [],
-    university: student.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
-    campus: student.campus || 'Campus UPGC Korhogo',
-    phone: student.phone || '',
+    matricule: (matricule || '').trim().toUpperCase(),
     lastSync: new Date().toISOString()
   };
 
-  if (passwordHash) {
-    dataToSave.passwordHash = passwordHash;
-  } else {
-    // Si passwordHash n'est pas fourni, tenter de préserver celui du registre local
-    try {
-      const reg = JSON.parse(localStorage.getItem('crou_local_students_registry') || '{}');
-      if (reg[safeId]?.passwordHash) {
-        dataToSave.passwordHash = reg[safeId].passwordHash;
-      }
-    } catch {}
+  for (const [k, v] of Object.entries(fieldsToPatch)) {
+    if (v !== undefined) {
+      dataToSave[k] = v;
+    }
   }
 
-  // UpdateMask garantit que SEULS les champs spécifiés sont mis à jour,
-  // empêchant Firestore REST d'effacer les champs omis (comme passwordHash).
+  const fieldKeys = Object.keys(dataToSave);
+  const maskQuery = fieldKeys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const url = `${BASE_URL}/students/${encodeURIComponent(safeId)}?${maskQuery}&key=${API_KEY}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreRestFields(dataToSave) })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST patch student failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Sauvegarde ou met à jour un profil étudiant dans Firestore via l'API REST (UPSERT garanti)
+ */
+export async function saveStudentRest(student: Partial<UserProfile>, passwordHash?: string): Promise<boolean> {
+  const rawMat = student.matricule || student.uid;
+  if (!rawMat) return false;
+  const safeId = rawMat.trim().toUpperCase().replace(/[\/\s.#$\[\]]/g, '_');
+  const cleanMat = rawMat.trim().toUpperCase();
+
+  const dataToSave: Record<string, any> = {
+    matricule: cleanMat,
+    lastSync: new Date().toISOString()
+  };
+
+  if (student.uid !== undefined) dataToSave.uid = student.uid || cleanMat;
+  if (student.displayName !== undefined) dataToSave.displayName = student.displayName || `Étudiant (${cleanMat})`;
+  if (student.email !== undefined) dataToSave.email = student.email || `${cleanMat.toLowerCase()}@upgc.ci`;
+  if (student.role !== undefined) dataToSave.role = student.role || 'student';
+  if (typeof student.balance === 'number') dataToSave.balance = student.balance;
+  if (Array.isArray(student.savedTickets)) dataToSave.savedTickets = student.savedTickets;
+  if (student.university !== undefined) dataToSave.university = student.university;
+  if (student.campus !== undefined) dataToSave.campus = student.campus;
+  if (student.phone !== undefined) dataToSave.phone = student.phone;
+  if (student.isBlocked !== undefined) dataToSave.isBlocked = Boolean(student.isBlocked);
+  if (student.blockedReason !== undefined) dataToSave.blockedReason = student.blockedReason;
+  if (student.blockedAt !== undefined) dataToSave.blockedAt = student.blockedAt;
+  if ((student as any).pinSalt !== undefined) dataToSave.pinSalt = (student as any).pinSalt;
+  if ((student as any).pinHash !== undefined) dataToSave.pinHash = (student as any).pinHash;
+  if (typeof student.pinFails === 'number') dataToSave.pinFails = student.pinFails;
+  if (student.createdAt !== undefined) dataToSave.createdAt = student.createdAt;
+
+  if (passwordHash) {
+    dataToSave.passwordHash = passwordHash;
+  }
+
   const fieldKeys = Object.keys(dataToSave);
   const maskQuery = fieldKeys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
   const url = `${BASE_URL}/students/${encodeURIComponent(safeId)}?${maskQuery}&key=${API_KEY}`;
@@ -454,4 +495,167 @@ export async function deleteDishRest(dishId: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Récupère le registre journalier actif depuis Firestore via REST
+ */
+export async function fetchDailyLedgerRest(dateStr: string): Promise<any | null> {
+  if (!dateStr) return null;
+  const url = `${BASE_URL}/daily_ledgers/${encodeURIComponent(dateStr)}?key=${API_KEY}`;
+  try {
+    const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+    if (res.ok) {
+      const docJson = await res.json();
+      const data = fromFirestoreRestDoc(docJson);
+      if (data && data.date) {
+        return {
+          ...data,
+          totalTicketsSold: typeof data.totalTicketsSold === 'number' ? data.totalTicketsSold : 0,
+          mealsValidated: typeof data.mealsValidated === 'number' ? data.mealsValidated : 0,
+          ticketsInCirculation: typeof data.ticketsInCirculation === 'number' ? data.ticketsInCirculation : 0,
+          revenueCollected: typeof data.revenueCollected === 'number' ? data.revenueCollected : 0,
+          servedTickets: Array.isArray(data.servedTickets) ? data.servedTickets : []
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('REST fetch daily ledger failed:', err);
+  }
+  return null;
+}
+
+/**
+ * Sauvegarde le registre journalier dans Firestore via REST
+ */
+export async function saveDailyLedgerRest(stats: any): Promise<boolean> {
+  if (!stats || !stats.date) return false;
+  const url = `${BASE_URL}/daily_ledgers/${encodeURIComponent(stats.date)}?key=${API_KEY}`;
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreRestFields(stats) })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST save daily ledger failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Récupère toutes les archives quotidiennes via REST
+ */
+export async function fetchDailyArchivesRest(): Promise<any[]> {
+  const url = `${BASE_URL}:runQuery?key=${API_KEY}`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'daily_archives' }]
+        }
+      })
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      const list: any[] = [];
+      if (Array.isArray(rows)) {
+        rows.forEach((r: any) => {
+          if (r.document) {
+            const raw = fromFirestoreRestDoc(r.document);
+            if (raw && raw.date) {
+              list.push({
+                ...raw,
+                totalTicketsSold: typeof raw.totalTicketsSold === 'number' ? raw.totalTicketsSold : 0,
+                mealsValidated: typeof raw.mealsValidated === 'number' ? raw.mealsValidated : 0,
+                ticketsInCirculation: typeof raw.ticketsInCirculation === 'number' ? raw.ticketsInCirculation : 0,
+                revenueCollected: typeof raw.revenueCollected === 'number' ? raw.revenueCollected : 0,
+                servedTickets: Array.isArray(raw.servedTickets) ? raw.servedTickets : []
+              });
+            }
+          }
+        });
+      }
+      return list;
+    }
+  } catch (err) {
+    console.warn('REST fetch daily archives failed:', err);
+  }
+  return [];
+}
+
+/**
+ * Sauvegarde une archive quotidienne dans Firestore via REST
+ */
+export async function saveDailyArchiveRest(pastDayStats: any): Promise<boolean> {
+  if (!pastDayStats || !pastDayStats.date) return false;
+  const url = `${BASE_URL}/daily_archives/${encodeURIComponent(pastDayStats.date)}?key=${API_KEY}`;
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreRestFields(pastDayStats) })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST save daily archive failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Sauvegarde un log de fraude dans Firestore via REST
+ */
+export async function saveFraudLogRest(log: any): Promise<boolean> {
+  if (!log || !log.id) return false;
+  const url = `${BASE_URL}/fraud_logs/${encodeURIComponent(log.id)}?key=${API_KEY}`;
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreRestFields(log) })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('REST save fraud log failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Récupère les logs de fraude depuis Firestore via REST
+ */
+export async function fetchFraudLogsRest(): Promise<any[]> {
+  const url = `${BASE_URL}:runQuery?key=${API_KEY}`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'fraud_logs' }]
+        }
+      })
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      const logs: any[] = [];
+      if (Array.isArray(rows)) {
+        rows.forEach((r: any) => {
+          if (r.document) {
+            const raw = fromFirestoreRestDoc(r.document);
+            if (raw && raw.id) logs.push(raw);
+          }
+        });
+      }
+      return logs;
+    }
+  } catch (err) {
+    console.warn('REST fetch fraud logs failed:', err);
+  }
+  return [];
+}
+
 

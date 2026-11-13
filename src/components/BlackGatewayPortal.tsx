@@ -12,7 +12,6 @@ import {
   AlertCircle, 
   Eye, 
   EyeOff,
-  Building2,
   CheckCircle2,
   Ticket,
   ChevronRight,
@@ -20,7 +19,6 @@ import {
   UserCheck,
   RefreshCw,
   Hash,
-  Shield,
   X
 } from 'lucide-react';
 import { 
@@ -60,8 +58,23 @@ export const BlackGatewayPortal: React.FC<Props> = ({
   });
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Security notice for forgotten password (students must contact CROU administrators)
-  const [showForgotHelpModal, setShowForgotHelpModal] = useState(false);
+  React.useEffect(() => {
+    const clearCreds = () => {
+      setLoginMatricule('');
+      setLoginPassword('');
+    };
+    window.addEventListener('crou:clear-remembered-creds', clearCreds);
+    return () => window.removeEventListener('crou:clear-remembered-creds', clearCreds);
+  }, []);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      try {
+        setLoginMatricule(localStorage.getItem('crou_remembered_matricule') || '');
+        setLoginPassword(localStorage.getItem('crou_remembered_password') || '');
+      } catch {}
+    }
+  }, [isOpen]);
   
   // Student Register State
   const [regMatricule, setRegMatricule] = useState('');
@@ -351,13 +364,9 @@ export const BlackGatewayPortal: React.FC<Props> = ({
                     <span className="font-medium text-slate-300">Se souvenir de moi</span>
                   </label>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotHelpModal(true)}
-                    className="text-xs text-amber-400 hover:text-amber-300 hover:underline cursor-pointer transition-colors"
-                  >
-                    Mot de passe oublié ?
-                  </button>
+                  <span className="text-[11px] text-slate-400 font-medium text-right">
+                    Accès gérés uniquement par l'Admin CROU
+                  </span>
                 </div>
               </div>
 
@@ -554,65 +563,6 @@ export const BlackGatewayPortal: React.FC<Props> = ({
           <span>Système Garanti Anti-Fraude & Billet Tourniquet 2026</span>
         </div>
       </footer>
-
-      {/* MODAL: INFORMATION SÉCURITÉ MOT DE PASSE OUBLIÉ */}
-      {showForgotHelpModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl relative text-left">
-            <button
-              type="button"
-              onClick={() => setShowForgotHelpModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
-              title="Fermer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center mb-4 shadow-inner">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-
-            <h3 className="text-base font-extrabold text-white mb-2">
-              Mot de passe oublié ?
-            </h3>
-
-            <div className="p-3.5 bg-amber-950/50 border border-amber-500/30 rounded-2xl text-xs text-amber-200 mb-4 leading-relaxed">
-              <p className="font-bold text-amber-300 mb-1 flex items-center gap-1.5">
-                <Shield className="w-4 h-4 text-amber-400" />
-                <span>Protection stricte contre les failles :</span>
-              </p>
-              Pour éviter tout risque d'usurpation et protéger vos tickets de cantine, la réinitialisation de mot de passe en ligne est désactivée.
-            </div>
-
-            <div className="space-y-3 text-xs text-slate-300 leading-relaxed mb-6">
-              <p>
-                Si vous avez oublié vos accès, <strong className="text-white">veuillez vous adresser directement aux responsables de Programas</strong> au réfectoire :
-              </p>
-              <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
-                <div className="flex items-center space-x-2 text-white font-semibold">
-                  <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <span>Guichet Restauration CROU Korhogo (UPGC)</span>
-                </div>
-                <div className="flex items-center space-x-2 text-slate-400 text-[11px]">
-                  <GraduationCap className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  <span>Présentez-vous muni(e) de votre carte d'étudiant</span>
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Un responsable vérifiera votre identité sur le registre officiel et réinitialisera votre mot de passe immédiatement en main propre.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowForgotHelpModal(false)}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-orange-600/20 active:scale-98 cursor-pointer"
-            >
-              J'ai compris
-            </button>
-          </div>
-        </div>
-      )}
 
     </div>
   );

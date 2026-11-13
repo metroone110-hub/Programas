@@ -12,6 +12,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { MealTicket, UserProfile } from '../types';
+import { deduplicateTickets } from '../services/studentAuth';
 import { lockAppNow } from './PinLock';
 import { TicketTransferModal } from './TicketTransferModal';
 
@@ -21,6 +22,7 @@ interface Props {
   user: UserProfile;
   onSelectTicket: (ticket: MealTicket) => void;
   onTransferSuccess?: (updatedUser: UserProfile, transferredTicket: MealTicket, recipientMatricule: string) => void;
+  onOpenTransfer?: (ticket?: MealTicket) => void;
 }
 
 export const MyTicketsModal: React.FC<Props> = ({ 
@@ -28,7 +30,8 @@ export const MyTicketsModal: React.FC<Props> = ({
   onClose, 
   user, 
   onSelectTicket,
-  onTransferSuccess 
+  onTransferSuccess,
+  onOpenTransfer
 }) => {
   const [filter, setFilter] = useState<'all' | 'valid' | 'used'>('valid');
   const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
@@ -36,7 +39,7 @@ export const MyTicketsModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const tickets = user.savedTickets || [];
+  const tickets = deduplicateTickets(user.savedTickets || []);
   const validTickets = tickets.filter(t => t.status === 'valid');
   const usedTickets = tickets.filter(t => t.status === 'used');
 
@@ -71,8 +74,13 @@ export const MyTicketsModal: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setTicketToTransfer(validTickets[0]);
-                  setIsTransferModalOpen(true);
+                  if (onOpenTransfer) {
+                    onClose();
+                    onOpenTransfer(validTickets[0]);
+                  } else {
+                    setTicketToTransfer(validTickets[0]);
+                    setIsTransferModalOpen(true);
+                  }
                 }}
                 className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm cursor-pointer"
                 title="Offrir un ticket repas à un proche"
@@ -270,8 +278,13 @@ export const MyTicketsModal: React.FC<Props> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setTicketToTransfer(t);
-                              setIsTransferModalOpen(true);
+                              if (onOpenTransfer) {
+                                onClose();
+                                onOpenTransfer(t);
+                              } else {
+                                setTicketToTransfer(t);
+                                setIsTransferModalOpen(true);
+                              }
                             }}
                             className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
                             title="Transférer ce ticket à un proche"
@@ -323,23 +336,25 @@ export const MyTicketsModal: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Ticket Transfer Modal */}
-      <TicketTransferModal
-        isOpen={isTransferModalOpen}
-        onClose={() => {
-          setIsTransferModalOpen(false);
-          setTicketToTransfer(null);
-        }}
-        user={user}
-        initialTicket={ticketToTransfer}
-        onTransferSuccess={(updatedUser, transferredTicket, recipientMatricule) => {
-          setIsTransferModalOpen(false);
-          setTicketToTransfer(null);
-          if (onTransferSuccess) {
-            onTransferSuccess(updatedUser, transferredTicket, recipientMatricule);
-          }
-        }}
-      />
+      {/* Ticket Transfer Modal (fallback si non délégué au parent) */}
+      {!onOpenTransfer && (
+        <TicketTransferModal
+          isOpen={isTransferModalOpen}
+          onClose={() => {
+            setIsTransferModalOpen(false);
+            setTicketToTransfer(null);
+          }}
+          user={user}
+          initialTicket={ticketToTransfer}
+          onTransferSuccess={(updatedUser, transferredTicket, recipientMatricule) => {
+            setIsTransferModalOpen(false);
+            setTicketToTransfer(null);
+            if (onTransferSuccess) {
+              onTransferSuccess(updatedUser, transferredTicket, recipientMatricule);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

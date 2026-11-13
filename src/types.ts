@@ -71,6 +71,9 @@ export interface UserProfile {
   isBlocked?: boolean;
   blockedReason?: string;
   blockedAt?: string;
+  pinSalt?: string;
+  pinHash?: string;
+  pinFails?: number;
 }
 
 export interface Transaction {
