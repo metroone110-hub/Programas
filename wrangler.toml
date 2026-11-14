@@ -21,3 +21,7 @@ directory = "./dist"
 binding = "ASSETS"
 html_handling = "auto-trailing-slash"
 not_found_handling = "single-page-application"
+
+[vars]
+VITE_SUPABASE_URL = "https://gtuzlggzcmfnvgiwnhhm.supabase.co"
+VITE_SUPABASE_ANON_KEY = "sb_publishable_jaiUFjAP6aRiGVGEhJOowQ_K5KGUJxC"
