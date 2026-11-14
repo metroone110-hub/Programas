@@ -13,6 +13,16 @@ export const isSupabaseConfigured: boolean = Boolean(
   SUPABASE_URL && SUPABASE_ANON_KEY
 );
 
+export const HAD_AUTH_REDIRECT_ON_LOAD: boolean =
+  typeof window !== 'undefined' &&
+  (window.location.hash.includes('access_token=') ||
+    window.location.hash.includes('type=recovery') ||
+    window.location.search.includes('code='));
+
+export const HAD_RECOVERY_REDIRECT_ON_LOAD: boolean =
+  typeof window !== 'undefined' &&
+  window.location.hash.includes('type=recovery');
+
 export const supabase: SupabaseClient = createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
@@ -73,7 +83,7 @@ export async function signUpWithSupabaseEmail(params: {
   }
   const cleanEmail = params.email.trim().toLowerCase();
   const cleanMatricule = params.matricule ? params.matricule.trim().toUpperCase() : undefined;
-  const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined;
 
   const { data, error } = await supabase.auth.signUp({
     email: cleanEmail,
@@ -151,7 +161,7 @@ export async function resendSupabaseConfirmationEmail(email: string): Promise<{ 
     return { success: false, error: 'Configuration Supabase manquante.' };
   }
   const cleanEmail = email.trim().toLowerCase();
-  const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined;
 
   const { error } = await supabase.auth.resend({
     type: 'signup',
@@ -172,7 +182,7 @@ export async function sendSupabasePasswordReset(email: string): Promise<{ succes
     return { success: false, error: 'Configuration Supabase manquante.' };
   }
   const cleanEmail = email.trim().toLowerCase();
-  const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined;
 
   const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
     redirectTo: redirectUrl,

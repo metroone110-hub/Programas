@@ -27,7 +27,7 @@ import {
   subscribeToStudentProfile,
   hydrateOrCreateProfileForSupabaseUser
 } from './services/studentAuth';
-import { supabase, updateSupabasePassword } from './services/supabaseClient';
+import { supabase, updateSupabasePassword, HAD_AUTH_REDIRECT_ON_LOAD, HAD_RECOVERY_REDIRECT_ON_LOAD } from './services/supabaseClient';
 import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
 import { DishCard } from './components/DishCard';
@@ -212,34 +212,44 @@ export const App: React.FC = () => {
 
   // Supabase Auth session & email confirmation / password recovery listener
   useEffect(() => {
-    const isAuthRedirect =
-      window.location.hash.includes('access_token=') ||
-      window.location.hash.includes('type=recovery') ||
-      window.location.search.includes('code=');
+    let handledRedirect = false;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (HAD_RECOVERY_REDIRECT_ON_LOAD) {
+      setShowSupabaseRecoveryModal(true);
+    }
+
+    const syncFromSession = async (session: any, event?: string) => {
       if (event === 'PASSWORD_RECOVERY') {
         setShowSupabaseRecoveryModal(true);
         return;
       }
+      if (!session?.user) return;
 
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-        const provider = session.user.user_metadata?.auth_provider;
-        const currentLocal = getLocalUserProfile();
-        // Hydrate automatically on email confirmation redirect, or if no local profile exists for a supabase_email user
-        if (isAuthRedirect || (!currentLocal && provider === 'supabase_email')) {
-          const res = await hydrateOrCreateProfileForSupabaseUser(session.user);
-          if (res.success && res.user) {
-            setUser(res.user);
-            setShowBlackPortal(false);
-            if (isAuthRedirect) {
-              showToast(`Adresse e-mail confirmée ! Bienvenue ${res.user.displayName}.`);
-              const cleanUrl = window.location.pathname;
-              window.history.replaceState({}, document.title, cleanUrl);
-            }
+      const provider = session.user.user_metadata?.auth_provider;
+      const currentLocal = getLocalUserProfile();
+      if (HAD_AUTH_REDIRECT_ON_LOAD || (!currentLocal && provider === 'supabase_email')) {
+        const res = await hydrateOrCreateProfileForSupabaseUser(session.user);
+        if (res.success && res.user) {
+          setUser(res.user);
+          setShowBlackPortal(false);
+          if (HAD_AUTH_REDIRECT_ON_LOAD && !handledRedirect) {
+            handledRedirect = true;
+            showToast(`Adresse e-mail confirmée ! Bienvenue ${res.user.displayName}.`);
+            const cleanUrl = window.location.pathname || '/';
+            window.history.replaceState({}, document.title, cleanUrl);
           }
         }
       }
+    };
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session) {
+        syncFromSession(data.session, 'INITIAL_SESSION');
+      }
+    }).catch(() => {});
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      await syncFromSession(session, event);
     });
 
     return () => {
