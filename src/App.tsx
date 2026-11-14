@@ -24,8 +24,10 @@ import {
   logoutUser,
   purchaseTicketsBatch,
   syncStudentTicketsWithFirestore,
-  subscribeToStudentProfile
+  subscribeToStudentProfile,
+  hydrateOrCreateProfileForSupabaseUser
 } from './services/studentAuth';
+import { supabase, updateSupabasePassword } from './services/supabaseClient';
 import { recordTicketsSaleInLedger } from './services/dailyLedger';
 import { Navbar } from './components/Navbar';
 import { DishCard } from './components/DishCard';
@@ -105,6 +107,10 @@ export const App: React.FC = () => {
   const [blockedAlertMessage, setBlockedAlertMessage] = useState<string | null>(null);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [showSupabaseRecoveryModal, setShowSupabaseRecoveryModal] = useState<boolean>(false);
+  const [recoveryNewPassword, setRecoveryNewPassword] = useState<string>('');
+  const [recoverySaving, setRecoverySaving] = useState<boolean>(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTabId>('home');
 
   const showToast = (msg: string) => {
@@ -204,7 +210,44 @@ export const App: React.FC = () => {
     return () => unsubscribe();
   }, [user?.matricule]);
 
-  // Jeko callback return handler
+  // Supabase Auth session & email confirmation / password recovery listener
+  useEffect(() => {
+    const isAuthRedirect =
+      window.location.hash.includes('access_token=') ||
+      window.location.hash.includes('type=recovery') ||
+      window.location.search.includes('code=');
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowSupabaseRecoveryModal(true);
+        return;
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+        const provider = session.user.user_metadata?.auth_provider;
+        const currentLocal = getLocalUserProfile();
+        // Hydrate automatically on email confirmation redirect, or if no local profile exists for a supabase_email user
+        if (isAuthRedirect || (!currentLocal && provider === 'supabase_email')) {
+          const res = await hydrateOrCreateProfileForSupabaseUser(session.user);
+          if (res.success && res.user) {
+            setUser(res.user);
+            setShowBlackPortal(false);
+            if (isAuthRedirect) {
+              showToast(`Adresse e-mail confirmée ! Bienvenue ${res.user.displayName}.`);
+              const cleanUrl = window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+          }
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+    // Jeko callback return handler
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const reference = searchParams.get('reference') || searchParams.get('order');
@@ -565,6 +608,61 @@ export const App: React.FC = () => {
             onSuccess={handleUserSuccess}
             onGuestAccess={() => setShowBlackPortal(false)}
           />
+
+          {/* Supabase Password Recovery Modal */}
+          {showSupabaseRecoveryModal && (
+            <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="ios-card w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <h2 className="text-[20px] font-extrabold">Nouveau mot de passe (Supabase)</h2>
+                <p className="text-[14px] text-[var(--ios-fg-secondary)]">
+                  Choisissez un nouveau mot de passe d’au moins 6 caractères pour votre compte.
+                </p>
+                {recoveryError && (
+                  <p className="text-[13px] text-red-500 font-semibold">{recoveryError}</p>
+                )}
+                <input
+                  type="password"
+                  minLength={6}
+                  value={recoveryNewPassword}
+                  onChange={(e) => setRecoveryNewPassword(e.target.value)}
+                  placeholder="Nouveau mot de passe (min. 6 caractères)"
+                  className="w-full min-h-[50px] px-4 bg-[var(--ios-bg)] border border-[var(--ios-border)] rounded-[16px] text-[16px]"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSupabaseRecoveryModal(false);
+                      setRecoveryError(null);
+                    }}
+                    className="px-4 py-2.5 rounded-[14px] border border-[var(--ios-border)] text-[14px] font-semibold"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    disabled={recoverySaving || recoveryNewPassword.length < 6}
+                    onClick={async () => {
+                      setRecoverySaving(true);
+                      setRecoveryError(null);
+                      const res = await updateSupabasePassword(recoveryNewPassword);
+                      setRecoverySaving(false);
+                      if (res.success) {
+                        setShowSupabaseRecoveryModal(false);
+                        setRecoveryNewPassword('');
+                        showToast('Mot de passe mis à jour avec succès !');
+                      } else {
+                        setRecoveryError(res.error || 'Erreur lors de la mise à jour.');
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-[14px] bg-[#ea580c] text-white text-[14px] font-bold disabled:opacity-50"
+                  >
+                    {recoverySaving ? 'Enregistrement...' : 'Enregistrer'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Floating Toast */}
           {toastMsg && (

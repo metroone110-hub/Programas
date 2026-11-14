@@ -1,7 +1,14 @@
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, MealTicket } from '../types';
-import { syncSupabaseSignUp, syncSupabaseSignIn, signOutSupabase } from './supabaseClient';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+import {
+  syncSupabaseSignUp,
+  syncSupabaseSignIn,
+  signOutSupabase,
+  signUpWithSupabaseEmail,
+  signInWithSupabaseEmail
+} from './supabaseClient';
 import { 
   fetchStudentRest, 
   saveStudentRest, 
@@ -2368,3 +2375,238 @@ export function subscribeToStudentProfile(
 }
 
 
+
+
+/**
+ * Hydrate ou crée un UserProfile CROU coordonné avec un utilisateur Supabase Auth
+ */
+export async function hydrateOrCreateProfileForSupabaseUser(
+  sbUser: SupabaseUser,
+  fallbackPass?: string
+): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
+  const meta = (sbUser.user_metadata || {}) as Record<string, any>;
+  const cleanEmail = (sbUser.email || meta.email || '').trim().toLowerCase();
+  const rawMetaMat = typeof meta.matricule === 'string' ? meta.matricule.trim().toUpperCase() : '';
+  const fallbackMat = `SUPA-${sbUser.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+  let cleanMatricule = rawMetaMat || fallbackMat;
+
+  // Chercher d'abord si un profil existe déjà dans Firestore par e-mail
+  let cloudProfile: (UserProfile & { passwordHash?: string }) | null = null;
+  if (cleanEmail) {
+    try {
+      const emailQ = query(collection(db, 'students'), where('email', '==', cleanEmail), limit(1));
+      const emailSnap = await getDocs(emailQ);
+      if (!emailSnap.empty) {
+        cloudProfile = emailSnap.docs[0].data() as any;
+        if (cloudProfile?.matricule) {
+          cleanMatricule = cloudProfile.matricule.trim().toUpperCase();
+        }
+      }
+    } catch {}
+  }
+
+  // Sinon chercher par matricule (REST + SDK)
+  if (!cloudProfile) {
+    try {
+      cloudProfile = await fetchStudentRest(cleanMatricule);
+    } catch {}
+  }
+  const safeId = sanitizeMatriculeId(cleanMatricule);
+  if (!cloudProfile) {
+    try {
+      const snap = await getDoc(doc(db, 'students', safeId));
+      if (snap.exists()) {
+        cloudProfile = snap.data() as any;
+      }
+    } catch {}
+  }
+
+  if (cloudProfile?.isBlocked) {
+    return {
+      success: false,
+      error: cloudProfile.blockedReason || '⚠️ Ce compte est bloqué pour sécurité. Veuillez vous adresser à l’administration CROU.'
+    };
+  }
+
+  const localRegistry = getLocalStudentsRegistry();
+  const localAccount = localRegistry[cleanMatricule];
+  if (!cloudProfile && localAccount?.isBlocked) {
+    return {
+      success: false,
+      error: localAccount.blockedReason || '⚠️ Ce compte est bloqué pour sécurité. Veuillez vous adresser à l’administration CROU.'
+    };
+  }
+
+  const base = cloudProfile || localAccount;
+  const displayName =
+    (typeof meta.display_name === 'string' && meta.display_name.trim()) ||
+    base?.displayName ||
+    (cleanEmail ? cleanEmail.split('@')[0] : cleanMatricule);
+
+  const profile: UserProfile = {
+    uid: base?.uid || cleanMatricule,
+    matricule: cleanMatricule,
+    email: cleanEmail || base?.email || `${cleanMatricule.toLowerCase()}@upgc.ci`,
+    displayName,
+    role: 'student',
+    balance: typeof base?.balance === 'number' ? base.balance : 0,
+    savedTickets: deduplicateTickets(Array.isArray(base?.savedTickets) ? base.savedTickets : []),
+    university: base?.university || 'Université Peleforo Gbon Coulibaly (UPGC)',
+    campus: (typeof meta.campus === 'string' && meta.campus) || base?.campus || 'Campus UPGC Korhogo',
+    phone: (typeof meta.phone === 'string' && meta.phone) || base?.phone,
+    isBlocked: false,
+    pinSalt: base?.pinSalt,
+    pinHash: base?.pinHash,
+    pinFails: base?.pinFails || 0,
+    createdAt: base?.createdAt || sbUser.created_at || new Date().toISOString()
+  };
+
+  updateStudentInLocalRegistry(profile, fallbackPass || base?.passwordHash);
+  saveLocalUserProfile(profile);
+
+  // Synchroniser en arrière-plan vers Firestore (pour multi-appareils & contrôle admin)
+  try {
+    saveStudentRest(profile, fallbackPass || base?.passwordHash || 'supabase-auth').catch(() => {});
+    setDoc(
+      doc(db, 'students', safeId),
+      {
+        ...profile,
+        supabaseUid: sbUser.id,
+        authProvider: 'supabase_email',
+        lastLogin: new Date().toISOString()
+      },
+      { merge: true }
+    ).catch(() => {});
+  } catch {}
+
+  return { success: true, user: profile };
+}
+
+/**
+ * Inscription étudiant par E-mail coordonnée par Supabase Auth
+ */
+export async function registerStudentWithEmail(data: {
+  email: string;
+  password: string;
+  name: string;
+  matricule?: string;
+  ufr?: string;
+  phone?: string;
+}): Promise<{
+  success: boolean;
+  user?: UserProfile;
+  needsEmailConfirmation?: boolean;
+  email?: string;
+  error?: string;
+}> {
+  const cleanEmail = (data.email || '').trim().toLowerCase();
+  const cleanPass = (data.password || '').trim();
+  const cleanName = (data.name || '').trim();
+  const cleanMatricule = data.matricule ? data.matricule.trim().toUpperCase() : undefined;
+
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return { success: false, error: 'Veuillez saisir une adresse e-mail valide.' };
+  }
+  if (!cleanName) {
+    return { success: false, error: 'Veuillez renseigner votre nom complet.' };
+  }
+  if (!cleanPass || cleanPass.length < 6) {
+    return { success: false, error: 'Le mot de passe doit contenir au moins 6 caractères (exigence Supabase Auth).' };
+  }
+
+  if (cleanMatricule) {
+    try {
+      const existing = await fetchStudentRest(cleanMatricule);
+      if (existing?.isBlocked) {
+        return {
+          success: false,
+          error: `⚠️ Ce matricule (${cleanMatricule}) est bloqué pour sécurité. Adressez-vous à l’administration CROU.`
+        };
+      }
+    } catch {}
+  }
+
+  const campus = data.ufr ? `UPGC Korhogo - ${data.ufr}` : 'Campus UPGC Korhogo';
+  const authRes = await signUpWithSupabaseEmail({
+    email: cleanEmail,
+    password: cleanPass,
+    displayName: cleanName,
+    matricule: cleanMatricule,
+    campus,
+    phone: data.phone
+  });
+
+  if (!authRes.success || !authRes.user) {
+    return {
+      success: false,
+      error: authRes.error || 'Impossible de créer le compte sur Supabase Auth.'
+    };
+  }
+
+  if (authRes.needsEmailConfirmation || !authRes.session) {
+    return {
+      success: true,
+      needsEmailConfirmation: true,
+      email: cleanEmail
+    };
+  }
+
+  const hydrated = await hydrateOrCreateProfileForSupabaseUser(authRes.user, cleanPass);
+  if (!hydrated.success || !hydrated.user) {
+    return { success: false, error: hydrated.error };
+  }
+
+  return {
+    success: true,
+    user: hydrated.user,
+    needsEmailConfirmation: false,
+    email: cleanEmail
+  };
+}
+
+/**
+ * Connexion étudiant par E-mail coordonnée par Supabase Auth
+ */
+export async function loginStudentWithEmail(
+  email: string,
+  password: string
+): Promise<{
+  success: boolean;
+  user?: UserProfile;
+  needsEmailConfirmation?: boolean;
+  error?: string;
+}> {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPass = (password || '').trim();
+
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return { success: false, error: 'Veuillez saisir une adresse e-mail valide.' };
+  }
+  if (!cleanPass) {
+    return { success: false, error: 'Veuillez saisir votre mot de passe.' };
+  }
+
+  const authRes = await signInWithSupabaseEmail({
+    email: cleanEmail,
+    password: cleanPass
+  });
+
+  if (!authRes.success || !authRes.user) {
+    return {
+      success: false,
+      needsEmailConfirmation: authRes.needsEmailConfirmation,
+      error: authRes.error || 'E-mail ou mot de passe incorrect.'
+    };
+  }
+
+  const hydrated = await hydrateOrCreateProfileForSupabaseUser(authRes.user, cleanPass);
+  if (!hydrated.success || !hydrated.user) {
+    return { success: false, error: hydrated.error };
+  }
+
+  const synced = await syncStudentTicketsWithFirestore(hydrated.user).catch(() => hydrated.user!);
+  return {
+    success: true,
+    user: synced
+  };
+}

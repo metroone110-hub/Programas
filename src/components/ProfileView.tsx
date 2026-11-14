@@ -72,6 +72,11 @@ export const ProfileView: React.FC<Props> = ({
                 </>
               )}
             </p>
+            {user.email && !user.email.endsWith('@upgc.ci') && (
+              <p className="text-[13px] text-[var(--ios-fg-secondary)] truncate mt-0.5">
+                {user.email}
+              </p>
+            )}
             <p className="text-[13px] font-bold text-[#ea580c] mt-1">
               {validCount} ticket{validCount > 1 ? 's' : ''} actif{validCount > 1 ? 's' : ''}
             </p>
