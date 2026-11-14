@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, MealTicket } from '../types';
+import { syncSupabaseSignUp, syncSupabaseSignIn, signOutSupabase } from './supabaseClient';
 import { 
   fetchStudentRest, 
   saveStudentRest, 
@@ -229,6 +230,15 @@ export async function registerStudentWithMatricule(data: {
   } catch (err) {
     console.warn('Firestore backup note (working with local storage guarantee):', err);
   }
+
+  // 4. Sync with Supabase Auth (non-blocking)
+  syncSupabaseSignUp({
+    matricule: cleanMatricule,
+    password: cleanPass,
+    displayName: cleanName,
+    campus: newProfile.campus,
+    phone: data.phone,
+  }).catch(() => {});
 
   return { success: true, user: newProfile };
 }
@@ -740,6 +750,15 @@ export async function loginStudentWithMatricule(
       lastLogin: new Date().toISOString()
     }, { merge: true }).catch(() => {});
   } catch {}
+
+  // Sync with Supabase Auth (non-blocking)
+  syncSupabaseSignIn({
+    matricule: cleanMatricule,
+    password: finalPassword,
+    displayName: studentProfile.displayName,
+    campus: studentProfile.campus,
+    phone: studentProfile.phone,
+  }).catch(() => {});
 
   return { success: true, user: studentProfile };
 }
@@ -1555,6 +1574,7 @@ export function subscribeToFraudAuditLogs(onUpdate: (logs: FraudAuditLog[]) => v
 
 export async function logoutUser(): Promise<void> {
   saveLocalUserProfile(null);
+  await signOutSupabase();
 }
 
 export interface AuthErrorDetails {

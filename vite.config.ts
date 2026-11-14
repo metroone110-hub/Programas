@@ -1,5 +1,8 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+
+const DEFAULT_SUPABASE_URL = 'https://gtuzlggzcmfnvgiwnhhm.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_jaiUFjAP6aRiGVGEhJOowQ_K5KGUJxC';
 
 function geminiDevPlugin() {
   return {
@@ -56,28 +59,38 @@ function geminiDevPlugin() {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react(), geminiDevPlugin()],
-  server: {
-    port: 3000,
-    host: '0.0.0.0',
-    proxy: {
-      '/api/jeko': {
-        target: 'https://api.jeko.africa',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/jeko/, '/partner_api'),
-        headers: {
-          'X-API-KEY': 'jeko_76053a559816e40d1db0edcf7976413a7aed85fdcc27cc6aadc0f0de9a9a85ec',
-          'X-API-KEY-ID': '32d9d6ef-d182-47bc-82ba-9c92c41510f3'
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+
+  return {
+    plugins: [react(), geminiDevPlugin()],
+    define: {
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
+    },
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+      proxy: {
+        '/api/jeko': {
+          target: 'https://api.jeko.africa',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/jeko/, '/partner_api'),
+          headers: {
+            'X-API-KEY': 'jeko_76053a559816e40d1db0edcf7976413a7aed85fdcc27cc6aadc0f0de9a9a85ec',
+            'X-API-KEY-ID': '32d9d6ef-d182-47bc-82ba-9c92c41510f3'
+          }
         }
       }
-    }
-  },
-  preview: {
-    port: 3000,
-    host: '0.0.0.0',
-  },
-  build: {
-    chunkSizeWarningLimit: 2500,
-  },
+    },
+    preview: {
+      port: 3000,
+      host: '0.0.0.0',
+    },
+    build: {
+      chunkSizeWarningLimit: 2500,
+    },
+  };
 });
