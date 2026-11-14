@@ -17,6 +17,84 @@ export { RateLimiter };
 const DEFAULT_JEKO_API_KEY = 'jeko_76053a559816e40d1db0edcf7976413a7aed85fdcc27cc6aadc0f0de9a9a85ec';
 const DEFAULT_JEKO_KEY_ID = '32d9d6ef-d182-47bc-82ba-9c92c41510f3';
 const DEFAULT_JEKO_STORE_ID = '32d9d6ef-d182-47bc-82ba-9c92c41510f3';
+const DEFAULT_TURNSTILE_HOSTNAMES = ['programas-upgc.metroone110.workers.dev'];
+
+async function verifyTurnstileToken(token, request, env, expectedAction = 'recharge') {
+  const secret = env && (env.TURNSTILE_SECRET_KEY || env.TURNSTILE_SECRET);
+  if (!secret) {
+    return {
+      ok: false,
+      status: 500,
+      message: 'Configuration sécurité serveur incomplète (TURNSTILE_SECRET_KEY manquant).'
+    };
+  }
+  if (typeof token !== 'string' || token.length === 0 || token.length > 2048) {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Vérification de sécurité Turnstile requise avant le paiement.'
+    };
+  }
+
+  const remoteIp =
+    request.headers.get('CF-Connecting-IP') ||
+    (request.headers.get('X-Forwarded-For') || '').split(',')[0].trim();
+
+  const params = new URLSearchParams();
+  params.append('secret', secret);
+  params.append('response', token);
+  if (remoteIp) params.append('remoteip', remoteIp);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  try {
+    const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      signal: controller.signal
+    });
+    const result = await verifyRes.json();
+    if (!result || result.success !== true) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'Vérification Cloudflare Turnstile échouée ou expirée. Veuillez réessayer.',
+        codes: (result && result['error-codes']) || []
+      };
+    }
+    if (expectedAction && result.action !== expectedAction) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'Action Turnstile invalide pour cette opération.'
+      };
+    }
+    const allowedHostnames =
+      env && env.TURNSTILE_HOSTNAMES
+        ? String(env.TURNSTILE_HOSTNAMES)
+            .split(',')
+            .map((h) => h.trim())
+            .filter(Boolean)
+        : DEFAULT_TURNSTILE_HOSTNAMES;
+    if (!result.hostname || !allowedHostnames.includes(result.hostname)) {
+      return {
+        ok: false,
+        status: 403,
+        message: `Origine Turnstile non autorisée (${result.hostname}).`
+      };
+    }
+    return { ok: true, result };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Impossible de contacter le service de vérification Turnstile.'
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -182,6 +260,23 @@ export default {
 
         try {
           const clientBody = await request.json();
+          const turnstileToken =
+            clientBody['cf-turnstile-response'] || clientBody.turnstileToken || clientBody.token;
+          const turnstileCheck = await verifyTurnstileToken(turnstileToken, request, env, 'recharge');
+          if (!turnstileCheck.ok) {
+            return new Response(JSON.stringify({
+              status: 'error',
+              turnstileError: true,
+              message: turnstileCheck.message,
+              ...(turnstileCheck.codes ? { codes: turnstileCheck.codes } : {})
+            }), {
+              status: turnstileCheck.status || 403,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              }
+            });
+          }
           const apiKey = (env && env.JEKO_API_KEY) || DEFAULT_JEKO_API_KEY;
           const apiKeyId = (env && env.JEKO_API_KEY_ID) || DEFAULT_JEKO_KEY_ID;
           const storeId = clientBody.storeId || (env && env.JEKO_STORE_ID) || DEFAULT_JEKO_STORE_ID;

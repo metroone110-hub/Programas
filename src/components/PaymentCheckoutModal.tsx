@@ -25,6 +25,7 @@ import {
   clearPendingPayment
 } from '../services/jekoPayment';
 import { PaymentLogoBadge } from './PaymentLogoBadge';
+import { CloudflareTurnstileWidget } from './CloudflareTurnstileWidget';
 import { triggerHaptic } from '../utils/haptics';
 
 interface Props {
@@ -86,11 +87,15 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   } | null>(null);
 
   const [confirmedTickets, setConfirmedTickets] = useState<MealTicket[]>([]);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState<number>(0);
   const stopPollingRef = useRef<(() => void) | null>(null);
 
   // Synchronize initial payment method chosen on Home screen
   useEffect(() => {
     if (!isOpen) return;
+    setTurnstileToken(null);
+    setTurnstileResetSignal((s) => s + 1);
     if (initialPaymentMethod === 'wave') {
       setSelectedMethod('wave');
     } else if (initialPaymentMethod === 'djamo') {
@@ -203,6 +208,12 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       return;
     }
 
+    if (!turnstileToken) {
+      setErrorMessage('Veuillez valider la vérification de sécurité Cloudflare Turnstile avant de payer.');
+      return;
+    }
+
+    const activeToken = turnstileToken;
     triggerHaptic('medium');
     setIsLoading(true);
     setFlowState('processing');
@@ -222,7 +233,8 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
           studentName: user.displayName || 'Étudiant UPGC',
           studentPhone: cleanPhone || undefined,
           paymentMethod: jekoMethod,
-          customReference
+          customReference,
+          turnstileToken: activeToken
         }),
         new Promise(resolve => setTimeout(resolve, 1800))
       ]);
@@ -277,6 +289,8 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
       setErrorMessage(err.message || 'Échec de connexion au service Jeko. Veuillez vérifier votre connexion.');
     } finally {
       setIsLoading(false);
+      setTurnstileToken(null);
+      setTurnstileResetSignal((s) => s + 1);
     }
   };
 
@@ -311,6 +325,8 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
     setFlowState('form');
     setActivePaymentRequest(null);
     setErrorMessage(null);
+    setTurnstileToken(null);
+    setTurnstileResetSignal((s) => s + 1);
     onClose();
   };
 
@@ -573,10 +589,17 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
                     </span>
                   </label>
 
+                  {/* Cloudflare Turnstile Verification */}
+                  <CloudflareTurnstileWidget
+                    onTokenChange={setTurnstileToken}
+                    resetSignal={turnstileResetSignal}
+                    action="recharge"
+                  />
+
                   {/* Primary 56px CTA */}
                   <button
                     type="submit"
-                    disabled={isLoading || !termsAccepted}
+                    disabled={isLoading || !termsAccepted || !turnstileToken}
                     data-loading={isLoading ? 'true' : undefined}
                     className="ios-btn-spring w-full min-h-[56px] px-6 bg-[#ea580c] hover:bg-[#d94d07] text-white font-bold text-[17px] rounded-[20px] shadow-lg shadow-orange-600/25 flex items-center justify-center gap-2 disabled:opacity-50"
                   >

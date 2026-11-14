@@ -49,6 +49,7 @@ export interface InitiatePaymentParams {
   ticketQuantity?: number;
   paymentMethod?: string;
   customReference?: string;
+  turnstileToken?: string;
 }
 
 export interface JekoTransactionResult {
@@ -131,7 +132,8 @@ export async function createDirectPayment(
   amountFCFA: number,
   methodName: string = 'wave',
   payerPhone?: string,
-  attempt: number = 1
+  attempt: number = 1,
+  turnstileToken?: string
 ): Promise<JekoPaymentRequestResponse> {
   const reference = generateCrouReference(orderId, attempt);
   const amountCents = Math.round(amountFCFA * 100);
@@ -148,6 +150,7 @@ export async function createDirectPayment(
     amountCents,
     currency: JEKO_CONFIG.currency,
     reference,
+    ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {}),
     paymentDetails: {
       type: 'redirect',
       data: {
@@ -159,11 +162,12 @@ export async function createDirectPayment(
     }
   };
 
-  // 1. Try local proxy first (handles CORS in dev & production)
+  // 1. Try backend proxy first (verifies Cloudflare Turnstile + handles CORS in production)
+  let proxyRejectedError: Error | null = null;
   try {
     const proxyRes = await fetch('/api/jeko/payment_requests', {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'X-API-KEY': JEKO_CONFIG.apiKey,
         'X-API-KEY-ID': JEKO_CONFIG.apiKeyId
@@ -177,11 +181,25 @@ export async function createDirectPayment(
         return data as JekoPaymentRequestResponse;
       }
     } else {
-      const errText = await proxyRes.text();
-      console.warn('Proxy response status:', proxyRes.status, errText);
+      const errJson = await proxyRes.json().catch(() => null);
+      console.warn('Proxy response status:', proxyRes.status, errJson);
+      if (
+        proxyRes.status === 400 ||
+        proxyRes.status === 403 ||
+        proxyRes.status === 429 ||
+        (errJson && errJson.turnstileError)
+      ) {
+        proxyRejectedError = new Error(
+          errJson?.message || 'Vérification de sécurité Turnstile refusée. Veuillez réessayer.'
+        );
+      }
     }
   } catch (err) {
     console.warn('Local proxy attempt note:', err);
+  }
+
+  if (proxyRejectedError) {
+    throw proxyRejectedError;
   }
 
   // 2. Direct call to Jeko Partner API with real keys
@@ -323,7 +341,9 @@ export async function initiateJekoPayment(
     orderId,
     params.amount,
     params.paymentMethod,
-    params.studentPhone
+    params.studentPhone,
+    1,
+    params.turnstileToken
   );
 
   return {

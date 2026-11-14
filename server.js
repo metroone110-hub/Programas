@@ -9,6 +9,84 @@ const __dirname = path.dirname(__filename);
 const DIST_DIR = path.join(__dirname, 'dist');
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+async function verifyServerTurnstile(token, req, expectedAction = 'recharge') {
+  const secret = process.env.TURNSTILE_SECRET_KEY || process.env.TURNSTILE_SECRET;
+  if (!secret) {
+    return {
+      ok: false,
+      status: 500,
+      message: 'Configuration sécurité serveur incomplète (TURNSTILE_SECRET_KEY manquant).'
+    };
+  }
+  if (typeof token !== 'string' || token.length === 0 || token.length > 2048) {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Vérification de sécurité Turnstile requise avant le paiement.'
+    };
+  }
+  const forwarded = req.headers['x-forwarded-for'];
+  const remoteIp =
+    req.headers['cf-connecting-ip'] ||
+    (Array.isArray(forwarded) ? forwarded[0] : (forwarded || '')).split(',')[0].trim() ||
+    req.socket?.remoteAddress;
+
+  const params = new URLSearchParams();
+  params.append('secret', secret);
+  params.append('response', token);
+  if (remoteIp) params.append('remoteip', String(remoteIp));
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  try {
+    const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      signal: controller.signal
+    });
+    const result = await verifyRes.json();
+    if (!result || result.success !== true) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'Vérification Cloudflare Turnstile échouée ou expirée. Veuillez réessayer.',
+        codes: (result && result['error-codes']) || []
+      };
+    }
+    if (expectedAction && result.action !== expectedAction) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'Action Turnstile invalide pour cette opération.'
+      };
+    }
+    const allowedHostnames = (
+      process.env.TURNSTILE_HOSTNAMES ||
+      'programas-upgc.metroone110.workers.dev,localhost,127.0.0.1'
+    )
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean);
+    if (!result.hostname || !allowedHostnames.includes(result.hostname)) {
+      return {
+        ok: false,
+        status: 403,
+        message: `Origine Turnstile non autorisée (${result.hostname}).`
+      };
+    }
+    return { ok: true, result };
+  } catch {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Impossible de contacter le service de vérification Turnstile.'
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
   '.js': 'application/javascript; charset=UTF-8',
@@ -71,6 +149,19 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const clientBody = JSON.parse(bodyData || '{}');
+        const turnstileToken =
+          clientBody['cf-turnstile-response'] || clientBody.turnstileToken || clientBody.token;
+        const turnstileCheck = await verifyServerTurnstile(turnstileToken, req, 'recharge');
+        if (!turnstileCheck.ok) {
+          res.writeHead(turnstileCheck.status || 403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            status: 'error',
+            turnstileError: true,
+            message: turnstileCheck.message,
+            ...(turnstileCheck.codes ? { codes: turnstileCheck.codes } : {})
+          }));
+          return;
+        }
         const partnerPayload = {
           storeId: clientBody.storeId || process.env.JEKO_STORE_ID || '895f3110-845b-4d11-a291-f28dc954c0cd',
           amountCents: clientBody.amountCents || (clientBody.amount ? clientBody.amount * 100 : 20000),
